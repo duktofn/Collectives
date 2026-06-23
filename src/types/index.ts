@@ -31,3 +31,6 @@ export interface Settings {
   fontMono?: string;
   fontScale: number;
 }
+
+export type EditorMode = "view" | "edit-source" | "edit-render";
+

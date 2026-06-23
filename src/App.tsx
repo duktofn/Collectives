@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, createEffect } from "solid-js";
 import { collectionsStore } from "./stores/collections";
 import { uiStore } from "./stores/ui";
 import { Sidebar } from "./components/sidebar/Sidebar";
@@ -6,13 +6,40 @@ import { CollectionTree } from "./components/tree/CollectionTree";
 import { Dialog } from "./components/common/Dialog";
 import { Icon } from "./components/common/Icon";
 import { Entry } from "./types";
+import { editorStore } from "./stores/editor";
+import { Editor } from "./components/editor/Editor";
 import "./App.css";
+
 
 export default function App() {
   const [isNewCollectionOpen, setIsNewCollectionOpen] = createSignal(false);
   const [newCollectionError, setNewCollectionError] = createSignal("");
 
   const [isSettingsOpen, setIsSettingsOpen] = createSignal(false);
+
+  // Synchronize selection store with editor store
+  createEffect(() => {
+    const info = getSelectedEntryInfo();
+    if (info && (info.type === "file" || info.type === "file (inside folder-ref)")) {
+      const isReadOnly = info.type === "file (inside folder-ref)";
+      if (editorStore.state.openFilePath !== info.path) {
+        editorStore.openFile(info.path, isReadOnly);
+      }
+    } else {
+      if (editorStore.state.openFilePath !== null) {
+        editorStore.closeFile();
+      }
+    }
+  });
+
+  createEffect(() => {
+    if (editorStore.state.openFilePath === null) {
+      const info = getSelectedEntryInfo();
+      if (info && (info.type === "file" || info.type === "file (inside folder-ref)")) {
+        uiStore.selectEntry(null);
+      }
+    }
+  });
 
   const handleCreateCollection = async (name?: string) => {
     if (!name) {
@@ -108,49 +135,53 @@ export default function App() {
             <div style={{ display: "flex", width: "100%", height: "100%" }}>
               <CollectionTree collection={col()} />
 
-              <div class="info-panel">
-                <Show
-                  when={getSelectedEntryInfo()}
-                  fallback={
-                    <div style={{
-                      display: "flex",
-                      "flex-direction": "column",
-                      "align-items": "center",
-                      "justify-content": "center",
-                      flex: 1,
-                      color: "var(--color-text-muted)"
-                    }}>
-                      <Icon name="file" size={48} style={{ opacity: 0.15, "margin-bottom": "16px" }} />
-                      <span>Select a note from the tree to view details</span>
-                    </div>
-                  }
-                >
-                  {(info) => (
-                    <>
-                      <div class="info-header">
-                        <h2 class="info-title">{info().name}</h2>
-                        <div class="info-meta">
-                          <span class="meta-item">
-                            <strong>Type:</strong> {info().type}
-                          </span>
+              <Show
+                when={editorStore.state.openFilePath}
+                fallback={
+                  <div class="info-panel">
+                    <Show
+                      when={getSelectedEntryInfo()}
+                      fallback={
+                        <div style={{
+                          display: "flex",
+                          "flex-direction": "column",
+                          "align-items": "center",
+                          "justify-content": "center",
+                          flex: 1,
+                          color: "var(--color-text-muted)"
+                        }}>
+                          <Icon name="file" size={48} style={{ opacity: 0.15, "margin-bottom": "16px" }} />
+                          <span>Select a note from the tree to view details</span>
                         </div>
-                      </div>
+                      }
+                    >
+                      {(info) => (
+                        <>
+                          <div class="info-header">
+                            <h2 class="info-title">{info().name}</h2>
+                            <div class="info-meta">
+                              <span class="meta-item">
+                                <strong>Type:</strong> {info().type}
+                              </span>
+                            </div>
+                          </div>
 
-                      <div class="info-body">
-                        <p>You have selected a file in the collection explorer.</p>
-                        <div class="info-card">
-                          <h4>File Details</h4>
-                          <code>Path: {info().path}</code>
-                          <code style={{ "margin-top": "8px" }}>ID: {info().id}</code>
-                        </div>
-                        <p style={{ "margin-top": "24px", color: "var(--color-text-muted)", "font-size": "13px" }}>
-                          ℹ️ Markdown editor and viewer integrations are planned for Phase 3.
-                        </p>
-                      </div>
-                    </>
-                  )}
-                </Show>
-              </div>
+                          <div class="info-body">
+                            <p>You have selected a file in the collection explorer.</p>
+                            <div class="info-card">
+                              <h4>File Details</h4>
+                              <code>Path: {info().path}</code>
+                              <code style={{ "margin-top": "8px" }}>ID: {info().id}</code>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </Show>
+                  </div>
+                }
+              >
+                <Editor />
+              </Show>
             </div>
           )}
         </Show>

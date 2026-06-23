@@ -250,3 +250,33 @@ pub fn validate_entries(
     validate_entries_recursive(&collection.entries, &mut broken);
     Ok(broken)
 }
+
+#[tauri::command]
+pub fn read_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read file: {}", e))
+}
+
+#[tauri::command]
+pub fn write_file(path: String, content: String) -> Result<(), String> {
+    let path = std::path::Path::new(&path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create directories: {}", e))?;
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let tmp_filename = format!(
+        "{}.tmp-{}",
+        path.file_name().and_then(|n| n.to_str()).unwrap_or("file"),
+        id
+    );
+    let tmp_path = path.with_file_name(tmp_filename);
+    std::fs::write(&tmp_path, content)
+        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+    if let Err(e) = std::fs::rename(&tmp_path, path) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(format!("Failed to save file: {}", e));
+    }
+    Ok(())
+}
+

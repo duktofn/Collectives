@@ -25,7 +25,9 @@ pub fn run() {
             commands::rename_group,
             commands::add_file_entries,
             commands::add_folder_ref,
-            commands::validate_entries
+            commands::validate_entries,
+            commands::read_file,
+            commands::write_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

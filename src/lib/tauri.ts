@@ -89,3 +89,12 @@ export async function pickDirectory(title: string): Promise<string | null> {
   });
   return typeof selected === "string" ? selected : null;
 }
+
+export async function readFile(path: string): Promise<string> {
+  return invoke<string>("read_file", { path });
+}
+
+export async function writeFile(path: string, content: string): Promise<void> {
+  return invoke<void>("write_file", { path, content });
+}
+
