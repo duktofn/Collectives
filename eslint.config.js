@@ -3,6 +3,9 @@ import tseslint from 'typescript-eslint';
 import solidPlugin from 'eslint-plugin-solid';
 
 export default tseslint.config(
+  {
+    ignores: ['dist/**', 'src-tauri/**'],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

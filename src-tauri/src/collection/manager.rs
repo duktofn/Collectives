@@ -117,6 +117,154 @@ pub fn get_all_collections(app: &AppHandle) -> Result<Vec<Collection>, String> {
     get_all_collections_from_path(&dir)
 }
 
+fn get_group_mut<'a>(entries: &'a mut Vec<Entry>, path: &[usize]) -> Result<&'a mut Vec<Entry>, String> {
+    let mut current_entries = entries;
+    for &idx in path {
+        if idx >= current_entries.len() {
+            return Err("Index out of bounds".to_string());
+        }
+        match &mut current_entries[idx] {
+            Entry::Group { children, .. } => {
+                current_entries = children;
+            }
+            _ => return Err("Path segment is not a Group".to_string()),
+        }
+    }
+    Ok(current_entries)
+}
+
+fn remove_entry_by_id_recursive(entries: &mut Vec<Entry>, entry_id: &str) -> (Option<Entry>, bool) {
+    for i in 0..entries.len() {
+        let match_id = match &entries[i] {
+            Entry::File { id, .. } => id == entry_id,
+            Entry::FolderRef { id, .. } => id == entry_id,
+            Entry::Group { id, .. } => id == entry_id,
+        };
+        if match_id {
+            let removed = entries.remove(i);
+            return (Some(removed), true);
+        }
+        if let Entry::Group { children, .. } = &mut entries[i] {
+            let (removed, found) = remove_entry_by_id_recursive(children, entry_id);
+            if found {
+                return (removed, true);
+            }
+        }
+    }
+    (None, false)
+}
+
+pub fn add_entry_to_collection_path(
+    collections_dir: &Path,
+    collection_id: &str,
+    parent_path: &[usize],
+    entry: Entry,
+) -> Result<(), String> {
+    let mut collection = load_collection_from_path(collections_dir, collection_id)?;
+    {
+        let target_list = get_group_mut(&mut collection.entries, parent_path)?;
+        target_list.push(entry);
+    }
+    collection.updated_at = chrono::Utc::now().to_rfc3339();
+    save_collection_to_path(collections_dir, &collection)?;
+    Ok(())
+}
+
+pub fn remove_entry_from_collection_path(
+    collections_dir: &Path,
+    collection_id: &str,
+    entry_id: &str,
+) -> Result<Entry, String> {
+    let mut collection = load_collection_from_path(collections_dir, collection_id)?;
+    let (removed_entry, found) = remove_entry_by_id_recursive(&mut collection.entries, entry_id);
+    if !found {
+        return Err(format!("Entry with ID {} not found", entry_id));
+    }
+    collection.updated_at = chrono::Utc::now().to_rfc3339();
+    save_collection_to_path(collections_dir, &collection)?;
+    Ok(removed_entry.unwrap())
+}
+
+pub fn move_entry_in_collection_path(
+    collections_dir: &Path,
+    collection_id: &str,
+    entry_id: &str,
+    new_parent_path: &[usize],
+    new_index: usize,
+) -> Result<(), String> {
+    let mut collection = load_collection_from_path(collections_dir, collection_id)?;
+    let (removed_entry, found) = remove_entry_by_id_recursive(&mut collection.entries, entry_id);
+    if !found {
+        return Err(format!("Entry with ID {} not found", entry_id));
+    }
+    let entry = removed_entry.unwrap();
+    let target_list = get_group_mut(&mut collection.entries, new_parent_path)?;
+    let idx = std::cmp::min(new_index, target_list.len());
+    target_list.insert(idx, entry);
+    collection.updated_at = chrono::Utc::now().to_rfc3339();
+    save_collection_to_path(collections_dir, &collection)?;
+    Ok(())
+}
+
+pub fn find_entry_by_id<'a>(entries: &'a [Entry], id: &str) -> Option<&'a Entry> {
+    for entry in entries {
+        match entry {
+            Entry::File { id: entry_id, .. } => {
+                if entry_id == id {
+                    return Some(entry);
+                }
+            }
+            Entry::FolderRef { id: entry_id, .. } => {
+                if entry_id == id {
+                    return Some(entry);
+                }
+            }
+            Entry::Group { id: entry_id, children, .. } => {
+                if entry_id == id {
+                    return Some(entry);
+                }
+                if let Some(found) = find_entry_by_id(children, id) {
+                    return Some(found);
+                }
+            }
+        }
+    }
+    None
+}
+
+// AppHandle wrappers for commands
+pub fn add_entry_to_collection(
+    app: &AppHandle,
+    collection_id: &str,
+    parent_path: &[usize],
+    entry: Entry,
+) -> Result<(), String> {
+    let dir = get_collections_dir(app)?;
+    add_entry_to_collection_path(&dir, collection_id, parent_path, entry)
+}
+
+pub fn remove_entry_from_collection(
+    app: &AppHandle,
+    collection_id: &str,
+    entry_id: &str,
+) -> Result<Entry, String> {
+    let dir = get_collections_dir(app)?;
+    remove_entry_from_collection_path(&dir, collection_id, entry_id)
+}
+
+pub fn move_entry_in_collection(
+    app: &AppHandle,
+    collection_id: &str,
+    entry_id: &str,
+    new_parent_path: &[usize],
+    new_index: usize,
+) -> Result<(), String> {
+    let dir = get_collections_dir(app)?;
+    move_entry_in_collection_path(&dir, collection_id, entry_id, new_parent_path, new_index)
+}
+
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -182,5 +330,96 @@ mod tests {
         let loaded_err = load_collection_from_path(dir_path, "col1-id");
         assert!(loaded_err.is_err());
     }
+
+    #[test]
+    fn test_entry_manipulation() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let dir_path = temp_dir.path();
+
+        let mut col = Collection {
+            id: "col-id".to_string(),
+            schema_version: 1,
+            name: "Test Collection".to_string(),
+            created_at: "2026-06-24T00:00:00Z".to_string(),
+            updated_at: "2026-06-24T00:00:00Z".to_string(),
+            entries: vec![
+                Entry::Group {
+                    id: "group1".to_string(),
+                    name: "My Group".to_string(),
+                    children: vec![],
+                }
+            ],
+        };
+
+        save_collection_to_path(dir_path, &col).unwrap();
+
+        // 1. Add entry to group (parent_path = [0])
+        let new_file = Entry::File {
+            id: "file-in-group".to_string(),
+            path: "d:/test/in_group.md".to_string(),
+        };
+        add_entry_to_collection_path(dir_path, "col-id", &[0], new_file.clone()).unwrap();
+
+        // Load and check
+        let loaded = load_collection_from_path(dir_path, "col-id").unwrap();
+        assert_eq!(loaded.entries.len(), 1);
+        if let Entry::Group { children, .. } = &loaded.entries[0] {
+            assert_eq!(children.len(), 1);
+            assert_eq!(children[0], new_file);
+        } else {
+            panic!("Expected first entry to be a Group");
+        }
+
+        // 2. Add entry to root (parent_path = [])
+        let root_file = Entry::File {
+            id: "file-at-root".to_string(),
+            path: "d:/test/root.md".to_string(),
+        };
+        add_entry_to_collection_path(dir_path, "col-id", &[], root_file.clone()).unwrap();
+
+        let loaded = load_collection_from_path(dir_path, "col-id").unwrap();
+        assert_eq!(loaded.entries.len(), 2);
+        assert_eq!(loaded.entries[1], root_file);
+
+        // 3. Find entry by ID
+        let found = find_entry_by_id(&loaded.entries, "file-in-group");
+        assert!(found.is_some());
+        assert_eq!(
+            found.unwrap(),
+            &Entry::File {
+                id: "file-in-group".to_string(),
+                path: "d:/test/in_group.md".to_string()
+            }
+        );
+
+        let not_found = find_entry_by_id(&loaded.entries, "nonexistent");
+        assert!(not_found.is_none());
+
+        // 4. Move entry: move root_file into group1 (parent_path = [0])
+        move_entry_in_collection_path(dir_path, "col-id", "file-at-root", &[0], 0).unwrap();
+
+        let loaded = load_collection_from_path(dir_path, "col-id").unwrap();
+        assert_eq!(loaded.entries.len(), 1); // Only group1 left at root
+        if let Entry::Group { children, .. } = &loaded.entries[0] {
+            assert_eq!(children.len(), 2);
+            assert_eq!(children[0], root_file); // Inserted at index 0
+            assert_eq!(children[1], new_file);
+        } else {
+            panic!("Expected first entry to be a Group");
+        }
+
+        // 5. Remove entry by ID
+        let removed = remove_entry_from_collection_path(dir_path, "col-id", "file-in-group").unwrap();
+        assert_eq!(removed, new_file);
+
+        let loaded = load_collection_from_path(dir_path, "col-id").unwrap();
+        if let Entry::Group { children, .. } = &loaded.entries[0] {
+            assert_eq!(children.len(), 1);
+            assert_eq!(children[0], root_file);
+        } else {
+            panic!("Expected first entry to be a Group");
+        }
+    }
 }
+
 
