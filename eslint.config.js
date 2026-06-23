@@ -1,0 +1,25 @@
+import js from '@eslint/js';
+import tseslint from 'typescript-eslint';
+import solidPlugin from 'eslint-plugin-solid';
+
+export default tseslint.config(
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    plugins: {
+      solid: solidPlugin,
+    },
+    languageOptions: {
+      parserOptions: {
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+      },
+    },
+    rules: {
+      ...solidPlugin.configs.recommended.rules,
+      "@typescript-eslint/no-explicit-any": "warn",
+      "no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }]
+    },
+  }
+);
