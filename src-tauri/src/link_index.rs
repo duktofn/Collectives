@@ -192,6 +192,75 @@ fn extract_index_entries(collection_id: &str, entries: &[Entry], out: &mut Vec<I
     }
 }
 
+pub fn search_by_name(
+    conn: &Connection,
+    collection_id: &str,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<IndexEntry>, String> {
+    let like_query = format!("{}%", query);
+    let mut stmt = conn
+        .prepare(
+            "SELECT display_name, collection_id, entry_id, path, entry_type 
+             FROM link_index 
+             WHERE collection_id = ?1 AND display_name LIKE ?2 COLLATE NOCASE 
+             LIMIT ?3",
+        )
+        .map_err(|e| format!("Failed to prepare search statement: {}", e))?;
+
+    let rows = stmt
+        .query_map(params![collection_id, like_query, limit], |row| {
+            Ok(IndexEntry {
+                display_name: row.get(0)?,
+                collection_id: row.get(1)?,
+                entry_id: row.get(2)?,
+                path: row.get(3)?,
+                entry_type: row.get(4)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query search statement: {}", e))?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(results)
+}
+
+pub fn resolve_by_name(
+    conn: &Connection,
+    collection_id: &str,
+    note_name: &str,
+) -> Result<Option<IndexEntry>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT display_name, collection_id, entry_id, path, entry_type 
+             FROM link_index 
+             WHERE collection_id = ?1 AND display_name = ?2 COLLATE NOCASE 
+             LIMIT 1",
+        )
+        .map_err(|e| format!("Failed to prepare resolve statement: {}", e))?;
+
+    let mut rows = stmt
+        .query_map(params![collection_id, note_name], |row| {
+            Ok(IndexEntry {
+                display_name: row.get(0)?,
+                collection_id: row.get(1)?,
+                entry_id: row.get(2)?,
+                path: row.get(3)?,
+                entry_type: row.get(4)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query resolve statement: {}", e))?;
+
+    if let Some(row) = rows.next() {
+        let entry = row.map_err(|e| e.to_string())?;
+        Ok(Some(entry))
+    } else {
+        Ok(None)
+    }
+}
+
 // Tauri wrappers
 pub fn get_db_path(app: &AppHandle) -> Result<PathBuf, String> {
     let app_data = app
@@ -287,6 +356,56 @@ mod tests {
             |row| row.get(0)
         ).unwrap();
         assert_eq!(resolved_name, "Nested");
+
+        // Test search_by_name and resolve_by_name
+        let entry_a = IndexEntry {
+            display_name: "Note Alpha".to_string(),
+            collection_id: "col-3".to_string(),
+            entry_id: "entry-a".to_string(),
+            path: "d:/notes/Note Alpha.md".to_string(),
+            entry_type: "file".to_string(),
+        };
+        let entry_b = IndexEntry {
+            display_name: "Note Beta".to_string(),
+            collection_id: "col-3".to_string(),
+            entry_id: "entry-b".to_string(),
+            path: "d:/notes/Note Beta.md".to_string(),
+            entry_type: "file".to_string(),
+        };
+        let entry_c = IndexEntry {
+            display_name: "Gamma".to_string(),
+            collection_id: "col-3".to_string(),
+            entry_id: "entry-c".to_string(),
+            path: "d:/notes/Gamma.md".to_string(),
+            entry_type: "file".to_string(),
+        };
+
+        insert_or_replace_entry(&conn, &entry_a).unwrap();
+        insert_or_replace_entry(&conn, &entry_b).unwrap();
+        insert_or_replace_entry(&conn, &entry_c).unwrap();
+
+        let search_res = search_by_name(&conn, "col-3", "Note", 10).unwrap();
+        assert_eq!(search_res.len(), 2);
+        assert!(search_res.iter().any(|e| e.display_name == "Note Alpha"));
+        assert!(search_res.iter().any(|e| e.display_name == "Note Beta"));
+
+        let search_res_case = search_by_name(&conn, "col-3", "gam", 10).unwrap();
+        assert_eq!(search_res_case.len(), 1);
+        assert_eq!(search_res_case[0].display_name, "Gamma");
+
+        let search_res_scoped = search_by_name(&conn, "col-4", "Note", 10).unwrap();
+        assert_eq!(search_res_scoped.len(), 0);
+
+        let resolve_res = resolve_by_name(&conn, "col-3", "Note Alpha").unwrap();
+        assert!(resolve_res.is_some());
+        assert_eq!(resolve_res.unwrap().entry_id, "entry-a");
+
+        let resolve_res_case = resolve_by_name(&conn, "col-3", "note alpha").unwrap();
+        assert!(resolve_res_case.is_some());
+        assert_eq!(resolve_res_case.unwrap().entry_id, "entry-a");
+
+        let resolve_res_none = resolve_by_name(&conn, "col-3", "NonExistent").unwrap();
+        assert!(resolve_res_none.is_none());
     }
 }
 

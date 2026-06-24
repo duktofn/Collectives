@@ -4,6 +4,7 @@ import { EditorState } from "@codemirror/state";
 import { editorStore } from "../../stores/editor";
 import { EditorToolbar } from "./EditorToolbar";
 import { modeCompartment, getExtensionsForMode } from "../../lib/cm-extensions/markdown-mode";
+import { navigateToFragment } from "../../lib/wikilink/resolver";
 import "./Editor.css";
 
 export function Editor() {
@@ -95,6 +96,15 @@ export function Editor() {
       autoSaveTimeout = setTimeout(() => {
         editorStore.saveFile();
       }, 2000); // 2 seconds delay
+    }
+  });
+
+  // Handle pending navigation (scrolling to heading/block refs)
+  createEffect(() => {
+    const nav = editorStore.state.pendingNavigation;
+    if (nav && view) {
+      navigateToFragment(view, nav);
+      editorStore.clearPendingNavigation();
     }
   });
 

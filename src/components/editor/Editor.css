@@ -402,3 +402,33 @@
   font-size: 12px;
   white-space: pre-wrap;
 }
+
+/* === Wikilink === */
+.cm-wikilink {
+  color: var(--color-link, #6366f1);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+
+.cm-wikilink:hover {
+  color: var(--color-link-hover, #4f46e5);
+  text-decoration-thickness: 2px;
+}
+
+/* Broken link — note not found */
+.cm-wikilink-broken {
+  color: var(--color-danger, #ef4444);
+  text-decoration-style: dashed;
+  cursor: not-allowed;
+}
+
+/* === Block Reference === */
+.cm-block-ref-visible {
+  color: var(--color-text-secondary, #9ca3af);
+  font-size: 0.85em;
+  opacity: 0.5;
+}
+

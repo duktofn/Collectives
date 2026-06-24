@@ -1,0 +1,207 @@
+import { RangeSetBuilder } from "@codemirror/state";
+import {
+  Decoration,
+  DecorationSet,
+  EditorView,
+  ViewPlugin,
+  ViewUpdate,
+  WidgetType,
+} from "@codemirror/view";
+import { parseWikilink } from "../wikilink/parser";
+import { resolveAndNavigate } from "../wikilink/resolver";
+import { collectionsStore } from "../../stores/collections";
+import { editorStore } from "../../stores/editor";
+import { resolveWikilink } from "../tauri";
+import { message } from "@tauri-apps/plugin-dialog";
+
+class EmptyWidget extends WidgetType {
+  toDOM() {
+    const span = document.createElement("span");
+    span.className = "cm-hidden-mark";
+    span.style.display = "none";
+    return span;
+  }
+}
+
+interface DecSpec {
+  from: number;
+  to: number;
+  value: Decoration;
+}
+
+export const wikilinkCache = new Map<string, boolean>();
+
+class WikilinkDecorationPlugin {
+  decorations: DecorationSet;
+
+  constructor(view: EditorView) {
+    this.decorations = this.buildDecorations(view);
+  }
+
+  update(update: ViewUpdate) {
+    if (update.docChanged || update.viewportChanged || update.selectionSet) {
+      this.decorations = this.buildDecorations(update.view);
+    }
+  }
+
+  buildDecorations(view: EditorView): DecorationSet {
+    const decs: DecSpec[] = [];
+    const doc = view.state.doc;
+    const selection = view.state.selection.main;
+    const collectionId = collectionsStore.state.activeCollectionId;
+
+    if (!collectionId) {
+      return Decoration.none;
+    }
+
+    for (const { from, to } of view.visibleRanges) {
+      const text = doc.sliceString(from, to);
+      const regex = /\[\[([^\]]+)\]\]/g;
+      let match;
+
+      while ((match = regex.exec(text)) !== null) {
+        const matchIndex = match.index;
+        const matchStart = from + matchIndex;
+        const matchEnd = matchStart + match[0].length;
+
+        const rawText = match[0];
+        const parsed = parseWikilink(rawText);
+        if (!parsed) continue;
+
+        const startLine = doc.lineAt(matchStart);
+        const endLine = doc.lineAt(matchEnd);
+        const isCursorInLine = selection.head >= startLine.from && selection.head <= endLine.to;
+
+        const cacheKey = `${collectionId}:${parsed.noteName}`;
+        if (!wikilinkCache.has(cacheKey)) {
+          wikilinkCache.set(cacheKey, true);
+          resolveWikilink(collectionId, parsed.noteName)
+            .then((candidate) => {
+              const exists = candidate !== null;
+              if (wikilinkCache.get(cacheKey) !== exists) {
+                wikilinkCache.set(cacheKey, exists);
+                view.dispatch({});
+              }
+            })
+            .catch(() => {
+              wikilinkCache.set(cacheKey, false);
+              view.dispatch({});
+            });
+        }
+
+        const isValid = wikilinkCache.get(cacheKey) ?? true;
+        const linkClass = isValid ? "cm-wikilink" : "cm-wikilink cm-wikilink-broken";
+
+        const hashIndex = rawText.indexOf("#");
+        const noteNameEnd = hashIndex !== -1 ? matchStart + hashIndex : matchEnd - 2;
+
+        if (!isCursorInLine) {
+          // Hide [[
+          decs.push({
+            from: matchStart,
+            to: matchStart + 2,
+            value: Decoration.replace({ widget: new EmptyWidget() }),
+          });
+
+          // Hide ]]
+          decs.push({
+            from: matchEnd - 2,
+            to: matchEnd,
+            value: Decoration.replace({ widget: new EmptyWidget() }),
+          });
+
+          // Hide fragment if present
+          if (parsed.fragment && hashIndex !== -1) {
+            decs.push({
+              from: noteNameEnd,
+              to: matchEnd - 2,
+              value: Decoration.replace({ widget: new EmptyWidget() }),
+            });
+          }
+        }
+
+        // Highlight only the note name part to prevent overlap with fragment replacement decoration
+        if (matchStart + 2 < noteNameEnd) {
+          decs.push({
+            from: matchStart + 2,
+            to: noteNameEnd,
+            value: Decoration.mark({ class: linkClass }),
+          });
+        }
+      }
+    }
+
+    decs.sort((a, b) => a.from - b.from);
+
+    const builder = new RangeSetBuilder<Decoration>();
+    for (const d of decs) {
+      builder.add(d.from, d.to, d.value);
+    }
+    return builder.finish();
+  }
+}
+
+const wikilinkClickEffect = EditorView.domEventHandlers({
+  click(event, view) {
+    const target = event.target as HTMLElement;
+    if (!target.classList.contains("cm-wikilink")) return false;
+
+    const pos = view.posAtDOM(target);
+    const docText = view.state.doc.toString();
+
+    let startPos = -1;
+    let endPos = -1;
+
+    for (let i = pos; i >= 0; i--) {
+      if (docText.startsWith("[[", i)) {
+        startPos = i;
+        break;
+      }
+      if (docText[i] === "\n" || (i < pos && docText.startsWith("]]", i))) {
+        break;
+      }
+    }
+
+    if (startPos !== -1) {
+      const closing = docText.indexOf("]]", startPos);
+      if (closing !== -1 && closing >= pos - 2) {
+        endPos = closing + 2;
+      }
+    }
+
+    if (startPos !== -1 && endPos !== -1) {
+      const raw = docText.slice(startPos, endPos);
+      const parsed = parseWikilink(raw);
+      const collectionId = collectionsStore.state.activeCollectionId;
+
+      if (parsed && collectionId) {
+        resolveAndNavigate(parsed, collectionId, {
+          onMatch: async (candidate, fragment) => {
+            if (editorStore.state.openFilePath !== candidate.path) {
+              await editorStore.openFile(candidate.path);
+            }
+            if (fragment) {
+              editorStore.navigateTo(fragment);
+            }
+          },
+          onNoMatch: async (token) => {
+            await message(`Note "${token.noteName}" not found in this collection.`, {
+              title: "Note Not Found",
+              kind: "error",
+            });
+          },
+        });
+        return true;
+      }
+    }
+
+    return false;
+  },
+});
+
+export const wikilinkDecorationExtension = [
+  ViewPlugin.fromClass(WikilinkDecorationPlugin, {
+    decorations: (v) => v.decorations,
+  }),
+  wikilinkClickEffect,
+];

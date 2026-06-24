@@ -34,3 +34,24 @@ export interface Settings {
 
 export type EditorMode = "view" | "edit-source" | "edit-render";
 
+// Wikilink parse result
+export interface WikilinkToken {
+  raw: string;                        // nguyên văn "[[...]]"
+  noteName: string;                   // tên note (bỏ .md nếu có)
+  fragment: WikilinkFragment | null;  // #^blockId hoặc #Heading
+}
+
+export interface WikilinkFragment {
+  type: "block" | "heading";
+  value: string;  // blockId (không có ^) hoặc heading text
+}
+
+// Backend resolve result
+export interface ResolveCandidate {
+  displayName: string;
+  entryId: string;
+  path: string;
+  entryType: string;  // "file" | "folder-ref"
+}
+
+

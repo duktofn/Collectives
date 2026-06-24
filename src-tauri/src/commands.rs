@@ -280,3 +280,49 @@ pub fn write_file(path: String, content: String) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveCandidate {
+    pub display_name: String,
+    pub entry_id: String,
+    pub path: String,
+    pub entry_type: String,
+}
+
+#[tauri::command]
+pub fn resolve_wikilink(
+    app: AppHandle,
+    collection_id: String,
+    note_name: String,
+) -> Result<Option<ResolveCandidate>, String> {
+    let conn = link_index::init_db(&app)?;
+    let entry_opt = link_index::resolve_by_name(&conn, &collection_id, &note_name)?;
+    Ok(entry_opt.map(|entry| ResolveCandidate {
+        display_name: entry.display_name,
+        entry_id: entry.entry_id,
+        path: entry.path,
+        entry_type: entry.entry_type,
+    }))
+}
+
+#[tauri::command]
+pub fn search_link_index(
+    app: AppHandle,
+    collection_id: String,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<ResolveCandidate>, String> {
+    let conn = link_index::init_db(&app)?;
+    let limit_val = limit.unwrap_or(20);
+    let entries = link_index::search_by_name(&conn, &collection_id, &query, limit_val)?;
+    Ok(entries
+        .into_iter()
+        .map(|entry| ResolveCandidate {
+            display_name: entry.display_name,
+            entry_id: entry.entry_id,
+            path: entry.path,
+            entry_type: entry.entry_type,
+        })
+        .collect())
+}
+

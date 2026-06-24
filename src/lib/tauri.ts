@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Collection, Entry, FsEntry, BrokenEntry, Settings } from "../types";
+import { Collection, Entry, FsEntry, BrokenEntry, Settings, ResolveCandidate } from "../types";
 
 export async function getCollections(): Promise<Collection[]> {
   return invoke<Collection[]>("get_collections");
@@ -97,4 +97,20 @@ export async function readFile(path: string): Promise<string> {
 export async function writeFile(path: string, content: string): Promise<void> {
   return invoke<void>("write_file", { path, content });
 }
+
+export async function resolveWikilink(
+  collectionId: string,
+  noteName: string
+): Promise<ResolveCandidate | null> {
+  return invoke<ResolveCandidate | null>("resolve_wikilink", { collectionId, noteName });
+}
+
+export async function searchLinkIndex(
+  collectionId: string,
+  query: string,
+  limit?: number
+): Promise<ResolveCandidate[]> {
+  return invoke<ResolveCandidate[]>("search_link_index", { collectionId, query, limit });
+}
+
 

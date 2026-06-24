@@ -1,6 +1,6 @@
 import { createStore } from "solid-js/store";
 import * as api from "../lib/tauri";
-import { EditorMode } from "../types";
+import { EditorMode, WikilinkFragment } from "../types";
 
 interface EditorState {
   openFilePath: string | null;
@@ -11,6 +11,7 @@ interface EditorState {
   isSaving: boolean;
   isReadOnly: boolean;
   error: string | null;
+  pendingNavigation: WikilinkFragment | null;
 }
 
 const [state, setState] = createStore<EditorState>({
@@ -22,6 +23,7 @@ const [state, setState] = createStore<EditorState>({
   isSaving: false,
   isReadOnly: false,
   error: null,
+  pendingNavigation: null,
 });
 
 export const editorStore = {
@@ -89,6 +91,22 @@ export const editorStore = {
       mode: "edit-render",
       isSaving: false,
       error: null,
+      pendingNavigation: null,
     });
+  },
+
+  navigateTo(fragment: WikilinkFragment) {
+    setState("pendingNavigation", fragment);
+  },
+
+  clearPendingNavigation() {
+    setState("pendingNavigation", null);
+  },
+
+  get currentFileName(): string | null {
+    const path = state.openFilePath;
+    if (!path) return null;
+    const basename = path.split(/[/\\]/).pop() || "";
+    return basename.replace(/\.md$/i, "");
   }
 };

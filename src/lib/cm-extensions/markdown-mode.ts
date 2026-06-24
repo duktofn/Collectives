@@ -7,6 +7,9 @@ import { renderDecorationsExtension } from "./render-decorations";
 import { tableWidgetExtension } from "./table-widget";
 import { chartWidgetExtension } from "./chart-widget";
 import { annotationExtension } from "./annotation";
+import { wikilinkDecorationExtension } from "./wikilink-decoration";
+import { wikilinkAutocomplete } from "./wikilink-autocomplete";
+import { blockRefExtension } from "./block-ref";
 
 export const modeCompartment = new Compartment();
 
@@ -33,6 +36,9 @@ export function getExtensionsForMode(mode: "view" | "edit-source" | "edit-render
         tableWidgetExtension,
         chartWidgetExtension,
         annotationExtension,
+        wikilinkDecorationExtension,
+        wikilinkAutocomplete,
+        blockRefExtension,
       ];
     case "view":
       return [
@@ -43,6 +49,8 @@ export function getExtensionsForMode(mode: "view" | "edit-source" | "edit-render
         tableWidgetExtension,
         chartWidgetExtension,
         annotationExtension,
+        wikilinkDecorationExtension,
+        blockRefExtension,
       ];
   }
 }

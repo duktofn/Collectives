@@ -27,7 +27,9 @@ pub fn run() {
             commands::add_folder_ref,
             commands::validate_entries,
             commands::read_file,
-            commands::write_file
+            commands::write_file,
+            commands::resolve_wikilink,
+            commands::search_link_index
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
