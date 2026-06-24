@@ -42,6 +42,7 @@ export interface Settings {
   sizeH3?: number;
   sizeH4?: number;
   colorH1?: string;
+  colorBody?: string;
   colorH2?: string;
   colorH3?: string;
   colorH4?: string;

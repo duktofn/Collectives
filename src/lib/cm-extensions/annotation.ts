@@ -9,6 +9,12 @@ import {
 import { RangeSetBuilder, Extension } from "@codemirror/state";
 import { EmptyWidget } from "./empty-widget";
 
+interface DecSpec {
+  from: number;
+  to: number;
+  value: Decoration;
+}
+
 // Find all footnote definitions [^id]: content
 export function getFootnoteDefinitions(doc: import("@codemirror/state").Text): Record<string, { content: string; line: number }> {
   const definitions: Record<string, { content: string; line: number }> = {};
@@ -68,9 +74,12 @@ const footnoteTooltip = hoverTooltip((view, pos) => {
 // Decoration plugin to style [^noteId] inline refs
 class AnnotationDecPlugin {
   decorations: DecorationSet;
+  atomic: DecorationSet;
 
   constructor(view: EditorView) {
-    this.decorations = this.buildDecorations(view);
+    const { decorations, atomic } = this.buildDecorations(view);
+    this.decorations = decorations;
+    this.atomic = atomic;
   }
 
   update(update: ViewUpdate) {
@@ -79,12 +88,14 @@ class AnnotationDecPlugin {
       update.viewportChanged ||
       update.selectionSet
     ) {
-      this.decorations = this.buildDecorations(update.view);
+      const { decorations, atomic } = this.buildDecorations(update.view);
+      this.decorations = decorations;
+      this.atomic = atomic;
     }
   }
 
-  buildDecorations(view: EditorView): DecorationSet {
-    const builder = new RangeSetBuilder<Decoration>();
+  buildDecorations(view: EditorView): { decorations: DecorationSet; atomic: DecorationSet } {
+    const decs: DecSpec[] = [];
     const doc = view.state.doc;
     const selection = view.state.selection.main;
 
@@ -106,26 +117,26 @@ class AnnotationDecPlugin {
 
             if (start >= from && end <= to) {
               // Add a decoration class for styling
-              builder.add(
-                start,
-                end,
-                Decoration.mark({
+              decs.push({
+                from: start,
+                to: end,
+                value: Decoration.mark({
                   class: "cm-footnote-ref",
-                })
-              );
+                }),
+              });
 
               // Hide [^ and ] if cursor is not in line
               if (!isCursorInLine) {
-                builder.add(
-                  start,
-                  start + 2,
-                  Decoration.replace({ widget: new EmptyWidget() })
-                );
-                builder.add(
-                  end - 1,
-                  end,
-                  Decoration.replace({ widget: new EmptyWidget() })
-                );
+                decs.push({
+                  from: start,
+                  to: start + 2,
+                  value: Decoration.replace({ widget: new EmptyWidget() }),
+                });
+                decs.push({
+                  from: end - 1,
+                  to: end,
+                  value: Decoration.replace({ widget: new EmptyWidget() }),
+                });
               }
             }
           }
@@ -134,7 +145,29 @@ class AnnotationDecPlugin {
       }
     }
 
-    return builder.finish();
+    // Sort decorations: by 'from' ascending, then by 'startSide' ascending, then by 'to' descending
+    decs.sort((a, b) => {
+      if (a.from !== b.from) return a.from - b.from;
+      if (a.value.startSide !== b.value.startSide) {
+        return a.value.startSide - b.value.startSide;
+      }
+      return b.to - a.to;
+    });
+
+    const builder = new RangeSetBuilder<Decoration>();
+    const atomicBuilder = new RangeSetBuilder<Decoration>();
+    for (const d of decs) {
+      const isReplacement = d.value.spec.widget !== undefined;
+      builder.add(d.from, d.to, d.value);
+      if (isReplacement) {
+        atomicBuilder.add(d.from, d.to, d.value);
+      }
+    }
+
+    return {
+      decorations: builder.finish(),
+      atomic: atomicBuilder.finish(),
+    };
   }
 }
 
@@ -145,4 +178,8 @@ const footnoteDecorations = ViewPlugin.fromClass(AnnotationDecPlugin, {
 export const annotationExtension: Extension = [
   footnoteTooltip,
   footnoteDecorations,
+  EditorView.atomicRanges.of((view) => {
+    const plugin = view.plugin(footnoteDecorations);
+    return plugin ? plugin.atomic : Decoration.none;
+  }),
 ];

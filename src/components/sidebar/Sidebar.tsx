@@ -109,80 +109,9 @@ export function Sidebar(props: SidebarProps) {
       class={`sidebar ${!uiStore.state.isSidebarOpen ? "collapsed" : ""} ${isResizing() ? "resizing" : ""}`}
       style={{ width: uiStore.state.isSidebarOpen ? "var(--sidebar-width)" : "0px" }}
     >
-      {/* Header with collection dropdown */}
+      {/* Header with App Brand and toggle button */}
       <div class="sidebar-header">
-        <div class="sidebar-actions-container" ref={dropdownRef} style={{ position: "relative", flex: 1, "min-width": 0 }}>
-          <div
-            class="sidebar-title-selector"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsDropdownOpen(!isDropdownOpen());
-            }}
-            title="Switch or manage collections"
-          >
-            <span class="active-col-name">
-              {activeCol()?.name || "Select Collection..."}
-            </span>
-            <Icon name="chevron-down" size={14} />
-          </div>
-
-          {/* Dropdown list */}
-          <Show when={isDropdownOpen()}>
-            <div class="sidebar-dropdown">
-              <span class="dropdown-header">Collections</span>
-              <For each={collectionsStore.state.collections}>
-                {(col) => (
-                  <button
-                    class="dropdown-item"
-                    classList={{ active: activeCol()?.id === col.id }}
-                    onClick={() => {
-                      collectionsStore.openCollection(col.id);
-                      setIsDropdownOpen(false);
-                    }}
-                  >
-                    <Icon name="folder" size={14} />
-                    <span class="dropdown-item-text">{col.name}</span>
-                  </button>
-                )}
-              </For>
-
-              <div class="dropdown-divider" />
-
-              {/* Create / Import buttons */}
-              <button
-                class="dropdown-item"
-                onClick={() => {
-                  props.onNewCollectionClick();
-                  setIsDropdownOpen(false);
-                }}
-              >
-                <Icon name="plus" size={14} />
-                <span>New Collection</span>
-              </button>
-              <button
-                class="dropdown-item"
-                onClick={() => {
-                  props.onImportFolderClick();
-                  setIsDropdownOpen(false);
-                }}
-              >
-                <Icon name="folder-plus" size={14} />
-                <span>Import Local Folder</span>
-              </button>
-              <button
-                class="dropdown-item"
-                onClick={() => {
-                  props.onImportZipClick();
-                  setIsDropdownOpen(false);
-                }}
-              >
-                <Icon name="file" size={14} />
-                <span>Import ZIP Archive</span>
-              </button>
-            </div>
-          </Show>
-        </div>
-
+        <span class="app-brand">Collectives</span>
         <button
           class="btn btn-text btn-icon sidebar-toggle-btn"
           onClick={() => uiStore.toggleSidebar()}
@@ -198,7 +127,7 @@ export function Sidebar(props: SidebarProps) {
           when={activeCol()}
           fallback={
             <div class="sidebar-empty">
-              Open a collection from the header dropdown to view notes.
+              Open a collection from the footer dropdown to view notes.
             </div>
           }
         >
@@ -261,11 +190,80 @@ export function Sidebar(props: SidebarProps) {
         </Show>
       </div>
 
-      {/* Footer */}
+      {/* Footer with Collection Selector and Settings */}
       <div class="sidebar-footer">
-        <div class="user-profile">
-          <div class="user-avatar">C</div>
-          <span>Local Vault</span>
+        <div class="sidebar-actions-container" ref={dropdownRef} style={{ position: "relative", display: "flex", "align-items": "center", "min-width": 0 }}>
+          <div
+            class="vault-info sidebar-title-selector"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsDropdownOpen(!isDropdownOpen());
+            }}
+            title="Switch or manage collections"
+            style={{ cursor: "pointer", display: "flex", "align-items": "center", gap: "8px" }}
+          >
+            <Icon name="folder" size={14} class="vault-icon" />
+            <span class="active-col-name" style={{ "max-width": "110px", "white-space": "nowrap", "overflow": "hidden", "text-overflow": "ellipsis" }}>
+              {activeCol()?.name || "Select Collection..."}
+            </span>
+            <Icon name="chevron-down" size={12} style={{ opacity: 0.6 }} />
+          </div>
+
+          {/* Dropdown list */}
+          <Show when={isDropdownOpen()}>
+            <div class="sidebar-dropdown">
+              <span class="dropdown-header">Collections</span>
+              <For each={collectionsStore.state.collections}>
+                {(col) => (
+                  <button
+                    class="dropdown-item"
+                    classList={{ active: activeCol()?.id === col.id }}
+                    onClick={() => {
+                      collectionsStore.openCollection(col.id);
+                      setIsDropdownOpen(false);
+                    }}
+                  >
+                    <Icon name="folder" size={14} />
+                    <span class="dropdown-item-text">{col.name}</span>
+                  </button>
+                )}
+              </For>
+
+              <div class="dropdown-divider" />
+
+              {/* Create / Import buttons */}
+              <button
+                class="dropdown-item"
+                onClick={() => {
+                  props.onNewCollectionClick();
+                  setIsDropdownOpen(false);
+                }}
+              >
+                <Icon name="plus" size={14} />
+                <span>New Collection</span>
+              </button>
+              <button
+                class="dropdown-item"
+                onClick={() => {
+                  props.onImportFolderClick();
+                  setIsDropdownOpen(false);
+                }}
+              >
+                <Icon name="folder-plus" size={14} />
+                <span>Import Local Folder</span>
+              </button>
+              <button
+                class="dropdown-item"
+                onClick={() => {
+                  props.onImportZipClick();
+                  setIsDropdownOpen(false);
+                }}
+              >
+                <Icon name="file" size={14} />
+                <span>Import ZIP Archive</span>
+              </button>
+            </div>
+          </Show>
         </div>
         <button
           class="btn btn-text btn-icon"

@@ -1,5 +1,5 @@
 import { syntaxTree } from "@codemirror/language";
-import { RangeSetBuilder } from "@codemirror/state";
+import { RangeSetBuilder, Extension } from "@codemirror/state";
 import {
   Decoration,
   DecorationSet,
@@ -17,9 +17,12 @@ interface DecSpec {
 
 class RenderPlugin {
   decorations: DecorationSet;
+  atomic: DecorationSet;
 
   constructor(view: EditorView) {
-    this.decorations = this.buildDecorations(view);
+    const { decorations, atomic } = this.buildDecorations(view);
+    this.decorations = decorations;
+    this.atomic = atomic;
   }
 
   update(update: ViewUpdate) {
@@ -28,11 +31,13 @@ class RenderPlugin {
       update.viewportChanged ||
       update.selectionSet
     ) {
-      this.decorations = this.buildDecorations(update.view);
+      const { decorations, atomic } = this.buildDecorations(update.view);
+      this.decorations = decorations;
+      this.atomic = atomic;
     }
   }
 
-  buildDecorations(view: EditorView): DecorationSet {
+  buildDecorations(view: EditorView): { decorations: DecorationSet; atomic: DecorationSet } {
     const decs: DecSpec[] = [];
     const tree = syntaxTree(view.state);
     const selection = view.state.selection.main;
@@ -208,6 +213,70 @@ class RenderPlugin {
               });
             }
           }
+          // FencedCode
+          if (name === "FencedCode") {
+            const startLine = view.state.doc.lineAt(nodeFrom);
+            const endLine = view.state.doc.lineAt(nodeTo);
+            const lineStart = startLine.number;
+            const lineEnd = endLine.number;
+
+            // Check if selection is anywhere inside the fenced code block (inclusive of the fences)
+            const isCursorInCodeBlock = selection.head >= nodeFrom && selection.head <= nodeTo;
+
+            if (isCursorInCodeBlock) {
+              // The cursor is inside the code block. Show all lines, including fences.
+              for (let i = lineStart; i <= lineEnd; i++) {
+                const line = view.state.doc.line(i);
+                decs.push({
+                  from: line.from,
+                  to: line.from,
+                  value: Decoration.line({
+                    class: "cm-codeblock-line" + 
+                      (i === lineStart ? " cm-codeblock-line-first" : "") + 
+                      (i === lineEnd ? " cm-codeblock-line-last" : ""),
+                  }),
+                });
+              }
+            } else {
+              // The cursor is outside the code block. Hide opening and closing fences.
+              decs.push({
+                from: startLine.from,
+                to: startLine.to,
+                value: Decoration.replace({ widget: new EmptyWidget() }),
+              });
+              decs.push({
+                from: startLine.from,
+                to: startLine.from,
+                value: Decoration.line({ class: "cm-codeblock-fence-hidden" }),
+              });
+
+              decs.push({
+                from: endLine.from,
+                to: endLine.to,
+                value: Decoration.replace({ widget: new EmptyWidget() }),
+              });
+              decs.push({
+                from: endLine.from,
+                to: endLine.from,
+                value: Decoration.line({ class: "cm-codeblock-fence-hidden" }),
+              });
+
+              // Style the inner lines of code.
+              for (let i = lineStart + 1; i <= lineEnd - 1; i++) {
+                const line = view.state.doc.line(i);
+                decs.push({
+                  from: line.from,
+                  to: line.from,
+                  value: Decoration.line({
+                    class: "cm-codeblock-line" + 
+                      (i === lineStart + 1 ? " cm-codeblock-line-first" : "") + 
+                      (i === lineEnd - 1 ? " cm-codeblock-line-last" : ""),
+                  }),
+                });
+              }
+            }
+            return false; // skip children
+          }
 
           // Blockquotes
           if (name === "Blockquote") {
@@ -240,39 +309,51 @@ class RenderPlugin {
       });
     }
 
-    // Sort decorations: by 'from' ascending, then by 'to' descending
+    // Sort decorations: by 'from' ascending, then by 'startSide' ascending, then by 'to' descending
     decs.sort((a, b) => {
       if (a.from !== b.from) return a.from - b.from;
+      if (a.value.startSide !== b.value.startSide) {
+        return a.value.startSide - b.value.startSide;
+      }
       return b.to - a.to;
     });
 
     const builder = new RangeSetBuilder<Decoration>();
+    const atomicBuilder = new RangeSetBuilder<Decoration>();
     let lastFrom = -1;
     let lastTo = -1;
 
     for (const dec of decs) {
-      // CM6 requires decorations to be non-overlapping for replacements,
-      // and added in strictly increasing order of from.
       if (dec.from >= lastFrom) {
-        // If it's a replacement, we should make sure it doesn't overlap or start inside the last decoration's active span if it's also a replacement
         const isReplacement = dec.value.spec.widget !== undefined;
         if (isReplacement && dec.from < lastTo) {
-          // Skip overlapping replacements
           continue;
         }
 
         builder.add(dec.from, dec.to, dec.value);
-        lastFrom = dec.from;
         if (isReplacement) {
+          atomicBuilder.add(dec.from, dec.to, dec.value);
           lastTo = dec.to;
         }
+        lastFrom = dec.from;
       }
     }
 
-    return builder.finish();
+    return {
+      decorations: builder.finish(),
+      atomic: atomicBuilder.finish(),
+    };
   }
 }
 
-export const renderDecorationsExtension = ViewPlugin.fromClass(RenderPlugin, {
+const renderPlugin = ViewPlugin.fromClass(RenderPlugin, {
   decorations: (v) => v.decorations,
 });
+
+export const renderDecorationsExtension: Extension = [
+  renderPlugin,
+  EditorView.atomicRanges.of((view) => {
+    const plugin = view.plugin(renderPlugin);
+    return plugin ? plugin.atomic : Decoration.none;
+  }),
+];

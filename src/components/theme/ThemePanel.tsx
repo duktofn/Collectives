@@ -51,6 +51,13 @@ export function ThemePanel(props: ThemePanelProps) {
 
   const defaults = () => getDefaultThemeValues(getEffectiveIsDark());
 
+  const parseSizeValue = (val: string): number | undefined => {
+    if (!val) return undefined;
+    const normalized = val.replace(/,/g, ".");
+    const parsed = parseFloat(normalized);
+    return isNaN(parsed) ? undefined : parsed;
+  };
+
   // Handle single property update
   const updateSetting = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     const updated = { ...props.settings, [key]: value };
@@ -71,6 +78,7 @@ export function ThemePanel(props: ThemePanelProps) {
       fontMono: undefined,
       fontScale: 1.0,
       sizeH1: undefined,
+      colorBody: undefined,
       sizeH2: undefined,
       sizeH3: undefined,
       sizeH4: undefined,
@@ -321,49 +329,37 @@ export function ThemePanel(props: ThemePanelProps) {
               <div class="input-group-compact">
                 <label>H1 size (em)</label>
                 <input 
-                  type="number" 
-                  min="1" 
-                  max="5" 
-                  step="0.1"
+                  type="text" 
                   placeholder={(2.2 * props.settings.fontScale).toFixed(2)}
                   value={props.settings.sizeH1 || ""}
-                  onInput={(e) => updateSetting("sizeH1", e.currentTarget.value ? parseFloat(e.currentTarget.value) : undefined)}
+                  onChange={(e) => updateSetting("sizeH1", parseSizeValue(e.currentTarget.value))}
                 />
               </div>
               <div class="input-group-compact">
                 <label>H2 size (em)</label>
                 <input 
-                  type="number" 
-                  min="1" 
-                  max="4" 
-                  step="0.1"
+                  type="text" 
                   placeholder={(1.65 * props.settings.fontScale).toFixed(2)}
                   value={props.settings.sizeH2 || ""}
-                  onInput={(e) => updateSetting("sizeH2", e.currentTarget.value ? parseFloat(e.currentTarget.value) : undefined)}
+                  onChange={(e) => updateSetting("sizeH2", parseSizeValue(e.currentTarget.value))}
                 />
               </div>
               <div class="input-group-compact">
                 <label>H3 size (em)</label>
                 <input 
-                  type="number" 
-                  min="1" 
-                  max="3" 
-                  step="0.1"
+                  type="text" 
                   placeholder={(1.35 * props.settings.fontScale).toFixed(2)}
                   value={props.settings.sizeH3 || ""}
-                  onInput={(e) => updateSetting("sizeH3", e.currentTarget.value ? parseFloat(e.currentTarget.value) : undefined)}
+                  onChange={(e) => updateSetting("sizeH3", parseSizeValue(e.currentTarget.value))}
                 />
               </div>
               <div class="input-group-compact">
                 <label>H4 size (em)</label>
                 <input 
-                  type="number" 
-                  min="1" 
-                  max="3" 
-                  step="0.1"
+                  type="text" 
                   placeholder={(1.15 * props.settings.fontScale).toFixed(2)}
                   value={props.settings.sizeH4 || ""}
-                  onInput={(e) => updateSetting("sizeH4", e.currentTarget.value ? parseFloat(e.currentTarget.value) : undefined)}
+                  onChange={(e) => updateSetting("sizeH4", parseSizeValue(e.currentTarget.value))}
                 />
               </div>
             </div>
@@ -374,6 +370,23 @@ export function ThemePanel(props: ThemePanelProps) {
             <h4>Colors</h4>
             
             <div class="color-pickers-grid">
+              <div class="color-picker-item">
+                <label>Normal Text</label>
+                <div class="color-input-wrapper">
+                  <input 
+                    type="color" 
+                    value={props.settings.colorBody || defaults().colorBody}
+                    onInput={(e) => updateSetting("colorBody", e.currentTarget.value)}
+                  />
+                  <input 
+                    type="text" 
+                    placeholder="default"
+                    value={props.settings.colorBody || ""}
+                    onInput={(e) => updateSetting("colorBody", e.currentTarget.value || undefined)}
+                  />
+                </div>
+              </div>
+
               <div class="color-picker-item">
                 <label>H1 Color</label>
                 <div class="color-input-wrapper">

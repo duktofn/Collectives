@@ -227,3 +227,14 @@ body {
   border: 1px solid var(--color-border);
   margin-top: 8px;
 }
+
+.btn-icon {
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: var(--radius-sm) !important;
+  flex-shrink: 0 !important;
+}

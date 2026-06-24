@@ -54,7 +54,63 @@ export default function App() {
       await collectionsStore.loadCollections();
       const lastActiveId = localStorage.getItem("lastActiveCollectionId");
       if (lastActiveId && collectionsStore.state.collections.some(c => c.id === lastActiveId)) {
+        const lastSelectedId = localStorage.getItem("lastSelectedEntryId");
         await collectionsStore.openCollection(lastActiveId);
+        if (lastSelectedId) {
+          uiStore.selectEntry(lastSelectedId);
+          const activeCol = collectionsStore.activeCollection();
+          if (activeCol) {
+            const findAndExpand = (entries: Entry[], parentIds: string[]): boolean => {
+              for (const entry of entries) {
+                if (entry.id === lastSelectedId) {
+                  for (const pid of parentIds) {
+                    uiStore.setExpanded(pid, true);
+                  }
+                  return true;
+                }
+                if (entry.type === "group") {
+                  if (findAndExpand(entry.children, [...parentIds, entry.id])) {
+                    return true;
+                  }
+                }
+              }
+              return false;
+            };
+
+            const findFolderRefAndExpand = (entries: Entry[], parentIds: string[]): boolean => {
+              for (const entry of entries) {
+                if (entry.type === "folder-ref") {
+                  const cleanEntryPath = entry.path.replace(/\\/g, "/").toLowerCase();
+                  const cleanTargetId = lastSelectedId.replace(/\\/g, "/").toLowerCase();
+                  if (cleanTargetId.startsWith(cleanEntryPath)) {
+                    uiStore.setExpanded(entry.id, true);
+                    for (const pid of parentIds) {
+                      uiStore.setExpanded(pid, true);
+                    }
+                    const relativePath = lastSelectedId.slice(entry.path.length);
+                    const parts = relativePath.split(/[/\\]/).filter(Boolean);
+                    let currentPath = entry.path;
+                    for (let i = 0; i < parts.length - 1; i++) {
+                      currentPath += (currentPath.endsWith("/") || currentPath.endsWith("\\") ? "" : "/") + parts[i];
+                      uiStore.setExpanded(currentPath, true);
+                    }
+                    return true;
+                  }
+                }
+                if (entry.type === "group") {
+                  if (findFolderRefAndExpand(entry.children, [...parentIds, entry.id])) {
+                    return true;
+                  }
+                }
+              }
+              return false;
+            };
+
+            if (!findAndExpand(activeCol.entries, [])) {
+              findFolderRefAndExpand(activeCol.entries, []);
+            }
+          }
+        }
       }
     } catch (err) {
       console.error("Failed to load collections on mount", err);
@@ -283,22 +339,40 @@ export default function App() {
 
         <Show when={!uiStore.state.isSidebarOpen}>
           <button
-            class="btn btn-text sidebar-expand-btn"
+            class="btn btn-text btn-icon sidebar-expand-btn"
             onClick={() => uiStore.toggleSidebar()}
             title="Expand sidebar"
             style={{
               position: "absolute",
               top: "10px",
               left: "10px",
-              padding: "6px",
-              display: "inline-flex",
-              "align-items": "center",
-              "justify-content": "center",
-              "z-index": 100
+              "z-index": 100,
+              "background-color": "var(--bg-secondary)",
+              "border": "1px solid var(--color-border)",
+              "box-shadow": "var(--shadow-md)"
             }}
           >
             <Icon name="menu" size={18} />
           </button>
+
+          <Show when={collectionsStore.activeCollection()}>
+            <button
+              class="btn btn-text btn-icon sidebar-collapsed-settings-btn"
+              onClick={() => setIsSettingsOpen(true)}
+              title="Settings"
+              style={{
+                position: "absolute",
+                bottom: "10px",
+                left: "10px",
+                "z-index": 100,
+                "background-color": "var(--bg-secondary)",
+                "border": "1px solid var(--color-border)",
+                "box-shadow": "var(--shadow-md)"
+              }}
+            >
+              <Icon name="settings" size={18} />
+            </button>
+          </Show>
         </Show>
 
         <Show
@@ -336,19 +410,8 @@ export default function App() {
                   "justify-content": "space-between",
                   "border-top": "1px solid var(--color-border)"
                 }}>
-                  <div class="user-profile" style={{ display: "flex", "align-items": "center", gap: "8px", "font-size": "13px", color: "var(--color-text-secondary)" }}>
-                    <div class="user-avatar" style={{
-                      width: "24px",
-                      height: "24px",
-                      "border-radius": "50%",
-                      "background-color": "var(--color-accent)",
-                      color: "#fff",
-                      display: "flex",
-                      "align-items": "center",
-                      "justify-content": "center",
-                      "font-size": "11px",
-                      "font-weight": "600"
-                    }}>C</div>
+                  <div class="vault-info" style={{ display: "flex", "align-items": "center", gap: "8px", "font-size": "13px", "font-weight": "500", color: "var(--color-text-secondary)" }}>
+                    <Icon name="folder" size={14} class="vault-icon" style={{ color: "var(--color-text-secondary)", opacity: "0.8" }} />
                     <span>Local Vault</span>
                   </div>
                   <button

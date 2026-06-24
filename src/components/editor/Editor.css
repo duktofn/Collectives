@@ -179,7 +179,7 @@
   flex: 1;
   outline: none;
   font-family: var(--font-body);
-  font-size: 15px;
+  font-size: var(--size-body);
   line-height: 1.6;
   color: var(--color-text-primary);
 }
@@ -444,5 +444,36 @@
   color: var(--color-text-secondary, #9ca3af);
   font-size: 0.85em;
   opacity: 0.5;
+}
+
+/* === Code Block Rendering in edit-render mode === */
+.cm-codeblock-line {
+  font-family: var(--font-mono) !important;
+  background-color: var(--color-code-bg);
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.cm-codeblock-line-first {
+  border-top-left-radius: var(--radius-md);
+  border-top-right-radius: var(--radius-md);
+  padding-top: 12px;
+}
+
+.cm-codeblock-line-last {
+  border-bottom-left-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+  padding-bottom: 12px;
+}
+
+.cm-codeblock-fence-hidden {
+  height: 0 !important;
+  line-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 

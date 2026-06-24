@@ -1,4 +1,4 @@
-import { RangeSetBuilder, EditorState } from "@codemirror/state";
+import { RangeSetBuilder, EditorState, Extension } from "@codemirror/state";
 import {
   Decoration,
   DecorationSet,
@@ -39,25 +39,30 @@ export function clearWikilinkCache() {
 
 class WikilinkDecorationPlugin {
   decorations: DecorationSet;
+  atomic: DecorationSet;
 
   constructor(view: EditorView) {
-    this.decorations = this.buildDecorations(view);
+    const { decorations, atomic } = this.buildDecorations(view);
+    this.decorations = decorations;
+    this.atomic = atomic;
   }
 
   update(update: ViewUpdate) {
     if (update.docChanged || update.viewportChanged || update.selectionSet) {
-      this.decorations = this.buildDecorations(update.view);
+      const { decorations, atomic } = this.buildDecorations(update.view);
+      this.decorations = decorations;
+      this.atomic = atomic;
     }
   }
 
-  buildDecorations(view: EditorView): DecorationSet {
+  buildDecorations(view: EditorView): { decorations: DecorationSet; atomic: DecorationSet } {
     const decs: DecSpec[] = [];
     const doc = view.state.doc;
     const selection = view.state.selection.main;
     const collectionId = collectionsStore.state.activeCollectionId;
 
     if (!collectionId) {
-      return Decoration.none;
+      return { decorations: Decoration.none, atomic: Decoration.none };
     }
 
     for (const { from, to } of view.visibleRanges) {
@@ -137,13 +142,17 @@ class WikilinkDecorationPlugin {
       }
     }
 
-    // Sort decorations: by 'from' ascending, then by 'to' descending
+    // Sort decorations: by 'from' ascending, then by 'startSide' ascending, then by 'to' descending
     decs.sort((a, b) => {
       if (a.from !== b.from) return a.from - b.from;
+      if (a.value.startSide !== b.value.startSide) {
+        return a.value.startSide - b.value.startSide;
+      }
       return b.to - a.to;
     });
 
     const builder = new RangeSetBuilder<Decoration>();
+    const atomicBuilder = new RangeSetBuilder<Decoration>();
     let lastFrom = -1;
     let lastTo = -1;
 
@@ -156,13 +165,17 @@ class WikilinkDecorationPlugin {
         }
 
         builder.add(dec.from, dec.to, dec.value);
-        lastFrom = dec.from;
         if (isReplacement) {
+          atomicBuilder.add(dec.from, dec.to, dec.value);
           lastTo = dec.to;
         }
+        lastFrom = dec.from;
       }
     }
-    return builder.finish();
+    return {
+      decorations: builder.finish(),
+      atomic: atomicBuilder.finish(),
+    };
   }
 }
 
@@ -229,9 +242,15 @@ const wikilinkClickEffect = EditorView.domEventHandlers({
   },
 });
 
-export const wikilinkDecorationExtension = [
-  ViewPlugin.fromClass(WikilinkDecorationPlugin, {
-    decorations: (v) => v.decorations,
-  }),
+const wikilinkDecPlugin = ViewPlugin.fromClass(WikilinkDecorationPlugin, {
+  decorations: (v) => v.decorations,
+});
+
+export const wikilinkDecorationExtension: Extension = [
+  wikilinkDecPlugin,
   wikilinkClickEffect,
+  EditorView.atomicRanges.of((view) => {
+    const plugin = view.plugin(wikilinkDecPlugin);
+    return plugin ? plugin.atomic : Decoration.none;
+  }),
 ];

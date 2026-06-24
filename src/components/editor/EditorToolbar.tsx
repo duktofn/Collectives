@@ -81,14 +81,7 @@ export function EditorToolbar() {
           </Show>
         </div>
 
-        {/* Close Editor button */}
-        <button
-          class="btn-icon editor-close-btn"
-          onClick={() => editorStore.closeFile()}
-          title="Close note"
-        >
-          <Icon name="close" size={16} />
-        </button>
+
       </div>
     </div>
   );

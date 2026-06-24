@@ -57,6 +57,8 @@ export const collectionsStore = {
     setState("activeCollectionId", id);
     localStorage.setItem("lastActiveCollectionId", id);
     clearWikilinkCache();
+    uiStore.selectEntry(null);
+    uiStore.reset();
     try {
       await api.initializeIdentityCache(id);
       await this.watchActiveCollection();

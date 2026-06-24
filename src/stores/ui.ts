@@ -49,6 +49,13 @@ export const uiStore = {
   
   selectEntry(id: string | null) {
     setState("selectedEntryId", id);
+    if (typeof window !== "undefined") {
+      if (id) {
+        localStorage.setItem("lastSelectedEntryId", id);
+      } else {
+        localStorage.removeItem("lastSelectedEntryId");
+      }
+    }
   },
   
   isSelected(id: string): boolean {

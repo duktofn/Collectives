@@ -28,11 +28,11 @@
   
   /* Theming engine tokens */
   --font-scale: 1;
-  --size-body: calc(1em * var(--font-scale));
-  --size-h1: calc(2.2em * var(--font-scale));
-  --size-h2: calc(1.65em * var(--font-scale));
-  --size-h3: calc(1.35em * var(--font-scale));
-  --size-h4: calc(1.15em * var(--font-scale));
+  --size-body: calc(15px * var(--font-scale));
+  --size-h1: 2.2em;
+  --size-h2: 1.65em;
+  --size-h3: 1.35em;
+  --size-h4: 1.15em;
   
   --color-h1: var(--color-text-primary);
   --color-h2: var(--color-text-primary);

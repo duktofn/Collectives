@@ -31,18 +31,23 @@ export function generateBlockId(existingIds: Set<string>): string {
 
 class BlockRefPlugin {
   decorations: DecorationSet;
+  atomic: DecorationSet;
 
   constructor(view: EditorView) {
-    this.decorations = this.buildDecorations(view);
+    const { decorations, atomic } = this.buildDecorations(view);
+    this.decorations = decorations;
+    this.atomic = atomic;
   }
 
   update(update: ViewUpdate) {
     if (update.docChanged || update.viewportChanged || update.selectionSet) {
-      this.decorations = this.buildDecorations(update.view);
+      const { decorations, atomic } = this.buildDecorations(update.view);
+      this.decorations = decorations;
+      this.atomic = atomic;
     }
   }
 
-  buildDecorations(view: EditorView): DecorationSet {
+  buildDecorations(view: EditorView): { decorations: DecorationSet; atomic: DecorationSet } {
     const decs: DecSpec[] = [];
     const doc = view.state.doc;
     const selection = view.state.selection.main;
@@ -84,10 +89,18 @@ class BlockRefPlugin {
     decs.sort((a, b) => a.from - b.from);
 
     const builder = new RangeSetBuilder<Decoration>();
+    const atomicBuilder = new RangeSetBuilder<Decoration>();
     for (const d of decs) {
+      const isReplacement = d.value.spec.widget !== undefined;
       builder.add(d.from, d.to, d.value);
+      if (isReplacement) {
+        atomicBuilder.add(d.from, d.to, d.value);
+      }
     }
-    return builder.finish();
+    return {
+      decorations: builder.finish(),
+      atomic: atomicBuilder.finish(),
+    };
   }
 }
 
@@ -143,9 +156,15 @@ export const blockRefKeymap: KeyBinding[] = [
   },
 ];
 
+const blockRefPluginInstance = ViewPlugin.fromClass(BlockRefPlugin, {
+  decorations: (v) => v.decorations,
+});
+
 export const blockRefExtension: Extension = [
-  ViewPlugin.fromClass(BlockRefPlugin, {
-    decorations: (v) => v.decorations,
-  }),
+  blockRefPluginInstance,
   keymap.of(blockRefKeymap),
+  EditorView.atomicRanges.of((view) => {
+    const plugin = view.plugin(blockRefPluginInstance);
+    return plugin ? plugin.atomic : Decoration.none;
+  }),
 ];
