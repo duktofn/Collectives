@@ -226,5 +226,65 @@ export const collectionsStore = {
     } catch (err) {
       console.error("Failed to reload collection", err);
     }
+  },
+
+  async importFolder(path: string, name: string) {
+    setState("error", null);
+    try {
+      const exists = state.collections.some(
+        (c) => c.name.toLowerCase() === name.toLowerCase()
+      );
+      if (exists) {
+        throw new Error(`Collection name '${name}' already exists`);
+      }
+      const newCol = await api.importFolder(path, name);
+      setState("collections", (cols) => [...cols, newCol]);
+      setState("activeCollectionId", newCol.id);
+      setState("brokenEntries", []);
+      await this.validateActiveCollection();
+      return newCol;
+    } catch (err: unknown) {
+      const msg = (err as Error).message || "Failed to import folder";
+      setState("error", msg);
+      throw new Error(msg);
+    }
+  },
+
+  async importZip(zipPath: string, destFolder: string, resolutions: Record<string, string>) {
+    setState("error", null);
+    try {
+      const newCol = await api.importZip(zipPath, destFolder, resolutions);
+      setState("collections", (cols) => [...cols, newCol]);
+      setState("activeCollectionId", newCol.id);
+      setState("brokenEntries", []);
+      await this.validateActiveCollection();
+      return newCol;
+    } catch (err: unknown) {
+      const msg = (err as Error).message || "Failed to import zip";
+      setState("error", msg);
+      throw new Error(msg);
+    }
+  },
+
+  async exportCollectionToFolder(collectionId: string, destPath: string) {
+    setState("error", null);
+    try {
+      await api.exportCollectionToFolder(collectionId, destPath);
+    } catch (err: unknown) {
+      const msg = (err as Error).message || "Failed to export to folder";
+      setState("error", msg);
+      throw new Error(msg);
+    }
+  },
+
+  async exportCollectionToZip(collectionId: string, destZipPath: string) {
+    setState("error", null);
+    try {
+      await api.exportCollectionToZip(collectionId, destZipPath);
+    } catch (err: unknown) {
+      const msg = (err as Error).message || "Failed to export to zip";
+      setState("error", msg);
+      throw new Error(msg);
+    }
   }
 };

@@ -1,0 +1,190 @@
+.zip-conflict-dialog {
+  max-width: 650px;
+  width: 90%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: modal-slide-in 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+  overflow: hidden;
+}
+
+@keyframes modal-slide-in {
+  from {
+    transform: translateY(20px) scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.zip-conflict-dialog .modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.zip-conflict-dialog .modal-header h3 {
+  margin: 0;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 1.15rem;
+  color: var(--color-text-primary);
+}
+
+.zip-conflict-dialog .dialog-desc {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  line-height: 1.45;
+  margin: 0 0 20px 0;
+}
+
+.zip-conflict-dialog .modal-body {
+  padding: 24px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.zip-conflict-dialog .bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  background-color: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.zip-conflict-dialog .bulk-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.zip-conflict-dialog .btn-group {
+  display: flex;
+  gap: 8px;
+}
+
+.zip-conflict-dialog .btn-sm {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background-color: var(--bg-primary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.zip-conflict-dialog .btn-sm:hover {
+  border-color: var(--color-border-hover);
+  background-color: var(--bg-hover);
+}
+
+.zip-conflict-dialog .conflict-list-container {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.zip-conflict-dialog .conflict-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.zip-conflict-dialog .conflict-table th {
+  background-color: var(--bg-secondary);
+  padding: 12px 16px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.zip-conflict-dialog .conflict-row {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.zip-conflict-dialog .conflict-row:last-child {
+  border-bottom: none;
+}
+
+.zip-conflict-dialog .conflict-info-cell {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.zip-conflict-dialog .conflict-display-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.zip-conflict-dialog .conflict-path {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.zip-conflict-dialog .conflict-action-cell {
+  padding: 14px 16px;
+  vertical-align: middle;
+  width: 230px;
+}
+
+.zip-conflict-dialog .resolution-options {
+  display: inline-flex;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+
+.zip-conflict-dialog .resolution-btn {
+  background: none;
+  border: none;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: calc(var(--radius-sm) - 2px);
+  transition: all var(--transition-fast);
+}
+
+.zip-conflict-dialog .resolution-btn:hover {
+  color: var(--color-text-primary);
+}
+
+.zip-conflict-dialog .resolution-btn.active {
+  background-color: var(--bg-primary);
+  color: var(--color-accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.zip-conflict-dialog .modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}

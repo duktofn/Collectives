@@ -29,7 +29,12 @@ pub fn run() {
             commands::read_file,
             commands::write_file,
             commands::resolve_wikilink,
-            commands::search_link_index
+            commands::search_link_index,
+            commands::import_folder,
+            commands::export_collection_to_folder,
+            commands::export_collection_to_zip,
+            commands::check_zip_conflicts,
+            commands::import_zip
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

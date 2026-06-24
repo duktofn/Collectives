@@ -326,3 +326,66 @@ pub fn search_link_index(
         .collect())
 }
 
+#[tauri::command]
+pub fn import_folder(
+    app: AppHandle,
+    path: String,
+    name: String,
+) -> Result<Collection, String> {
+    let collections_dir = collection::get_collections_dir(&app)?;
+    let folder_path = std::path::Path::new(&path);
+    collection::archive::import_folder(&collections_dir, folder_path, &name)
+}
+
+#[tauri::command]
+pub fn export_collection_to_folder(
+    app: AppHandle,
+    collection_id: String,
+    dest_path: String,
+) -> Result<(), String> {
+    let collections_dir = collection::get_collections_dir(&app)?;
+    let dest = std::path::Path::new(&dest_path);
+    collection::archive::export_to_folder(&collections_dir, &collection_id, dest)
+}
+
+#[tauri::command]
+pub fn export_collection_to_zip(
+    app: AppHandle,
+    collection_id: String,
+    dest_zip_path: String,
+) -> Result<(), String> {
+    let collections_dir = collection::get_collections_dir(&app)?;
+    let dest_zip = std::path::Path::new(&dest_zip_path);
+    collection::archive::export_to_zip(&collections_dir, &collection_id, dest_zip)
+}
+
+#[tauri::command]
+pub fn check_zip_conflicts(
+    zip_path: String,
+    dest_folder: String,
+) -> Result<Vec<collection::archive::ZipConflict>, String> {
+    let zip = std::path::Path::new(&zip_path);
+    let dest = std::path::Path::new(&dest_folder);
+    collection::archive::check_zip_conflicts(zip, dest)
+}
+
+#[tauri::command]
+pub fn import_zip(
+    app: AppHandle,
+    zip_path: String,
+    dest_folder: String,
+    resolutions: std::collections::HashMap<String, String>,
+) -> Result<Collection, String> {
+    let collections_dir = collection::get_collections_dir(&app)?;
+    let zip = std::path::Path::new(&zip_path);
+    let dest = std::path::Path::new(&dest_folder);
+    let col = collection::archive::import_zip(&collections_dir, zip, dest, resolutions)?;
+
+    if let Ok(conn) = link_index::init_db(&app) {
+        let _ = link_index::update_index_for_collection(&conn, &col);
+    }
+
+    Ok(col)
+}
+
+

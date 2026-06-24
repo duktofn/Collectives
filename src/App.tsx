@@ -5,9 +5,11 @@ import { Sidebar } from "./components/sidebar/Sidebar";
 import { CollectionTree } from "./components/tree/CollectionTree";
 import { Dialog } from "./components/common/Dialog";
 import { Icon } from "./components/common/Icon";
-import { Entry } from "./types";
+import { Entry, ZipConflict } from "./types";
 import { editorStore } from "./stores/editor";
 import { Editor } from "./components/editor/Editor";
+import * as api from "./lib/tauri";
+import { ZipConflictDialog } from "./components/common/ZipConflictDialog";
 import "./App.css";
 
 
@@ -16,6 +18,78 @@ export default function App() {
   const [newCollectionError, setNewCollectionError] = createSignal("");
 
   const [isSettingsOpen, setIsSettingsOpen] = createSignal(false);
+
+  // Import Folder state
+  const [importFolderPath, setImportFolderPath] = createSignal("");
+  const [isImportFolderNameOpen, setIsImportFolderNameOpen] = createSignal(false);
+  const [importFolderNameError, setImportFolderNameError] = createSignal("");
+
+  // Import ZIP state
+  const [zipFilePath, setZipFilePath] = createSignal("");
+  const [zipDestFolder, setZipDestFolder] = createSignal("");
+  const [zipConflicts, setZipConflicts] = createSignal<ZipConflict[]>([]);
+  const [isZipConflictOpen, setIsZipConflictOpen] = createSignal(false);
+
+  // Import Folder triggers
+  const handleImportFolderClick = async () => {
+    try {
+      const selected = await api.pickDirectory("Select Folder to Import");
+      if (selected) {
+        setImportFolderPath(selected);
+        const folderName = selected.replace(/\\/g, "/").split("/").pop() || "Imported Vault";
+        setImportFolderNameError("");
+        setIsImportFolderNameOpen(true);
+      }
+    } catch (err) {
+      console.error("Failed to pick folder", err);
+    }
+  };
+
+  const handleImportFolderConfirm = async (name?: string) => {
+    if (!name) {
+      setImportFolderNameError("Name cannot be empty");
+      return;
+    }
+    try {
+      await collectionsStore.importFolder(importFolderPath(), name);
+      setIsImportFolderNameOpen(false);
+    } catch (err: unknown) {
+      setImportFolderNameError((err as Error).message || "Failed to import folder");
+    }
+  };
+
+  // Import ZIP triggers
+  const handleImportZipClick = async () => {
+    try {
+      const zipPath = await api.pickZipFile("Select ZIP Package to Import");
+      if (!zipPath) return;
+
+      const destFolder = await api.pickDirectory("Select Extraction Destination Folder");
+      if (!destFolder) return;
+
+      setZipFilePath(zipPath);
+      setZipDestFolder(destFolder);
+
+      const conflicts = await api.checkZipConflicts(zipPath, destFolder);
+      if (conflicts.length > 0) {
+        setZipConflicts(conflicts);
+        setIsZipConflictOpen(true);
+      } else {
+        await collectionsStore.importZip(zipPath, destFolder, {});
+      }
+    } catch (err) {
+      console.error("Failed to import ZIP", err);
+    }
+  };
+
+  const handleZipConflictConfirm = async (resolutions: Record<string, string>) => {
+    try {
+      await collectionsStore.importZip(zipFilePath(), zipDestFolder(), resolutions);
+      setIsZipConflictOpen(false);
+    } catch (err) {
+      console.error("Failed to import ZIP after conflicts resolved", err);
+    }
+  };
 
   // Synchronize selection store with editor store
   createEffect(() => {
@@ -102,6 +176,8 @@ export default function App() {
           setNewCollectionError("");
           setIsNewCollectionOpen(true);
         }}
+        onImportFolderClick={handleImportFolderClick}
+        onImportZipClick={handleImportZipClick}
         onSettingsClick={() => setIsSettingsOpen(true)}
       />
 
@@ -225,6 +301,24 @@ export default function App() {
           </div>
         </div>
       </Dialog>
+
+      <Dialog
+        isOpen={isImportFolderNameOpen()}
+        title="Import Folder: Choose Collection Name"
+        type="input"
+        defaultValue={importFolderPath().replace(/\\/g, "/").split("/").pop() || "Imported Vault"}
+        placeholder="Collection name"
+        errorMessage={importFolderNameError()}
+        onConfirm={handleImportFolderConfirm}
+        onClose={() => setIsImportFolderNameOpen(false)}
+      />
+
+      <ZipConflictDialog
+        isOpen={isZipConflictOpen()}
+        conflicts={zipConflicts()}
+        onConfirm={handleZipConflictConfirm}
+        onClose={() => setIsZipConflictOpen(false)}
+      />
     </div>
   );
 }

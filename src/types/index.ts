@@ -54,4 +54,13 @@ export interface ResolveCandidate {
   entryType: string;  // "file" | "folder-ref"
 }
 
+export interface ZipConflict {
+  entryId: string;
+  displayName: string;
+  targetPath: string;
+}
+
+export type ZipResolution = "overwrite" | "rename" | "skip";
+
+
 

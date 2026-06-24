@@ -4,6 +4,7 @@ import { collectionsStore } from "../../stores/collections";
 import { Icon } from "../common/Icon";
 import { ContextMenu, ContextMenuItem } from "../common/ContextMenu";
 import { Dialog } from "../common/Dialog";
+import * as api from "../../lib/tauri";
 
 interface CollectionItemProps {
   collection: Collection;
@@ -43,6 +44,28 @@ export function CollectionItem(props: CollectionItemProps) {
     setIsDeleteOpen(false);
   };
 
+  const handleExportToFolder = async () => {
+    try {
+      const destPath = await api.pickDirectory(`Export "${props.collection.name}" to Folder`);
+      if (destPath) {
+        await collectionsStore.exportCollectionToFolder(props.collection.id, destPath);
+      }
+    } catch (err) {
+      console.error("Failed to export folder", err);
+    }
+  };
+
+  const handleExportToZip = async () => {
+    try {
+      const destZipPath = await api.saveZipDialog(`Export "${props.collection.name}" as ZIP`);
+      if (destZipPath) {
+        await collectionsStore.exportCollectionToZip(props.collection.id, destZipPath);
+      }
+    } catch (err) {
+      console.error("Failed to export zip", err);
+    }
+  };
+
   const contextMenuItems: ContextMenuItem[] = [
     {
       label: "Rename",
@@ -53,10 +76,21 @@ export function CollectionItem(props: CollectionItemProps) {
       },
     },
     {
+      label: "Export to Folder",
+      icon: "folder",
+      onClick: handleExportToFolder,
+    },
+    {
+      label: "Export as ZIP",
+      icon: "file",
+      onClick: handleExportToZip,
+    },
+    {
       label: "Delete",
       icon: "trash",
       danger: true,
       onClick: () => setIsDeleteOpen(true),
+      separatorBefore: true,
     },
   ];
 

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
-import { Collection, Entry, FsEntry, BrokenEntry, Settings, ResolveCandidate } from "../types";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import { Collection, Entry, FsEntry, BrokenEntry, Settings, ResolveCandidate, ZipConflict } from "../types";
 
 export async function getCollections(): Promise<Collection[]> {
   return invoke<Collection[]>("get_collections");
@@ -112,5 +112,47 @@ export async function searchLinkIndex(
 ): Promise<ResolveCandidate[]> {
   return invoke<ResolveCandidate[]>("search_link_index", { collectionId, query, limit });
 }
+
+export async function importFolder(path: string, name: string): Promise<Collection> {
+  return invoke<Collection>("import_folder", { path, name });
+}
+
+export async function exportCollectionToFolder(collectionId: string, destPath: string): Promise<void> {
+  return invoke<void>("export_collection_to_folder", { collectionId, destPath });
+}
+
+export async function exportCollectionToZip(collectionId: string, destZipPath: string): Promise<void> {
+  return invoke<void>("export_collection_to_zip", { collectionId, destZipPath });
+}
+
+export async function checkZipConflicts(zipPath: string, destFolder: string): Promise<ZipConflict[]> {
+  return invoke<ZipConflict[]>("check_zip_conflicts", { zipPath, destFolder });
+}
+
+export async function importZip(
+  zipPath: string,
+  destFolder: string,
+  resolutions: Record<string, string>
+): Promise<Collection> {
+  return invoke<Collection>("import_zip", { zipPath, destFolder, resolutions });
+}
+
+export async function pickZipFile(title: string): Promise<string | null> {
+  const selected = await open({
+    multiple: false,
+    title,
+    filters: [{ name: "ZIP Archives", extensions: ["zip"] }],
+  });
+  return typeof selected === "string" ? selected : null;
+}
+
+export async function saveZipDialog(title: string): Promise<string | null> {
+  return save({
+    title,
+    defaultPath: "collection.zip",
+    filters: [{ name: "ZIP Archives", extensions: ["zip"] }]
+  });
+}
+
 
 
