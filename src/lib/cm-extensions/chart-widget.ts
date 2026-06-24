@@ -2,11 +2,9 @@ import {
   Decoration,
   DecorationSet,
   EditorView,
-  ViewPlugin,
-  ViewUpdate,
   WidgetType,
 } from "@codemirror/view";
-import { RangeSetBuilder } from "@codemirror/state";
+import { RangeSetBuilder, StateField, EditorState } from "@codemirror/state";
 import * as yaml from "js-yaml";
 import { Chart, registerables } from "chart.js";
 
@@ -15,6 +13,7 @@ Chart.register(...registerables);
 
 class ChartWidget extends WidgetType {
   private chartInstance: Chart | null = null;
+  private dom: HTMLElement | null = null;
 
   constructor(
     public specYaml: string,
@@ -25,15 +24,17 @@ class ChartWidget extends WidgetType {
   }
 
   eq(other: ChartWidget) {
-    return (
-      this.specYaml === other.specYaml &&
-      this.from === other.from &&
-      this.to === other.to
-    );
+    return this.specYaml === other.specYaml;
+  }
+
+  updateDOM(dom: HTMLElement, _view: EditorView): boolean {
+    this.dom = dom;
+    return false;
   }
 
   toDOM(view: EditorView) {
     const container = document.createElement("div");
+    this.dom = container;
     container.className = "cm-chart-widget-container";
 
     const isEditable = view.state.readOnly === false;
@@ -133,83 +134,93 @@ class ChartWidget extends WidgetType {
   }
 
   updateDocument(view: EditorView, newSpec: string) {
+    let from = this.from;
+    let to = this.to;
+    if (this.dom) {
+      try {
+        const currentPos = view.posAtDOM(this.dom);
+        if (currentPos !== null && currentPos !== undefined && currentPos >= 0) {
+          from = currentPos;
+          const oldSerialized = `\`\`\`chart\n${this.specYaml}\n\`\`\``;
+          to = from + oldSerialized.length;
+        }
+      } catch (e) {
+        console.error("Error finding chart position in document:", e);
+      }
+    }
+
     const serialized = `\`\`\`chart\n${newSpec}\n\`\`\``;
     view.dispatch({
       changes: {
-        from: this.from,
-        to: this.to,
+        from: from,
+        to: to,
         insert: serialized,
       },
     });
   }
 }
 
-class ChartPlugin {
-  decorations: DecorationSet;
+function buildChartDecorations(state: EditorState): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  const doc = state.doc;
 
-  constructor(view: EditorView) {
-    this.decorations = this.buildDecorations(view);
-  }
+  let i = 1;
+  while (i <= doc.lines) {
+    const line = doc.line(i);
+    const text = line.text.trim();
 
-  update(update: ViewUpdate) {
-    if (update.docChanged || update.viewportChanged) {
-      this.decorations = this.buildDecorations(update.view);
-    }
-  }
+    if (text.startsWith("```chart")) {
+      const startPos = line.from;
+      let endPos = line.to;
+      let lastLineNum = i;
+      const specLines: string[] = [];
 
-  buildDecorations(view: EditorView): DecorationSet {
-    const builder = new RangeSetBuilder<Decoration>();
-    const doc = view.state.doc;
-
-    let i = 1;
-    while (i <= doc.lines) {
-      const line = doc.line(i);
-      const text = line.text.trim();
-
-      if (text.startsWith("```chart")) {
-        const startPos = line.from;
-        let endPos = line.to;
-        let lastLineNum = i;
-        const specLines: string[] = [];
-
-        let foundClosing = false;
-        while (lastLineNum < doc.lines) {
-          const nextLine = doc.line(lastLineNum + 1);
-          const nextText = nextLine.text.trim();
-          if (nextText === "```") {
-            endPos = nextLine.to;
-            lastLineNum++;
-            foundClosing = true;
-            break;
-          } else {
-            specLines.push(nextLine.text);
-            endPos = nextLine.to;
-            lastLineNum++;
-          }
-        }
-
-        if (foundClosing) {
-          const specYaml = specLines.join("\n");
-          builder.add(
-            startPos,
-            endPos,
-            Decoration.replace({
-              widget: new ChartWidget(specYaml, startPos, endPos),
-              block: true,
-            })
-          );
-          i = lastLineNum + 1;
+      let foundClosing = false;
+      while (lastLineNum < doc.lines) {
+        const nextLine = doc.line(lastLineNum + 1);
+        const nextText = nextLine.text.trim();
+        if (nextText === "```") {
+          endPos = nextLine.to;
+          lastLineNum++;
+          foundClosing = true;
+          break;
         } else {
-          i++;
+          specLines.push(nextLine.text);
+          endPos = nextLine.to;
+          lastLineNum++;
         }
-        continue;
       }
-      i++;
+
+      if (foundClosing) {
+        const specYaml = specLines.join("\n");
+        builder.add(
+          startPos,
+          endPos,
+          Decoration.replace({
+            widget: new ChartWidget(specYaml, startPos, endPos),
+            block: true,
+          })
+        );
+        i = lastLineNum + 1;
+      } else {
+        i++;
+      }
+      continue;
     }
-    return builder.finish();
+    i++;
   }
+  return builder.finish();
 }
 
-export const chartWidgetExtension = ViewPlugin.fromClass(ChartPlugin, {
-  decorations: (v) => v.decorations,
+export const chartWidgetExtension = StateField.define<DecorationSet>({
+  create(state) {
+    return buildChartDecorations(state);
+  },
+  update(decorations, tr) {
+    if (tr.docChanged) {
+      return buildChartDecorations(tr.state);
+    }
+    return decorations.map(tr.changes);
+  },
+  provide: (f) => EditorView.decorations.from(f),
 });

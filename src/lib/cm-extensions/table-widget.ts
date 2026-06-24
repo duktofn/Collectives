@@ -2,13 +2,13 @@ import {
   Decoration,
   DecorationSet,
   EditorView,
-  ViewPlugin,
-  ViewUpdate,
   WidgetType,
 } from "@codemirror/view";
-import { RangeSetBuilder } from "@codemirror/state";
+import { RangeSetBuilder, StateField, EditorState } from "@codemirror/state";
 
 class TableWidget extends WidgetType {
+  private dom: HTMLElement | null = null;
+
   constructor(
     public markdown: string,
     public from: number,
@@ -18,14 +18,11 @@ class TableWidget extends WidgetType {
   }
 
   eq(other: TableWidget) {
-    return (
-      this.markdown === other.markdown &&
-      this.from === other.from &&
-      this.to === other.to
-    );
+    return this.markdown === other.markdown;
   }
 
   updateDOM(dom: HTMLElement, _view: EditorView): boolean {
+    this.dom = dom;
     if (dom.contains(document.activeElement)) {
       return true;
     }
@@ -34,6 +31,7 @@ class TableWidget extends WidgetType {
 
   toDOM(view: EditorView) {
     const container = document.createElement("div");
+    this.dom = container;
     container.className = "cm-table-widget-container";
 
     const lines = this.markdown
@@ -61,6 +59,22 @@ class TableWidget extends WidgetType {
 
     const isEditable = view.state.readOnly === false;
 
+    const handleTabKey = (e: KeyboardEvent, currentCell: HTMLElement) => {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const tableEl = currentCell.closest("table");
+        if (!tableEl) return;
+        const cells = Array.from(tableEl.querySelectorAll("th[contenteditable='true'], td[contenteditable='true']")) as HTMLElement[];
+        const index = cells.indexOf(currentCell);
+        if (index !== -1) {
+          const nextIdx = e.shiftKey ? index - 1 : index + 1;
+          if (nextIdx >= 0 && nextIdx < cells.length) {
+            cells[nextIdx].focus();
+          }
+        }
+      }
+    };
+
     // Header
     const thead = document.createElement("thead");
     const headerRow = document.createElement("tr");
@@ -73,6 +87,7 @@ class TableWidget extends WidgetType {
           headers[colIndex] = th.textContent || "";
           this.updateDocument(view, headers, rows);
         });
+        th.addEventListener("keydown", (e) => handleTabKey(e, th));
       }
       headerRow.appendChild(th);
     });
@@ -93,15 +108,7 @@ class TableWidget extends WidgetType {
             rows[rowIndex][colIndex] = td.textContent || "";
             this.updateDocument(view, headers, rows);
           });
-          td.addEventListener("keydown", (e) => {
-            if (e.key === "Tab") {
-              e.preventDefault();
-              const next = e.shiftKey
-                ? (td.previousElementSibling as HTMLElement)
-                : (td.nextElementSibling as HTMLElement);
-              if (next) next.focus();
-            }
-          });
+          td.addEventListener("keydown", (e) => handleTabKey(e, td));
         }
         tr.appendChild(td);
       });
@@ -148,83 +155,92 @@ class TableWidget extends WidgetType {
     );
     const serialized = [headerLine, sepLine, ...rowLines].join("\n");
 
+    let from = this.from;
+    let to = this.to;
+    if (this.dom) {
+      try {
+        const currentPos = view.posAtDOM(this.dom);
+        if (currentPos !== null && currentPos !== undefined && currentPos >= 0) {
+          from = currentPos;
+          to = from + this.markdown.length;
+        }
+      } catch (e) {
+        console.error("Error finding table position in document:", e);
+      }
+    }
+
     view.dispatch({
       changes: {
-        from: this.from,
-        to: this.to,
+        from: from,
+        to: to,
         insert: serialized,
       },
     });
   }
 }
 
-class TablePlugin {
-  decorations: DecorationSet;
+function buildTableDecorations(state: EditorState): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  const doc = state.doc;
 
-  constructor(view: EditorView) {
-    this.decorations = this.buildDecorations(view);
-  }
+  let i = 1;
+  while (i <= doc.lines) {
+    const line = doc.line(i);
+    const text = line.text.trim();
 
-  update(update: ViewUpdate) {
-    if (update.docChanged || update.viewportChanged) {
-      this.decorations = this.buildDecorations(update.view);
-    }
-  }
+    if (text.startsWith("|") && text.includes("|", 1)) {
+      if (i < doc.lines) {
+        const nextLine = doc.line(i + 1);
+        const nextText = nextLine.text.trim();
+        const isSeparator =
+          nextText.startsWith("|") &&
+          /^[|\s\-:]+$/.test(nextText) &&
+          nextText.includes("-");
 
-  buildDecorations(view: EditorView): DecorationSet {
-    const builder = new RangeSetBuilder<Decoration>();
-    const doc = view.state.doc;
+        if (isSeparator) {
+          const startPos = line.from;
+          let endPos = nextLine.to;
+          let lastLineNum = i + 1;
 
-    let i = 1;
-    while (i <= doc.lines) {
-      const line = doc.line(i);
-      const text = line.text.trim();
-
-      if (text.startsWith("|") && text.includes("|", 1)) {
-        if (i < doc.lines) {
-          const nextLine = doc.line(i + 1);
-          const nextText = nextLine.text.trim();
-          const isSeparator =
-            nextText.startsWith("|") &&
-            /^[|\s\-:]+$/.test(nextText) &&
-            nextText.includes("-");
-
-          if (isSeparator) {
-            const startPos = line.from;
-            let endPos = nextLine.to;
-            let lastLineNum = i + 1;
-
-            while (lastLineNum < doc.lines) {
-              const nextRow = doc.line(lastLineNum + 1);
-              if (nextRow.text.trim().startsWith("|")) {
-                endPos = nextRow.to;
-                lastLineNum++;
-              } else {
-                break;
-              }
+          while (lastLineNum < doc.lines) {
+            const nextRow = doc.line(lastLineNum + 1);
+            if (nextRow.text.trim().startsWith("|")) {
+              endPos = nextRow.to;
+              lastLineNum++;
+            } else {
+              break;
             }
-
-            const tableMarkdown = doc.sliceString(startPos, endPos);
-            builder.add(
-              startPos,
-              endPos,
-              Decoration.replace({
-                widget: new TableWidget(tableMarkdown, startPos, endPos),
-                block: true,
-              })
-            );
-
-            i = lastLineNum + 1;
-            continue;
           }
+
+          const tableMarkdown = doc.sliceString(startPos, endPos);
+          builder.add(
+            startPos,
+            endPos,
+            Decoration.replace({
+              widget: new TableWidget(tableMarkdown, startPos, endPos),
+              block: true,
+            })
+          );
+
+          i = lastLineNum + 1;
+          continue;
         }
       }
-      i++;
     }
-    return builder.finish();
+    i++;
   }
+  return builder.finish();
 }
 
-export const tableWidgetExtension = ViewPlugin.fromClass(TablePlugin, {
-  decorations: (v) => v.decorations,
+export const tableWidgetExtension = StateField.define<DecorationSet>({
+  create(state) {
+    return buildTableDecorations(state);
+  },
+  update(decorations, tr) {
+    if (tr.docChanged) {
+      return buildTableDecorations(tr.state);
+    }
+    return decorations.map(tr.changes);
+  },
+  provide: (f) => EditorView.decorations.from(f),
 });
