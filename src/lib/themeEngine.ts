@@ -72,9 +72,14 @@ export function registerCustomFonts(fonts: CustomFont[] | undefined, fontsDir: s
 
   let cssContent = "";
   for (const font of fonts) {
+    const safeFamily = font.family.replace(/['"\\;{}()[\]*]/g, "");
+    const safeWeight = font.weight.replace(/[^a-zA-Z0-9-]/g, "");
+    const safeStyle = font.style.replace(/[^a-zA-Z0-9-]/g, "");
+
     // Construct the absolute path for the font file
-    const absolutePath = `${fontsDir}/${font.fileName}`.replace(/\/+/g, "/").replace(/\\+/g, "\\");
+    const absolutePath = `${fontsDir}/${font.fileName}`.replace(/[/\\]+/g, "/");
     const srcUrl = convertFileSrc(absolutePath);
+    const safeSrcUrl = srcUrl.replace(/['"\\()[\]]/g, "");
     
     // Determine format from filename
     let format = "truetype";
@@ -88,10 +93,10 @@ export function registerCustomFonts(fonts: CustomFont[] | undefined, fontsDir: s
 
     cssContent += `
 @font-face {
-  font-family: '${font.family}';
-  src: url('${srcUrl}') format('${format}');
-  font-weight: ${font.weight};
-  font-style: ${font.style};
+  font-family: '${safeFamily}';
+  src: url('${safeSrcUrl}') format('${format}');
+  font-weight: ${safeWeight};
+  font-style: ${safeStyle};
   font-display: swap;
 }
 `;

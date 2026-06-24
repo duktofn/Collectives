@@ -11,6 +11,7 @@ export function Editor() {
   let editorRef: HTMLDivElement | undefined;
   let view: EditorView | undefined;
   let autoSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+  let forceSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 
   onMount(() => {
     if (!editorRef) return;
@@ -52,6 +53,12 @@ export function Editor() {
     if (autoSaveTimeout) {
       clearTimeout(autoSaveTimeout);
     }
+    if (forceSaveTimeout) {
+      clearTimeout(forceSaveTimeout);
+    }
+    if (editorStore.state.isDirty && !editorStore.state.isReadOnly) {
+      editorStore.saveFile();
+    }
   });
 
   // Reconfigure extensions when editor mode changes
@@ -82,10 +89,11 @@ export function Editor() {
     )
   );
 
-  // Debounced auto-save effect
+  // Debounced auto-save effect with 15-second force save limit
   createEffect(() => {
     const isDirty = editorStore.state.isDirty;
     const isReadOnly = editorStore.state.isReadOnly;
+    editorStore.state.currentContent; // depend on content to run on every keystroke
 
     if (autoSaveTimeout) {
       clearTimeout(autoSaveTimeout);
@@ -94,8 +102,28 @@ export function Editor() {
 
     if (isDirty && !isReadOnly) {
       autoSaveTimeout = setTimeout(() => {
+        if (forceSaveTimeout) {
+          clearTimeout(forceSaveTimeout);
+          forceSaveTimeout = null;
+        }
         editorStore.saveFile();
       }, 2000); // 2 seconds delay
+
+      if (!forceSaveTimeout) {
+        forceSaveTimeout = setTimeout(() => {
+          if (autoSaveTimeout) {
+            clearTimeout(autoSaveTimeout);
+            autoSaveTimeout = null;
+          }
+          forceSaveTimeout = null;
+          editorStore.saveFile();
+        }, 15000); // 15 seconds force save limit
+      }
+    } else {
+      if (forceSaveTimeout) {
+        clearTimeout(forceSaveTimeout);
+        forceSaveTimeout = null;
+      }
     }
   });
 

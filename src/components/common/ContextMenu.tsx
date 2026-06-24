@@ -53,7 +53,8 @@ export function ContextMenu(props: ContextMenuProps) {
     const screenW = window.innerWidth;
     const screenH = window.innerHeight;
     const menuW = 180;
-    const menuH = props.items.length * 36 + 12;
+    const separatorCount = props.items.filter((item) => item.separatorBefore).length;
+    const menuH = props.items.length * 36 + separatorCount * 9 + 12;
     
     if (menuX + menuW > screenW) {
       menuX = Math.max(0, screenW - menuW - 10);

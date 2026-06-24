@@ -1,11 +1,10 @@
-import { RangeSetBuilder } from "@codemirror/state";
+import { RangeSetBuilder, EditorState } from "@codemirror/state";
 import {
   Decoration,
   DecorationSet,
   EditorView,
   ViewPlugin,
   ViewUpdate,
-  WidgetType,
 } from "@codemirror/view";
 import { parseWikilink } from "../wikilink/parser";
 import { resolveAndNavigate } from "../wikilink/resolver";
@@ -13,15 +12,7 @@ import { collectionsStore } from "../../stores/collections";
 import { editorStore } from "../../stores/editor";
 import { resolveWikilink } from "../tauri";
 import { message } from "@tauri-apps/plugin-dialog";
-
-class EmptyWidget extends WidgetType {
-  toDOM() {
-    const span = document.createElement("span");
-    span.className = "cm-hidden-mark";
-    span.style.display = "none";
-    return span;
-  }
-}
+import { EmptyWidget } from "./empty-widget";
 
 interface DecSpec {
   from: number;
@@ -30,6 +21,17 @@ interface DecSpec {
 }
 
 export const wikilinkCache = new Map<string, boolean>();
+const MAX_CACHE_SIZE = 1000;
+
+function setCacheValue(key: string, value: boolean) {
+  if (wikilinkCache.size >= MAX_CACHE_SIZE && !wikilinkCache.has(key)) {
+    const oldestKey = wikilinkCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      wikilinkCache.delete(oldestKey);
+    }
+  }
+  wikilinkCache.set(key, value);
+}
 
 export function clearWikilinkCache() {
   wikilinkCache.clear();
@@ -78,17 +80,17 @@ class WikilinkDecorationPlugin {
 
         const cacheKey = `${collectionId}:${parsed.noteName}`;
         if (!wikilinkCache.has(cacheKey)) {
-          wikilinkCache.set(cacheKey, true);
+          setCacheValue(cacheKey, true);
           resolveWikilink(collectionId, parsed.noteName)
             .then((candidate) => {
               const exists = candidate !== null;
               if (wikilinkCache.get(cacheKey) !== exists) {
-                wikilinkCache.set(cacheKey, exists);
+                setCacheValue(cacheKey, exists);
                 view.dispatch({});
               }
             })
             .catch(() => {
-              wikilinkCache.set(cacheKey, false);
+              setCacheValue(cacheKey, false);
               view.dispatch({});
             });
         }
@@ -135,11 +137,30 @@ class WikilinkDecorationPlugin {
       }
     }
 
-    decs.sort((a, b) => a.from - b.from);
+    // Sort decorations: by 'from' ascending, then by 'to' descending
+    decs.sort((a, b) => {
+      if (a.from !== b.from) return a.from - b.from;
+      return b.to - a.to;
+    });
 
     const builder = new RangeSetBuilder<Decoration>();
-    for (const d of decs) {
-      builder.add(d.from, d.to, d.value);
+    let lastFrom = -1;
+    let lastTo = -1;
+
+    for (const dec of decs) {
+      if (dec.from >= lastFrom) {
+        const isReplacement = dec.value.spec.widget !== undefined;
+        if (isReplacement && dec.from < lastTo) {
+          // Skip overlapping replacements
+          continue;
+        }
+
+        builder.add(dec.from, dec.to, dec.value);
+        lastFrom = dec.from;
+        if (isReplacement) {
+          lastTo = dec.to;
+        }
+      }
     }
     return builder.finish();
   }
@@ -150,7 +171,7 @@ const wikilinkClickEffect = EditorView.domEventHandlers({
     const target = event.target as HTMLElement;
     if (!target.classList.contains("cm-wikilink")) return false;
 
-    const isEditable = !view.state.readOnly;
+    const isEditable = !view.state.facet(EditorState.readOnly);
     if (isEditable && !event.ctrlKey && !event.metaKey) {
       return false;
     }

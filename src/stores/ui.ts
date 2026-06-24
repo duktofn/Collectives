@@ -8,7 +8,7 @@ interface UIState {
 }
 
 const savedWidth = typeof window !== "undefined" ? localStorage.getItem("sidebarWidth") : null;
-const initialWidth = savedWidth ? parseInt(savedWidth, 10) : 280;
+const initialWidth = savedWidth ? (parseInt(savedWidth, 10) || 280) : 280;
 
 const [state, setState] = createStore<UIState>({
   expandedNodes: {},

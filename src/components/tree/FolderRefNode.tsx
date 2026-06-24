@@ -5,6 +5,7 @@ import { uiStore } from "../../stores/ui";
 import { Icon } from "../common/Icon";
 import { ContextMenu, ContextMenuItem } from "../common/ContextMenu";
 import { Dialog } from "../common/Dialog";
+import { message } from "@tauri-apps/plugin-dialog";
 import { readFolderChildren, pickDirectory, watchFolder, unwatchFolder } from "../../lib/tauri";
 import { listen } from "@tauri-apps/api/event";
 import "./Tree.css";
@@ -63,9 +64,7 @@ export function FolderRefNode(props: FolderRefNodeProps) {
       } catch (err) {
         console.error("Failed to watch folder", entry().path, err);
       }
-      if (children().length === 0) {
-        await reloadChildren();
-      }
+      await reloadChildren();
     } else {
       try {
         await unwatchFolder(entry().path);
@@ -83,9 +82,7 @@ export function FolderRefNode(props: FolderRefNodeProps) {
       watchFolder(entry().path, entry().id).catch((err) => {
         console.error("Failed to watch folder on mount", entry().path, err);
       });
-      if (children().length === 0) {
-        reloadChildren();
-      }
+      reloadChildren();
     }
 
     const unlistenPromise = listen<{ path: string }>("folder-changed", (event) => {
@@ -112,9 +109,16 @@ export function FolderRefNode(props: FolderRefNodeProps) {
   };
 
   const handleRemove = async () => {
-    await collectionsStore.removeEntry(entry().id);
-    if (uiStore.isSelected(entry().id)) {
-      uiStore.selectEntry(null);
+    try {
+      await collectionsStore.removeEntry(entry().id);
+      if (uiStore.isSelected(entry().id)) {
+        uiStore.selectEntry(null);
+      }
+    } catch (err) {
+      await message(err instanceof Error ? err.message : String(err), {
+        title: "Remove Folder Failed",
+        kind: "error",
+      });
     }
   };
 
@@ -163,9 +167,18 @@ export function FolderRefNode(props: FolderRefNodeProps) {
     const options = getGroups();
     const selectedOpt = options.find((o) => o.id === selectedParentId());
     if (selectedOpt) {
-      await collectionsStore.moveEntry(entry().id, selectedOpt.path, 0);
+      try {
+        await collectionsStore.moveEntry(entry().id, selectedOpt.path, 0);
+        setIsMoveOpen(false);
+      } catch (err) {
+        await message(err instanceof Error ? err.message : String(err), {
+          title: "Move Folder Failed",
+          kind: "error",
+        });
+      }
+    } else {
+      setIsMoveOpen(false);
     }
-    setIsMoveOpen(false);
   };
 
   const contextMenuItems = () => {
@@ -299,7 +312,7 @@ function FsNode(props: FsNodeProps) {
       const nextExpanded = !isExpanded();
       setIsExpanded(nextExpanded);
       
-      if (nextExpanded && children().length === 0) {
+      if (nextExpanded) {
         setLoading(true);
         try {
           const contents = await readFolderChildren(props.item.path);

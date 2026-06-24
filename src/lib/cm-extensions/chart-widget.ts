@@ -5,6 +5,7 @@ import {
   WidgetType,
 } from "@codemirror/view";
 import { RangeSetBuilder, StateField, EditorState } from "@codemirror/state";
+
 import * as yaml from "js-yaml";
 import { Chart, registerables } from "chart.js";
 
@@ -13,7 +14,6 @@ Chart.register(...registerables);
 
 class ChartWidget extends WidgetType {
   private chartInstance: Chart | null = null;
-  private dom: HTMLElement | null = null;
 
   constructor(
     public specYaml: string,
@@ -27,17 +27,15 @@ class ChartWidget extends WidgetType {
     return this.specYaml === other.specYaml;
   }
 
-  updateDOM(dom: HTMLElement, _view: EditorView): boolean {
-    this.dom = dom;
+  updateDOM(_dom: HTMLElement, _view: EditorView): boolean {
     return false;
   }
 
   toDOM(view: EditorView) {
     const container = document.createElement("div");
-    this.dom = container;
     container.className = "cm-chart-widget-container";
 
-    const isEditable = view.state.readOnly === false;
+    const isEditable = !view.state.facet(EditorState.readOnly);
 
     // Create wrapper for the chart preview
     const chartWrapper = document.createElement("div");
@@ -100,7 +98,14 @@ class ChartWidget extends WidgetType {
       const errorDiv = document.createElement("div");
       errorDiv.className = "cm-chart-error";
       const errorMsg = err instanceof Error ? err.message : String(err);
-      errorDiv.innerHTML = `<strong>Chart Config Error:</strong><pre>${errorMsg}</pre>`;
+      
+      const strong = document.createElement("strong");
+      strong.textContent = "Chart Config Error:";
+      const pre = document.createElement("pre");
+      pre.textContent = errorMsg;
+      errorDiv.appendChild(strong);
+      errorDiv.appendChild(pre);
+
       container.appendChild(errorDiv);
     }
 
@@ -118,8 +123,9 @@ class ChartWidget extends WidgetType {
       chartWrapper.addEventListener("click", toggleEditor);
 
       saveBtn.addEventListener("click", () => {
+        const currentView = EditorView.findFromDOM(container) || view;
         const newSpec = textarea.value;
-        this.updateDocument(view, newSpec);
+        this.updateDocument(currentView, newSpec);
       });
     }
 
@@ -136,17 +142,23 @@ class ChartWidget extends WidgetType {
   updateDocument(view: EditorView, newSpec: string) {
     let from = this.from;
     let to = this.to;
-    if (this.dom) {
-      try {
-        const currentPos = view.posAtDOM(this.dom);
-        if (currentPos !== null && currentPos !== undefined && currentPos >= 0) {
-          from = currentPos;
-          const oldSerialized = `\`\`\`chart\n${this.specYaml}\n\`\`\``;
-          to = from + oldSerialized.length;
+    try {
+      const chartField = view.state.field(chartWidgetExtension, false);
+      if (chartField) {
+        let foundRange: any = null;
+        chartField.between(0, view.state.doc.length, (f, t, value: any) => {
+          if (value.spec.widget === this) {
+            foundRange = { from: f, to: t };
+            return false;
+          }
+        });
+        if (foundRange) {
+          from = foundRange.from;
+          to = foundRange.to;
         }
-      } catch (e) {
-        console.error("Error finding chart position in document:", e);
       }
+    } catch (e) {
+      console.error("Error finding chart position via StateField:", e);
     }
 
     const serialized = `\`\`\`chart\n${newSpec}\n\`\`\``;

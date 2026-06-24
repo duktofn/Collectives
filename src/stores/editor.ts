@@ -31,6 +31,13 @@ export const editorStore = {
   state,
 
   async openFile(path: string, readOnly: boolean = false) {
+    if (state.openFilePath && state.isDirty && !state.isReadOnly) {
+      try {
+        await this.saveFile();
+      } catch (err) {
+        console.error("Failed to auto-save file before switching:", err);
+      }
+    }
     setState("error", null);
     try {
       const content = await api.readFile(path);

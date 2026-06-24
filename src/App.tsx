@@ -60,8 +60,9 @@ export default function App() {
       console.error("Failed to load collections on mount", err);
     }
 
+    let unlisten: (() => void) | undefined;
     try {
-      collectionsStore.initializeListeners();
+      unlisten = await collectionsStore.initializeListeners();
       const loaded = await api.loadSettings();
       setSettings(loaded);
       applyThemeSettings(loaded);
@@ -71,6 +72,12 @@ export default function App() {
     } catch (err) {
       console.error("Failed to load settings on mount", err);
     }
+
+    onCleanup(() => {
+      if (unlisten) {
+        unlisten();
+      }
+    });
   });
 
   // Import Folder state

@@ -96,14 +96,8 @@
 }
 
 .tree-node-arrow:hover {
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: var(--color-arrow-hover-bg);
   color: var(--color-text-primary);
-}
-
-@media (prefers-color-scheme: dark) {
-  .tree-node-arrow:hover {
-    background-color: rgba(255, 255, 255, 0.06);
-  }
 }
 
 .tree-node-icon {

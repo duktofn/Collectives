@@ -4,6 +4,7 @@ import { collectionsStore } from "../../stores/collections";
 import { Icon } from "../common/Icon";
 import { ContextMenu, ContextMenuItem } from "../common/ContextMenu";
 import { Dialog } from "../common/Dialog";
+import { message } from "@tauri-apps/plugin-dialog";
 import * as api from "../../lib/tauri";
 
 interface CollectionItemProps {
@@ -40,8 +41,15 @@ export function CollectionItem(props: CollectionItemProps) {
   };
 
   const handleDelete = async () => {
-    await collectionsStore.deleteCollection(props.collection.id);
-    setIsDeleteOpen(false);
+    try {
+      await collectionsStore.deleteCollection(props.collection.id);
+      setIsDeleteOpen(false);
+    } catch (err) {
+      await message(err instanceof Error ? err.message : String(err), {
+        title: "Delete Collection Failed",
+        kind: "error",
+      });
+    }
   };
 
   const handleExportToFolder = async () => {

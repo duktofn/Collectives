@@ -93,9 +93,13 @@ export function Sidebar(props: SidebarProps) {
       setNewGroupError("Group name cannot be empty");
       return;
     }
-    await collectionsStore.createGroup(name, []);
-    setIsNewGroupOpen(false);
-    setNewGroupError("");
+    try {
+      await collectionsStore.createGroup(name, []);
+      setIsNewGroupOpen(false);
+      setNewGroupError("");
+    } catch (err) {
+      setNewGroupError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const activeCol = () => collectionsStore.activeCollection();

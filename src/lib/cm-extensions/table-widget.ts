@@ -6,8 +6,9 @@ import {
 } from "@codemirror/view";
 import { RangeSetBuilder, StateField, EditorState } from "@codemirror/state";
 
+
+
 class TableWidget extends WidgetType {
-  private dom: HTMLElement | null = null;
 
   constructor(
     public markdown: string,
@@ -22,7 +23,6 @@ class TableWidget extends WidgetType {
   }
 
   updateDOM(dom: HTMLElement, _view: EditorView): boolean {
-    this.dom = dom;
     if (dom.contains(document.activeElement)) {
       return true;
     }
@@ -31,7 +31,6 @@ class TableWidget extends WidgetType {
 
   toDOM(view: EditorView) {
     const container = document.createElement("div");
-    this.dom = container;
     container.className = "cm-table-widget-container";
 
     const lines = this.markdown
@@ -57,7 +56,7 @@ class TableWidget extends WidgetType {
     const table = document.createElement("table");
     table.className = "cm-table-widget";
 
-    const isEditable = view.state.readOnly === false;
+    const isEditable = !view.state.facet(EditorState.readOnly);
 
     const handleTabKey = (e: KeyboardEvent, currentCell: HTMLElement) => {
       if (e.key === "Tab") {
@@ -84,8 +83,9 @@ class TableWidget extends WidgetType {
       if (isEditable) {
         th.contentEditable = "true";
         th.addEventListener("blur", () => {
+          const currentView = EditorView.findFromDOM(container) || view;
           headers[colIndex] = th.textContent || "";
-          this.updateDocument(view, headers, rows);
+          this.updateDocument(currentView, headers, rows);
         });
         th.addEventListener("keydown", (e) => handleTabKey(e, th));
       }
@@ -104,9 +104,10 @@ class TableWidget extends WidgetType {
         if (isEditable) {
           td.contentEditable = "true";
           td.addEventListener("blur", () => {
+            const currentView = EditorView.findFromDOM(container) || view;
             if (!rows[rowIndex]) rows[rowIndex] = [];
             rows[rowIndex][colIndex] = td.textContent || "";
-            this.updateDocument(view, headers, rows);
+            this.updateDocument(currentView, headers, rows);
           });
           td.addEventListener("keydown", (e) => handleTabKey(e, td));
         }
@@ -125,18 +126,20 @@ class TableWidget extends WidgetType {
       addRowBtn.className = "btn-table-control";
       addRowBtn.textContent = "+ Row";
       addRowBtn.addEventListener("click", () => {
+        const currentView = EditorView.findFromDOM(container) || view;
         const newRow = new Array(headers.length).fill("");
         rows.push(newRow);
-        this.updateDocument(view, headers, rows);
+        this.updateDocument(currentView, headers, rows);
       });
 
       const addColBtn = document.createElement("button");
       addColBtn.className = "btn-table-control";
       addColBtn.textContent = "+ Col";
       addColBtn.addEventListener("click", () => {
+        const currentView = EditorView.findFromDOM(container) || view;
         headers.push(`Column ${headers.length + 1}`);
         rows.forEach((r) => r.push(""));
-        this.updateDocument(view, headers, rows);
+        this.updateDocument(currentView, headers, rows);
       });
 
       controls.appendChild(addRowBtn);
@@ -157,16 +160,23 @@ class TableWidget extends WidgetType {
 
     let from = this.from;
     let to = this.to;
-    if (this.dom) {
-      try {
-        const currentPos = view.posAtDOM(this.dom);
-        if (currentPos !== null && currentPos !== undefined && currentPos >= 0) {
-          from = currentPos;
-          to = from + this.markdown.length;
+    try {
+      const tableField = view.state.field(tableWidgetExtension, false);
+      if (tableField) {
+        let foundRange: any = null;
+        tableField.between(0, view.state.doc.length, (f, t, value: any) => {
+          if (value.spec.widget === this) {
+            foundRange = { from: f, to: t };
+            return false;
+          }
+        });
+        if (foundRange) {
+          from = foundRange.from;
+          to = foundRange.to;
         }
-      } catch (e) {
-        console.error("Error finding table position in document:", e);
       }
+    } catch (e) {
+      console.error("Error finding table position via StateField:", e);
     }
 
     view.dispatch({

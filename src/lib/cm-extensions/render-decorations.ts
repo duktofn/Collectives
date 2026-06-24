@@ -6,17 +6,8 @@ import {
   EditorView,
   ViewPlugin,
   ViewUpdate,
-  WidgetType,
 } from "@codemirror/view";
-
-class EmptyWidget extends WidgetType {
-  toDOM() {
-    const span = document.createElement("span");
-    span.className = "cm-hidden-mark";
-    span.style.display = "none";
-    return span;
-  }
-}
+import { EmptyWidget } from "./empty-widget";
 
 interface DecSpec {
   from: number;

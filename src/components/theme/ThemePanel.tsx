@@ -1,8 +1,9 @@
-import { createSignal, Show, For, onMount } from "solid-js";
+import { createSignal, Show, For, onMount, onCleanup } from "solid-js";
 import { Settings, CustomFont } from "../../types";
 import { Icon } from "../common/Icon";
 import * as api from "../../lib/tauri";
 import { applyThemeSettings, registerCustomFonts, getDefaultThemeValues } from "../../lib/themeEngine";
+import { ask, message } from "@tauri-apps/plugin-dialog";
 import "./ThemePanel.css";
 
 interface ThemePanelProps {
@@ -25,11 +26,20 @@ export function ThemePanel(props: ThemePanelProps) {
   const [systemIsDark, setSystemIsDark] = createSignal(false);
 
   onMount(() => {
+    // Set up system dark mode listener
     if (typeof window.matchMedia === "function") {
       const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
       setSystemIsDark(mediaQuery.matches);
-      const handler = (e: MediaQueryListEvent) => setSystemIsDark(e.matches);
-      mediaQuery.addEventListener("change", handler);
+      
+      const handleChange = (e: MediaQueryListEvent) => {
+        setSystemIsDark(e.matches);
+      };
+      
+      mediaQuery.addEventListener("change", handleChange);
+      
+      onCleanup(() => {
+        mediaQuery.removeEventListener("change", handleChange);
+      });
     }
   });
 
@@ -153,7 +163,11 @@ export function ThemePanel(props: ThemePanelProps) {
   };
 
   const handleDeleteFont = async (font: CustomFont) => {
-    if (!confirm(`Are you sure you want to delete font ${font.family} (${font.weight}, ${font.style})?`)) {
+    const confirmed = await ask(`Are you sure you want to delete font ${font.family} (${font.weight}, ${font.style})?`, {
+      title: "Delete Font",
+      kind: "warning",
+    });
+    if (!confirmed) {
       return;
     }
     try {
@@ -178,10 +192,16 @@ export function ThemePanel(props: ThemePanelProps) {
       if (!destPath) return;
 
       await api.exportTheme(props.settings, destPath);
-      alert("Theme exported successfully!");
+      await message("Theme exported successfully!", {
+        title: "Export Theme",
+        kind: "info",
+      });
     } catch (err) {
       console.error(err);
-      alert(`Export failed: ${err}`);
+      await message(`Export failed: ${err}`, {
+        title: "Export Theme Failed",
+        kind: "error",
+      });
     }
   };
 
@@ -203,10 +223,16 @@ export function ThemePanel(props: ThemePanelProps) {
       const fontsDir = await api.getFontsDir();
       registerCustomFonts(importedSettings.customFonts, fontsDir);
 
-      alert("Theme imported and applied successfully!");
+      await message("Theme imported and applied successfully!", {
+        title: "Import Theme",
+        kind: "info",
+      });
     } catch (err) {
       console.error(err);
-      alert(`Import failed: ${err}`);
+      await message(`Import failed: ${err}`, {
+        title: "Import Theme Failed",
+        kind: "error",
+      });
     }
   };
 

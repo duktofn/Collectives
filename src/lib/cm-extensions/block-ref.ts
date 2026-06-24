@@ -5,20 +5,11 @@ import {
   EditorView,
   ViewPlugin,
   ViewUpdate,
-  WidgetType,
   KeyBinding,
   keymap,
 } from "@codemirror/view";
 import { editorStore } from "../../stores/editor";
-
-class EmptyWidget extends WidgetType {
-  toDOM() {
-    const span = document.createElement("span");
-    span.className = "cm-hidden-block-ref";
-    span.style.display = "none";
-    return span;
-  }
-}
+import { EmptyWidget } from "./empty-widget";
 
 interface DecSpec {
   from: number;
@@ -101,6 +92,9 @@ class BlockRefPlugin {
 }
 
 export function copyBlockLink(view: EditorView): boolean {
+  const currentFileName = editorStore.currentFileName;
+  if (!currentFileName) return false;
+
   const selection = view.state.selection.main;
   const line = view.state.doc.lineAt(selection.head);
   const text = line.text;
@@ -129,9 +123,6 @@ export function copyBlockLink(view: EditorView): boolean {
       },
     });
   }
-
-  const currentFileName = editorStore.currentFileName;
-  if (!currentFileName) return false;
 
   const wikilink = `[[${currentFileName}#^${blockId}]]`;
   navigator.clipboard

@@ -123,7 +123,9 @@ export const collectionsStore = {
         localStorage.removeItem("lastActiveCollectionId");
       }
     } catch (err: unknown) {
-      setState("error", String(err) || "Failed to delete collection");
+      const msg = String(err) || "Failed to delete collection";
+      setState("error", msg);
+      throw new Error(msg);
     }
   },
   
@@ -161,7 +163,9 @@ export const collectionsStore = {
       await this.reloadActiveCollection();
       await this.watchActiveCollection();
     } catch (err: unknown) {
-      setState("error", String(err) || "Failed to create group");
+      const msg = String(err) || "Failed to create group";
+      setState("error", msg);
+      throw new Error(msg);
     }
   },
   
@@ -173,7 +177,9 @@ export const collectionsStore = {
       await this.reloadActiveCollection();
       await this.watchActiveCollection();
     } catch (err: unknown) {
-      setState("error", String(err) || "Failed to rename group");
+      const msg = String(err) || "Failed to rename group";
+      setState("error", msg);
+      throw new Error(msg);
     }
   },
   
@@ -186,7 +192,9 @@ export const collectionsStore = {
       await this.validateActiveCollection();
       await this.watchActiveCollection();
     } catch (err: unknown) {
-      setState("error", String(err) || "Failed to remove entry");
+      const msg = String(err) || "Failed to remove entry";
+      setState("error", msg);
+      throw new Error(msg);
     }
   },
   
@@ -198,7 +206,9 @@ export const collectionsStore = {
       await this.reloadActiveCollection();
       await this.watchActiveCollection();
     } catch (err: unknown) {
-      setState("error", String(err) || "Failed to move entry");
+      const msg = String(err) || "Failed to move entry";
+      setState("error", msg);
+      throw new Error(msg);
     }
   },
 
@@ -367,11 +377,12 @@ export const collectionsStore = {
     }
   },
 
-  initializeListeners() {
+  async initializeListeners() {
     if (typeof window === "undefined" || (window as any).__TAURI_INTERNALS__ === undefined) {
-      return;
+      return () => {};
     }
-    listen<{ entryId: string; path: string }>("file-modified", (event) => {
+    
+    const unlisten1 = await listen<{ entryId: string; path: string }>("file-modified", (event) => {
       const payload = event.payload;
       const openPath = editorStore.state.openFilePath;
       const isDirty = editorStore.state.isDirty;
@@ -380,7 +391,7 @@ export const collectionsStore = {
       }
     });
 
-    listen<{ entryId: string; path: string }>("entry-deleted", (event) => {
+    const unlisten2 = await listen<{ entryId: string; path: string }>("entry-deleted", (event) => {
       const payload = event.payload;
       const exists = state.brokenEntries.some((b) => b.id === payload.entryId);
       if (!exists) {
@@ -393,10 +404,16 @@ export const collectionsStore = {
       }
     });
 
-    listen<{ entryId: string; oldPath: string; newPath: string }>("entry-renamed", async (event) => {
+    const unlisten3 = await listen<{ entryId: string; oldPath: string; newPath: string }>("entry-renamed", async (event) => {
       const payload = event.payload;
       await collectionsStore.relinkEntry(payload.entryId, payload.newPath);
     });
+
+    return () => {
+      unlisten1();
+      unlisten2();
+      unlisten3();
+    };
   }
 };
 

@@ -4,18 +4,10 @@ import {
   EditorView,
   ViewPlugin,
   ViewUpdate,
-  WidgetType,
   hoverTooltip,
 } from "@codemirror/view";
 import { RangeSetBuilder, Extension } from "@codemirror/state";
-
-class EmptyWidget extends WidgetType {
-  toDOM() {
-    const span = document.createElement("span");
-    span.style.display = "none";
-    return span;
-  }
-}
+import { EmptyWidget } from "./empty-widget";
 
 // Find all footnote definitions [^id]: content
 export function getFootnoteDefinitions(doc: import("@codemirror/state").Text): Record<string, { content: string; line: number }> {
@@ -104,7 +96,7 @@ class AnnotationDecPlugin {
         const isCursorInLine =
           selection.head >= line.from && selection.head <= line.to;
 
-        const isDefinition = lineText.trim().startsWith("[^");
+        const isDefinition = /^\[\^[^\]]+\]:/.test(lineText.trim());
         if (!isDefinition) {
           const regex = /\[\^([^\]]+)\]/g;
           let match;

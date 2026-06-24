@@ -2,10 +2,12 @@ import { createSignal, Show, For } from "solid-js";
 import { Entry } from "../../types";
 import { collectionsStore } from "../../stores/collections";
 import { uiStore } from "../../stores/ui";
+import * as api from "../../lib/tauri";
 import { Icon } from "../common/Icon";
 import { ContextMenu, ContextMenuItem } from "../common/ContextMenu";
 import { Dialog } from "../common/Dialog";
 import { TreeNode } from "./TreeNode";
+import { message } from "@tauri-apps/plugin-dialog";
 import "./Tree.css";
 
 interface GroupNodeProps {
@@ -62,20 +64,38 @@ export function GroupNode(props: GroupNodeProps) {
       setRenameError("Name cannot be empty");
       return;
     }
-    await collectionsStore.renameGroup(entry().id, newName);
-    setIsRenameOpen(false);
-    setRenameError("");
+    try {
+      await collectionsStore.renameGroup(entry().id, newName);
+      setIsRenameOpen(false);
+      setRenameError("");
+    } catch (err) {
+      setRenameError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleDeleteGroup = async () => {
-    // Promote all children to our parent path
-    const childrenToMove = [...entry().children];
-    for (const child of childrenToMove) {
-      await collectionsStore.moveEntry(child.id, props.parentPath, 0);
+    try {
+      // Promote all children to our parent path
+      const childrenToMove = [...entry().children];
+      const activeId = collectionsStore.state.activeCollectionId;
+      if (activeId) {
+        for (const child of childrenToMove) {
+          try {
+            await api.moveEntry(activeId, child.id, props.parentPath, 0);
+          } catch (err) {
+            console.error(`Failed to move child ${child.id} during group deletion:`, err);
+          }
+        }
+      }
+      // Delete this group
+      await collectionsStore.removeEntry(entry().id);
+      setIsDeleteOpen(false);
+    } catch (err) {
+      await message(err instanceof Error ? err.message : String(err), {
+        title: "Delete Group Failed",
+        kind: "error",
+      });
     }
-    // Delete this group
-    await collectionsStore.removeEntry(entry().id);
-    setIsDeleteOpen(false);
   };
 
   const getGroups = () => {

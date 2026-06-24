@@ -5,6 +5,7 @@ import { uiStore } from "../../stores/ui";
 import { Icon } from "../common/Icon";
 import { ContextMenu, ContextMenuItem } from "../common/ContextMenu";
 import { Dialog } from "../common/Dialog";
+import { message } from "@tauri-apps/plugin-dialog";
 import { pickFiles } from "../../lib/tauri";
 import "./Tree.css";
 
@@ -39,9 +40,16 @@ export function FileNode(props: FileNodeProps) {
   };
 
   const handleRemove = async () => {
-    await collectionsStore.removeEntry(props.entry.id);
-    if (uiStore.isSelected(props.entry.id)) {
-      uiStore.selectEntry(null);
+    try {
+      await collectionsStore.removeEntry(props.entry.id);
+      if (uiStore.isSelected(props.entry.id)) {
+        uiStore.selectEntry(null);
+      }
+    } catch (err) {
+      await message(err instanceof Error ? err.message : String(err), {
+        title: "Remove File Failed",
+        kind: "error",
+      });
     }
   };
 
@@ -90,9 +98,18 @@ export function FileNode(props: FileNodeProps) {
     const options = getGroups();
     const selectedOpt = options.find((o) => o.id === selectedParentId());
     if (selectedOpt) {
-      await collectionsStore.moveEntry(props.entry.id, selectedOpt.path, 0);
+      try {
+        await collectionsStore.moveEntry(props.entry.id, selectedOpt.path, 0);
+        setIsMoveOpen(false);
+      } catch (err) {
+        await message(err instanceof Error ? err.message : String(err), {
+          title: "Move File Failed",
+          kind: "error",
+        });
+      }
+    } else {
+      setIsMoveOpen(false);
     }
-    setIsMoveOpen(false);
   };
 
   const contextMenuItems = () => {
