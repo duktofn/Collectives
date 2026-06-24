@@ -94,7 +94,7 @@ class RenderPlugin {
           }
 
           // Heading HeaderMark (e.g. #, ##)
-          if (name === "HeaderMark" && node.parent?.name.startsWith("ATXHeading")) {
+          if (name === "HeaderMark" && node.node.parent?.name.startsWith("ATXHeading")) {
             if (!isCursorInLine) {
               const maxTo = Math.min(nodeTo + 1, view.state.doc.length);
               decs.push({

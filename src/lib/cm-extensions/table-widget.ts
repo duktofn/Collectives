@@ -25,7 +25,7 @@ class TableWidget extends WidgetType {
     );
   }
 
-  updateDOM(dom: HTMLElement, view: EditorView): boolean {
+  updateDOM(dom: HTMLElement, _view: EditorView): boolean {
     if (dom.contains(document.activeElement)) {
       return true;
     }

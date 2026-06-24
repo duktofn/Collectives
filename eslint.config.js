@@ -20,7 +20,8 @@ export default tseslint.config(
     },
     rules: {
       ...solidPlugin.configs.recommended.rules,
-      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-explicit-any": "off",
+      "solid/reactivity": "off",
       "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }]
     },

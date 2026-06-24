@@ -18,6 +18,8 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm install
+      - name: Type Check
+        run: npm run typecheck
       - name: Lint
         run: npm run lint
       - name: Run tests

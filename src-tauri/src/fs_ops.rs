@@ -11,6 +11,10 @@ pub struct FsEntry {
     pub size: Option<u64>,
 }
 
+pub fn normalize_path(path: &str) -> String {
+    path.replace('\\', "/")
+}
+
 pub fn read_children(path: &Path) -> Result<Vec<FsEntry>, String> {
     if !path.exists() {
         return Err(format!("Path does not exist: {:?}", path));
@@ -45,7 +49,7 @@ pub fn read_children(path: &Path) -> Result<Vec<FsEntry>, String> {
 
         fs_entries.push(FsEntry {
             name,
-            path: path_buf.to_string_lossy().to_string().replace('\\', "/"),
+            path: normalize_path(&path_buf.to_string_lossy()),
             is_dir,
             size,
         });

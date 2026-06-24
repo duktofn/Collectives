@@ -66,21 +66,21 @@ impl WatchManager {
                                     let new_path = &event.paths[1];
                                     let _ = app.emit("entry-renamed", RenameEventPayload {
                                         entry_id: entry_id.clone(),
-                                        old_path: old_path.to_string_lossy().to_string().replace('\\', "/"),
-                                        new_path: new_path.to_string_lossy().to_string().replace('\\', "/"),
+                                        old_path: crate::fs_ops::normalize_path(&old_path.to_string_lossy()),
+                                        new_path: crate::fs_ops::normalize_path(&new_path.to_string_lossy()),
                                     });
                                 }
                             }
                             EventKind::Modify(_) => {
                                 let _ = app.emit("file-modified", FileEventPayload {
                                     entry_id: entry_id.clone(),
-                                    path: path.to_string_lossy().to_string().replace('\\', "/"),
+                                    path: crate::fs_ops::normalize_path(&path.to_string_lossy()),
                                 });
                             }
                             EventKind::Remove(_) => {
                                 let _ = app.emit("entry-deleted", FileEventPayload {
                                     entry_id: entry_id.clone(),
-                                    path: path.to_string_lossy().to_string().replace('\\', "/"),
+                                    path: crate::fs_ops::normalize_path(&path.to_string_lossy()),
                                 });
                             }
                             _ => {}
@@ -91,8 +91,8 @@ impl WatchManager {
                             if path.starts_with(folder_path) {
                                 let _ = app.emit("folder-changed", FolderEventPayload {
                                     entry_id: folder_entry_id.clone(),
-                                    path: folder_path.to_string_lossy().to_string().replace('\\', "/"),
-                                    changed_file_path: path.to_string_lossy().to_string().replace('\\', "/"),
+                                    path: crate::fs_ops::normalize_path(&folder_path.to_string_lossy()),
+                                    changed_file_path: crate::fs_ops::normalize_path(&path.to_string_lossy()),
                                 });
                             }
                         }

@@ -476,6 +476,104 @@ mod tests {
             panic!("Expected first entry to be a Group");
         }
     }
+
+    #[test]
+    fn test_move_entry_forward_index_adjustment() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let dir_path = temp_dir.path();
+        
+        let col_id = "col-id-forward";
+        let collection = Collection {
+            id: col_id.to_string(),
+            schema_version: 1,
+            name: "Test Forward".to_string(),
+            entries: vec![
+                Entry::File {
+                    id: "file-a".to_string(),
+                    path: "d:/test/file-a.md".to_string(),
+                },
+                Entry::Group {
+                    id: "group-b".to_string(),
+                    name: "group-b".to_string(),
+                    children: vec![],
+                },
+            ],
+            created_at: chrono::Utc::now().to_rfc3339(),
+            updated_at: chrono::Utc::now().to_rfc3339(),
+            metadata: None,
+        };
+        save_collection_to_path(dir_path, &collection).unwrap();
+
+        // Move file-a (index 0) into group-b (path [1]), target_idx 0.
+        // This exercises old_path[i] < adjusted_parent_path[i] at line 233,
+        // decrementing adjusted_parent_path from [1] to [0].
+        move_entry_in_collection_path(dir_path, col_id, "file-a", &[1], 0).unwrap();
+
+        let loaded = load_collection_from_path(dir_path, col_id).unwrap();
+        assert_eq!(loaded.entries.len(), 1); // Only group-b left at root
+        if let Entry::Group { id, children, .. } = &loaded.entries[0] {
+            assert_eq!(id, "group-b");
+            assert_eq!(children.len(), 1);
+            if let Entry::File { id, .. } = &children[0] {
+                assert_eq!(id, "file-a");
+            } else {
+                panic!("Expected child to be file-a");
+            }
+        } else {
+            panic!("Expected first entry to be group-b");
+        }
+
+        // Sub-case 2: two root-level files + one group, move entries[0] into entries[2] (group)
+        let col_id_2 = "col-id-forward-2";
+        let collection_2 = Collection {
+            id: col_id_2.to_string(),
+            schema_version: 1,
+            name: "Test Forward 2".to_string(),
+            entries: vec![
+                Entry::File {
+                    id: "file-1".to_string(),
+                    path: "d:/test/file-1.md".to_string(),
+                },
+                Entry::File {
+                    id: "file-2".to_string(),
+                    path: "d:/test/file-2.md".to_string(),
+                },
+                Entry::Group {
+                    id: "group-3".to_string(),
+                    name: "group-3".to_string(),
+                    children: vec![],
+                },
+            ],
+            created_at: chrono::Utc::now().to_rfc3339(),
+            updated_at: chrono::Utc::now().to_rfc3339(),
+            metadata: None,
+        };
+        save_collection_to_path(dir_path, &collection_2).unwrap();
+
+        // Move file-1 (index 0) into group-3 (path [2]), target_idx 0.
+        // Decrements adjusted_parent_path from [2] to [1].
+        move_entry_in_collection_path(dir_path, col_id_2, "file-1", &[2], 0).unwrap();
+
+        let loaded = load_collection_from_path(dir_path, col_id_2).unwrap();
+        assert_eq!(loaded.entries.len(), 2); // file-2 and group-3 left at root
+        if let Entry::File { id, .. } = &loaded.entries[0] {
+            assert_eq!(id, "file-2");
+        } else {
+            panic!("Expected first entry to be file-2");
+        }
+
+        if let Entry::Group { id, children, .. } = &loaded.entries[1] {
+            assert_eq!(id, "group-3");
+            assert_eq!(children.len(), 1);
+            if let Entry::File { id, .. } = &children[0] {
+                assert_eq!(id, "file-1");
+            } else {
+                panic!("Expected child to be file-1");
+            }
+        } else {
+            panic!("Expected second entry to be group-3");
+        }
+    }
 }
 
 

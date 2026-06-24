@@ -134,7 +134,7 @@ pub fn detect_moved_entry(
 
     for folder in candidate_folders {
         if let Some(found_path) = scan_dir_for_id_recursive(&folder, target_id, 3) {
-            return Ok(Some(found_path.to_string_lossy().to_string().replace('\\', "/")));
+            return Ok(Some(crate::fs_ops::normalize_path(&found_path.to_string_lossy())));
         }
     }
 

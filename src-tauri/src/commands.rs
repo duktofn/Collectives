@@ -188,7 +188,7 @@ pub fn add_file_entries(
     for path in paths {
         let entry = Entry::File {
             id: Uuid::new_v4().to_string(),
-            path,
+            path: fs_ops::normalize_path(&path),
         };
         collection::add_entry_to_collection(&app, &collection_id, &[], entry.clone())?;
         added_entries.push(entry);
@@ -205,7 +205,7 @@ pub fn add_folder_ref(
 ) -> Result<Entry, String> {
     let entry = Entry::FolderRef {
         id: Uuid::new_v4().to_string(),
-        path,
+        path: fs_ops::normalize_path(&path),
     };
     collection::add_entry_to_collection(&app, &collection_id, &[], entry.clone())?;
     update_collection_index(&app, &collection_id);

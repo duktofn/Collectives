@@ -9,7 +9,8 @@
     "build": "vite build",
     "serve": "vite preview",
     "tauri": "tauri",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest"
   },

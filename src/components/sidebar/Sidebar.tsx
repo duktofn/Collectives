@@ -275,7 +275,7 @@ export function Sidebar(props: SidebarProps) {
       {/* Resize handle */}
       <div
         class={`sidebar-resizer ${isResizing() ? "resizing" : ""}`}
-        onMousedown={handleMouseDown}
+        onMouseDown={handleMouseDown}
       />
 
       <Dialog

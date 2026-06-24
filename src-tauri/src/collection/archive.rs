@@ -76,7 +76,7 @@ pub fn import_folder(collections_dir: &Path, folder_path: &Path, name: &str) -> 
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let path = entry.path();
         let id = Uuid::new_v4().to_string();
-        let path_str = path.to_string_lossy().to_string().replace('\\', "/");
+        let path_str = crate::fs_ops::normalize_path(&path.to_string_lossy());
 
         if path.is_file() {
             entries.push(Entry::File { id, path: path_str });
@@ -346,7 +346,7 @@ fn check_entries_conflicts(
                     conflicts.push(ZipConflict {
                         entry_id: id.clone(),
                         display_name,
-                        target_path: target_path.to_string_lossy().to_string().replace('\\', "/"),
+                        target_path: crate::fs_ops::normalize_path(&target_path.to_string_lossy()),
                     });
                 }
             }
@@ -362,7 +362,7 @@ fn check_entries_conflicts(
                     conflicts.push(ZipConflict {
                         entry_id: id.clone(),
                         display_name,
-                        target_path: target_path.to_string_lossy().to_string().replace('\\', "/"),
+                        target_path: crate::fs_ops::normalize_path(&target_path.to_string_lossy()),
                     });
                 }
             }
@@ -443,7 +443,7 @@ fn extract_zip_assets<R: Read + std::io::Seek>(
 
                 let resolution = resolutions.get(id).map(|s| s.as_str()).unwrap_or("overwrite");
                 if resolution == "skip" {
-                    *path = target_path.to_string_lossy().to_string().replace('\\', "/");
+                    *path = crate::fs_ops::normalize_path(&target_path.to_string_lossy());
                     continue;
                 }
 
@@ -467,7 +467,7 @@ fn extract_zip_assets<R: Read + std::io::Seek>(
                         .map_err(|e| format!("Failed to write extracted file: {}", e))?;
                 }
 
-                *path = final_path.to_string_lossy().to_string().replace('\\', "/");
+                *path = crate::fs_ops::normalize_path(&final_path.to_string_lossy());
             }
             Entry::FolderRef { id, path } => {
                 let relative_path = path.strip_prefix("assets/").unwrap_or(path);
@@ -475,7 +475,7 @@ fn extract_zip_assets<R: Read + std::io::Seek>(
 
                 let resolution = resolutions.get(id).map(|s| s.as_str()).unwrap_or("overwrite");
                 if resolution == "skip" {
-                    *path = target_path.to_string_lossy().to_string().replace('\\', "/");
+                    *path = crate::fs_ops::normalize_path(&target_path.to_string_lossy());
                     continue;
                 }
 
@@ -510,7 +510,7 @@ fn extract_zip_assets<R: Read + std::io::Seek>(
                     }
                 }
 
-                *path = final_path.to_string_lossy().to_string().replace('\\', "/");
+                *path = crate::fs_ops::normalize_path(&final_path.to_string_lossy());
             }
             Entry::Group { children, .. } => {
                 extract_zip_assets(archive, children, dest_folder, resolutions)?;

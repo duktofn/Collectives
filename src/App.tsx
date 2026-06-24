@@ -51,6 +51,16 @@ export default function App() {
     });
 
     try {
+      await collectionsStore.loadCollections();
+      const lastActiveId = localStorage.getItem("lastActiveCollectionId");
+      if (lastActiveId && collectionsStore.state.collections.some(c => c.id === lastActiveId)) {
+        await collectionsStore.openCollection(lastActiveId);
+      }
+    } catch (err) {
+      console.error("Failed to load collections on mount", err);
+    }
+
+    try {
       collectionsStore.initializeListeners();
       const loaded = await api.loadSettings();
       setSettings(loaded);
@@ -80,7 +90,6 @@ export default function App() {
       const selected = await api.pickDirectory("Select Folder to Import");
       if (selected) {
         setImportFolderPath(selected);
-        const folderName = selected.replace(/\\/g, "/").split("/").pop() || "Imported Vault";
         setImportFolderNameError("");
         setIsImportFolderNameOpen(true);
       }
@@ -348,9 +357,8 @@ export default function App() {
             </div>
           }
         >
-          {() => (
-            <Show
-              when={editorStore.state.openFilePath}
+          <Show
+            when={editorStore.state.openFilePath}
               fallback={
                 <div class="info-panel" style={{ "padding-left": !uiStore.state.isSidebarOpen ? "48px" : "40px" }}>
                   <Show when={editorStore.state.error}>
@@ -412,7 +420,6 @@ export default function App() {
             >
               <Editor />
             </Show>
-          )}
         </Show>
       </main>
 

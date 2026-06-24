@@ -1,4 +1,4 @@
-import { createSignal, createEffect, Show, For, onMount } from "solid-js";
+import { createSignal, Show, For, onMount } from "solid-js";
 import { Settings, CustomFont } from "../../types";
 import { Icon } from "../common/Icon";
 import * as api from "../../lib/tauri";

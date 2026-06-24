@@ -55,6 +55,7 @@ export const collectionsStore = {
   
   async openCollection(id: string) {
     setState("activeCollectionId", id);
+    localStorage.setItem("lastActiveCollectionId", id);
     clearWikilinkCache();
     try {
       await api.initializeIdentityCache(id);
@@ -77,7 +78,7 @@ export const collectionsStore = {
       
       const newCol = await api.createCollection(name);
       setState("collections", (cols) => [...cols, newCol]);
-      setState("activeCollectionId", newCol.id);
+      await this.openCollection(newCol.id);
       setState("brokenEntries", []);
       return newCol;
     } catch (err: unknown) {
@@ -119,6 +120,7 @@ export const collectionsStore = {
       if (state.activeCollectionId === id) {
         setState("activeCollectionId", null);
         setState("brokenEntries", []);
+        localStorage.removeItem("lastActiveCollectionId");
       }
     } catch (err: unknown) {
       setState("error", String(err) || "Failed to delete collection");
@@ -318,11 +320,8 @@ export const collectionsStore = {
       }
       const newCol = await api.importFolder(path, name);
       setState("collections", (cols) => [...cols, newCol]);
-      setState("activeCollectionId", newCol.id);
+      await this.openCollection(newCol.id);
       setState("brokenEntries", []);
-      await this.validateActiveCollection();
-      await this.watchActiveCollection();
-      clearWikilinkCache();
       return newCol;
     } catch (err: unknown) {
       const msg = (err as Error).message || "Failed to import folder";
@@ -336,11 +335,8 @@ export const collectionsStore = {
     try {
       const newCol = await api.importZip(zipPath, destFolder, resolutions);
       setState("collections", (cols) => [...cols, newCol]);
-      setState("activeCollectionId", newCol.id);
+      await this.openCollection(newCol.id);
       setState("brokenEntries", []);
-      await this.validateActiveCollection();
-      await this.watchActiveCollection();
-      clearWikilinkCache();
       return newCol;
     } catch (err: unknown) {
       const msg = (err as Error).message || "Failed to import zip";
