@@ -31,6 +31,10 @@ interface DecSpec {
 
 export const wikilinkCache = new Map<string, boolean>();
 
+export function clearWikilinkCache() {
+  wikilinkCache.clear();
+}
+
 class WikilinkDecorationPlugin {
   decorations: DecorationSet;
 
@@ -145,6 +149,11 @@ const wikilinkClickEffect = EditorView.domEventHandlers({
   click(event, view) {
     const target = event.target as HTMLElement;
     if (!target.classList.contains("cm-wikilink")) return false;
+
+    const isEditable = !view.state.readOnly;
+    if (isEditable && !event.ctrlKey && !event.metaKey) {
+      return false;
+    }
 
     const pos = view.posAtDOM(target);
     const docText = view.state.doc.toString();

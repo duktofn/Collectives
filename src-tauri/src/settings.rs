@@ -6,20 +6,63 @@ use tauri::Manager;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct CustomFont {
+    pub family: String,
+    pub file_name: String,
+    pub weight: String, // e.g. "400", "700"
+    pub style: String,  // e.g. "normal", "italic"
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub theme: String,
     pub font_body: Option<String>,
     pub font_mono: Option<String>,
     pub font_scale: f32,
+    
+    // Heading sizes (multipliers or absolute values, Option allows defaulting)
+    pub size_h1: Option<f32>,
+    pub size_h2: Option<f32>,
+    pub size_h3: Option<f32>,
+    pub size_h4: Option<f32>,
+    
+    // Heading colors
+    pub color_h1: Option<String>,
+    pub color_h2: Option<String>,
+    pub color_h3: Option<String>,
+    pub color_h4: Option<String>,
+    
+    // Custom elements colors
+    pub color_code_bg: Option<String>,
+    pub color_code_text: Option<String>,
+    pub color_link: Option<String>,
+    pub color_link_hover: Option<String>,
+    
+    // Imported custom fonts registry
+    pub custom_fonts: Option<Vec<CustomFont>>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            theme: "light".to_string(),
+            theme: "dark".to_string(),
             font_body: None,
             font_mono: None,
             font_scale: 1.0,
+            size_h1: None,
+            size_h2: None,
+            size_h3: None,
+            size_h4: None,
+            color_h1: None,
+            color_h2: None,
+            color_h3: None,
+            color_h4: None,
+            color_code_bg: None,
+            color_code_text: None,
+            color_link: None,
+            color_link_hover: None,
+            custom_fonts: None,
         }
     }
 }
@@ -77,7 +120,7 @@ mod tests {
 
         // Load non-existent -> returns default
         let initial = load_settings_from_path(&file_path);
-        assert_eq!(initial.theme, "light");
+        assert_eq!(initial.theme, "dark");
         assert_eq!(initial.font_scale, 1.0);
 
         // Save new settings
@@ -86,6 +129,7 @@ mod tests {
             font_body: Some("Inter".to_string()),
             font_mono: Some("Fira Code".to_string()),
             font_scale: 1.2,
+            ..Default::default()
         };
         save_settings_to_path(&file_path, &custom).unwrap();
 

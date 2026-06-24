@@ -1,11 +1,12 @@
-import { createSignal, Show, For } from "solid-js";
+import { createSignal, Show, For, onMount, onCleanup } from "solid-js";
 import { Entry, FsEntry } from "../../types";
 import { collectionsStore } from "../../stores/collections";
 import { uiStore } from "../../stores/ui";
 import { Icon } from "../common/Icon";
 import { ContextMenu, ContextMenuItem } from "../common/ContextMenu";
 import { Dialog } from "../common/Dialog";
-import { readFolderChildren, pickDirectory } from "../../lib/tauri";
+import { readFolderChildren, pickDirectory, watchFolder, unwatchFolder } from "../../lib/tauri";
+import { listen } from "@tauri-apps/api/event";
 import "./Tree.css";
 
 interface FolderRefNodeProps {
@@ -35,6 +36,20 @@ export function FolderRefNode(props: FolderRefNodeProps) {
   const isExpanded = () => uiStore.isExpanded(entry().id);
   const isBroken = () => localBroken() || collectionsStore.state.brokenEntries.some((b) => b.id === entry().id);
 
+  const reloadChildren = async () => {
+    setLoading(true);
+    try {
+      const contents = await readFolderChildren(entry().path);
+      setChildren(contents);
+      setLocalBroken(false);
+    } catch (err) {
+      console.error("Failed to reload folder children", err);
+      setLocalBroken(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const toggleExpand = async (e: MouseEvent) => {
     e.stopPropagation();
     if (isBroken()) return;
@@ -42,20 +57,52 @@ export function FolderRefNode(props: FolderRefNodeProps) {
     const nextExpanded = !isExpanded();
     uiStore.toggleExpand(entry().id);
 
-    if (nextExpanded && children().length === 0) {
-      setLoading(true);
+    if (nextExpanded) {
       try {
-        const contents = await readFolderChildren(entry().path);
-        setChildren(contents);
-        setLocalBroken(false);
+        await watchFolder(entry().path, entry().id);
       } catch (err) {
-        console.error("Failed to read folder children", err);
-        setLocalBroken(true);
-      } finally {
-        setLoading(false);
+        console.error("Failed to watch folder", entry().path, err);
+      }
+      if (children().length === 0) {
+        await reloadChildren();
+      }
+    } else {
+      try {
+        await unwatchFolder(entry().path);
+      } catch (err) {
+        console.error("Failed to unwatch folder", entry().path, err);
       }
     }
   };
+
+  onMount(() => {
+    if (typeof window === "undefined" || (window as any).__TAURI_INTERNALS__ === undefined) {
+      return;
+    }
+    if (isExpanded() && !isBroken()) {
+      watchFolder(entry().path, entry().id).catch((err) => {
+        console.error("Failed to watch folder on mount", entry().path, err);
+      });
+      if (children().length === 0) {
+        reloadChildren();
+      }
+    }
+
+    const unlistenPromise = listen<{ path: string }>("folder-changed", (event) => {
+      if (event.payload.path === entry().path && isExpanded() && !isBroken()) {
+        reloadChildren();
+      }
+    });
+
+    onCleanup(() => {
+      unlistenPromise.then((unlisten) => unlisten());
+      if (isExpanded() && !isBroken()) {
+        unwatchFolder(entry().path).catch((err) => {
+          console.error("Failed to unwatch folder on cleanup", entry().path, err);
+        });
+      }
+    });
+  });
 
   const handleContextMenu = (e: MouseEvent) => {
     e.preventDefault();

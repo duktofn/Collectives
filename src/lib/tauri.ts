@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { Collection, Entry, FsEntry, BrokenEntry, Settings, ResolveCandidate, ZipConflict } from "../types";
+import { Collection, Entry, FsEntry, BrokenEntry, Settings, ResolveCandidate, ZipConflict, CustomFont } from "../types";
 
 export async function getCollections(): Promise<Collection[]> {
   return invoke<Collection[]>("get_collections");
@@ -153,6 +153,85 @@ export async function saveZipDialog(title: string): Promise<string | null> {
     filters: [{ name: "ZIP Archives", extensions: ["zip"] }]
   });
 }
+
+export async function importFont(sourcePath: string, familyName: string, weight: string, style: string): Promise<CustomFont> {
+  return invoke<CustomFont>("import_font", { sourcePath, familyName, weight, style });
+}
+
+export async function deleteFont(fileName: string): Promise<void> {
+  return invoke<void>("delete_font", { fileName });
+}
+
+export async function getFontsDir(): Promise<string> {
+  return invoke<string>("get_fonts_dir");
+}
+
+export async function exportTheme(settings: Settings, destPath: string): Promise<void> {
+  return invoke<void>("export_theme", { settings, destPath });
+}
+
+export async function importTheme(themePath: string): Promise<Settings> {
+  return invoke<Settings>("import_theme", { themePath });
+}
+
+export async function pickThemeFile(title: string): Promise<string | null> {
+  const selected = await open({
+    multiple: false,
+    title,
+    filters: [{ name: "Theme Files", extensions: ["json"] }]
+  });
+  return typeof selected === "string" ? selected : null;
+}
+
+export async function saveThemeDialog(title: string): Promise<string | null> {
+  return save({
+    title,
+    defaultPath: "theme.json",
+    filters: [{ name: "Theme Files", extensions: ["json"] }]
+  });
+}
+
+export async function pickFontFile(title: string): Promise<string | null> {
+  const selected = await open({
+    multiple: false,
+    title,
+    filters: [{ name: "Font Files", extensions: ["ttf", "otf", "woff", "woff2"] }]
+  });
+  return typeof selected === "string" ? selected : null;
+}
+
+export async function watchEntry(path: string, entryId: string): Promise<void> {
+  return invoke<void>("watch_entry", { path, entryId });
+}
+
+export async function unwatchEntry(path: string): Promise<void> {
+  return invoke<void>("unwatch_entry", { path });
+}
+
+export async function watchFolder(path: string, entryId: string): Promise<void> {
+  return invoke<void>("watch_folder", { path, entryId });
+}
+
+export async function unwatchFolder(path: string): Promise<void> {
+  return invoke<void>("unwatch_folder", { path });
+}
+
+export async function clearWatches(): Promise<void> {
+  return invoke<void>("clear_watches");
+}
+
+export async function initializeIdentityCache(collectionId: string): Promise<void> {
+  return invoke<void>("initialize_identity_cache", { collectionId });
+}
+
+export async function detectMovedEntry(
+  collectionId: string,
+  entryId: string,
+  oldPath: string
+): Promise<string | null> {
+  return invoke<string | null>("detect_moved_entry", { collectionId, entryId, oldPath });
+}
+
 
 
 

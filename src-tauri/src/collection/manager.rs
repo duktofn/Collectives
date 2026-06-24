@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use crate::collection::model::Collection;
+use crate::collection::model::{Collection, Entry};
 use tauri::AppHandle;
 use tauri::Manager;
 
@@ -185,6 +185,26 @@ pub fn remove_entry_from_collection_path(
     Ok(removed_entry.unwrap())
 }
 
+fn find_entry_path(entries: &[Entry], target_id: &str) -> Option<Vec<usize>> {
+    for (i, entry) in entries.iter().enumerate() {
+        let entry_id = match entry {
+            Entry::File { id, .. } => id,
+            Entry::FolderRef { id, .. } => id,
+            Entry::Group { id, .. } => id,
+        };
+        if entry_id == target_id {
+            return Some(vec![i]);
+        }
+        if let Entry::Group { children, .. } = entry {
+            if let Some(mut path) = find_entry_path(children, target_id) {
+                path.insert(0, i);
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
 pub fn move_entry_in_collection_path(
     collections_dir: &Path,
     collection_id: &str,
@@ -193,13 +213,45 @@ pub fn move_entry_in_collection_path(
     new_index: usize,
 ) -> Result<(), String> {
     let mut collection = load_collection_from_path(collections_dir, collection_id)?;
+    
+    let old_path = find_entry_path(&collection.entries, entry_id)
+        .ok_or_else(|| format!("Entry with ID {} not found", entry_id))?;
+        
+    let mut adjusted_parent_path = new_parent_path.to_vec();
+    let mut adjusted_index = new_index;
+
+    // Check if moving ancestor into descendant
+    if adjusted_parent_path.starts_with(&old_path) {
+        return Err("Cannot move a group into its own subgroup".to_string());
+    }
+
+    // Adjust path and index due to removal
+    let common_len = old_path.len().min(adjusted_parent_path.len());
+    let mut diverged = false;
+    for i in 0..common_len {
+        if old_path[i] != adjusted_parent_path[i] {
+            if i == old_path.len() - 1 && old_path[i] < adjusted_parent_path[i] {
+                adjusted_parent_path[i] -= 1;
+            }
+            diverged = true;
+            break;
+        }
+    }
+
+    if !diverged && old_path.len() - 1 == adjusted_parent_path.len() {
+        let old_idx = old_path[old_path.len() - 1];
+        if adjusted_index > old_idx {
+            adjusted_index -= 1;
+        }
+    }
+
     let (removed_entry, found) = remove_entry_by_id_recursive(&mut collection.entries, entry_id);
     if !found {
         return Err(format!("Entry with ID {} not found", entry_id));
     }
     let entry = removed_entry.unwrap();
-    let target_list = get_group_mut(&mut collection.entries, new_parent_path)?;
-    let idx = std::cmp::min(new_index, target_list.len());
+    let target_list = get_group_mut(&mut collection.entries, &adjusted_parent_path)?;
+    let idx = std::cmp::min(adjusted_index, target_list.len());
     target_list.insert(idx, entry);
     collection.updated_at = chrono::Utc::now().to_rfc3339();
     save_collection_to_path(collections_dir, &collection)?;
@@ -287,6 +339,7 @@ mod tests {
                     path: "d:/test/note.md".to_string(),
                 }
             ],
+            metadata: None,
         };
 
         // Save
@@ -305,6 +358,7 @@ mod tests {
             created_at: "2026-06-24T00:00:00Z".to_string(),
             updated_at: "2026-06-24T00:00:00Z".to_string(),
             entries: vec![],
+            metadata: None,
         };
         let save_err = save_collection_to_path(dir_path, &col2);
         assert!(save_err.is_err());
@@ -318,6 +372,7 @@ mod tests {
             created_at: "2026-06-24T00:00:00Z".to_string(),
             updated_at: "2026-06-24T00:00:00Z".to_string(),
             entries: vec![],
+            metadata: None,
         };
         save_collection_to_path(dir_path, &col3).unwrap();
 
@@ -336,7 +391,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let dir_path = temp_dir.path();
 
-        let mut col = Collection {
+        let col = Collection {
             id: "col-id".to_string(),
             schema_version: 1,
             name: "Test Collection".to_string(),
@@ -349,6 +404,7 @@ mod tests {
                     children: vec![],
                 }
             ],
+            metadata: None,
         };
 
         save_collection_to_path(dir_path, &col).unwrap();

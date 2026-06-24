@@ -25,6 +25,13 @@ class TableWidget extends WidgetType {
     );
   }
 
+  updateDOM(dom: HTMLElement, view: EditorView): boolean {
+    if (dom.contains(document.activeElement)) {
+      return true;
+    }
+    return false;
+  }
+
   toDOM(view: EditorView) {
     const container = document.createElement("div");
     container.className = "cm-table-widget-container";

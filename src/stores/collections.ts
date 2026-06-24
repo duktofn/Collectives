@@ -2,6 +2,10 @@ import { createStore } from "solid-js/store";
 import { createMemo } from "solid-js";
 import { Collection, BrokenEntry, Entry } from "../types";
 import * as api from "../lib/tauri";
+import { listen } from "@tauri-apps/api/event";
+import { editorStore } from "./editor";
+import { uiStore } from "./ui";
+import { clearWikilinkCache } from "../lib/cm-extensions/wikilink-decoration";
 
 interface CollectionsState {
   collections: Collection[];
@@ -9,6 +13,12 @@ interface CollectionsState {
   loading: boolean;
   error: string | null;
   brokenEntries: BrokenEntry[];
+  movePrompt: {
+    entryId: string;
+    oldPath: string;
+    newPath: string;
+    fileName: string;
+  } | null;
 }
 
 const [state, setState] = createStore<CollectionsState>({
@@ -17,6 +27,7 @@ const [state, setState] = createStore<CollectionsState>({
   loading: false,
   error: null,
   brokenEntries: [],
+  movePrompt: null,
 });
 
 const activeCollection = createMemo(() => {
@@ -44,6 +55,13 @@ export const collectionsStore = {
   
   async openCollection(id: string) {
     setState("activeCollectionId", id);
+    clearWikilinkCache();
+    try {
+      await api.initializeIdentityCache(id);
+      await this.watchActiveCollection();
+    } catch (err) {
+      console.error("Failed to initialize watcher or identity cache", err);
+    }
     await this.validateActiveCollection();
   },
   
@@ -114,6 +132,7 @@ export const collectionsStore = {
       await api.addFileEntries(activeId, paths);
       await this.reloadActiveCollection();
       await this.validateActiveCollection();
+      await this.watchActiveCollection();
     } catch (err: unknown) {
       setState("error", String(err) || "Failed to add files");
     }
@@ -126,6 +145,7 @@ export const collectionsStore = {
       await api.addFolderRef(activeId, path);
       await this.reloadActiveCollection();
       await this.validateActiveCollection();
+      await this.watchActiveCollection();
     } catch (err: unknown) {
       setState("error", String(err) || "Failed to add folder");
     }
@@ -137,6 +157,7 @@ export const collectionsStore = {
     try {
       await api.createGroup(activeId, name, parentPath);
       await this.reloadActiveCollection();
+      await this.watchActiveCollection();
     } catch (err: unknown) {
       setState("error", String(err) || "Failed to create group");
     }
@@ -148,6 +169,7 @@ export const collectionsStore = {
     try {
       await api.renameGroup(activeId, groupId, newName);
       await this.reloadActiveCollection();
+      await this.watchActiveCollection();
     } catch (err: unknown) {
       setState("error", String(err) || "Failed to rename group");
     }
@@ -160,6 +182,7 @@ export const collectionsStore = {
       await api.removeEntry(activeId, entryId);
       await this.reloadActiveCollection();
       await this.validateActiveCollection();
+      await this.watchActiveCollection();
     } catch (err: unknown) {
       setState("error", String(err) || "Failed to remove entry");
     }
@@ -171,6 +194,7 @@ export const collectionsStore = {
     try {
       await api.moveEntry(activeId, entryId, newParentPath, newIndex);
       await this.reloadActiveCollection();
+      await this.watchActiveCollection();
     } catch (err: unknown) {
       setState("error", String(err) || "Failed to move entry");
     }
@@ -200,18 +224,72 @@ export const collectionsStore = {
         await api.updateCollection(updatedCol);
         await this.reloadActiveCollection();
         await this.validateActiveCollection();
+        await this.watchActiveCollection();
       }
     } catch (err: unknown) {
       setState("error", String(err) || "Failed to relink entry");
     }
   },
   
+  async watchActiveCollection() {
+    const activeCol = this.activeCollection();
+    if (!activeCol) return;
+    try {
+      await api.clearWatches();
+      
+      const recurse = async (entries: Entry[]) => {
+        for (const entry of entries) {
+          if (entry.type === "file") {
+            try {
+              await api.watchEntry(entry.path, entry.id);
+            } catch (e) {
+              console.error("Failed to watch entry", entry.path, e);
+            }
+          } else if (entry.type === "folder-ref") {
+            if (uiStore.isExpanded(entry.id)) {
+              try {
+                await api.watchFolder(entry.path, entry.id);
+              } catch (e) {
+                console.error("Failed to watch folder-ref", entry.path, e);
+              }
+            }
+          } else if (entry.type === "group") {
+            await recurse(entry.children);
+          }
+        }
+      };
+      await recurse(activeCol.entries);
+    } catch (err) {
+      console.error("Failed to set up active collection watches", err);
+    }
+  },
+
+  clearMovePrompt() {
+    setState("movePrompt", null);
+  },
+
   async validateActiveCollection() {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
       const broken = await api.validateEntries(activeId);
       setState("brokenEntries", broken);
+
+      // Run move detection for broken entries
+      for (const brokenEntry of broken) {
+        if (state.movePrompt?.entryId !== brokenEntry.id) {
+          const detectedPath = await api.detectMovedEntry(activeId, brokenEntry.id, brokenEntry.path);
+          if (detectedPath) {
+            setState("movePrompt", {
+              entryId: brokenEntry.id,
+              oldPath: brokenEntry.path,
+              newPath: detectedPath,
+              fileName: brokenEntry.path.split(/[/\\]/).pop() || brokenEntry.path,
+            });
+            break; // Show one prompt at a time
+          }
+        }
+      }
     } catch (err) {
       console.error("Failed to validate entries", err);
     }
@@ -223,6 +301,7 @@ export const collectionsStore = {
     try {
       const cols = await api.getCollections();
       setState("collections", cols);
+      clearWikilinkCache();
     } catch (err) {
       console.error("Failed to reload collection", err);
     }
@@ -242,6 +321,8 @@ export const collectionsStore = {
       setState("activeCollectionId", newCol.id);
       setState("brokenEntries", []);
       await this.validateActiveCollection();
+      await this.watchActiveCollection();
+      clearWikilinkCache();
       return newCol;
     } catch (err: unknown) {
       const msg = (err as Error).message || "Failed to import folder";
@@ -258,6 +339,8 @@ export const collectionsStore = {
       setState("activeCollectionId", newCol.id);
       setState("brokenEntries", []);
       await this.validateActiveCollection();
+      await this.watchActiveCollection();
+      clearWikilinkCache();
       return newCol;
     } catch (err: unknown) {
       const msg = (err as Error).message || "Failed to import zip";
@@ -286,5 +369,38 @@ export const collectionsStore = {
       setState("error", msg);
       throw new Error(msg);
     }
+  },
+
+  initializeListeners() {
+    if (typeof window === "undefined" || (window as any).__TAURI_INTERNALS__ === undefined) {
+      return;
+    }
+    listen<{ entryId: string; path: string }>("file-modified", (event) => {
+      const payload = event.payload;
+      const openPath = editorStore.state.openFilePath;
+      const isDirty = editorStore.state.isDirty;
+      if (openPath && openPath === payload.path && !isDirty) {
+        editorStore.openFile(payload.path, editorStore.state.isReadOnly);
+      }
+    });
+
+    listen<{ entryId: string; path: string }>("entry-deleted", (event) => {
+      const payload = event.payload;
+      const exists = state.brokenEntries.some((b) => b.id === payload.entryId);
+      if (!exists) {
+        const newBroken: BrokenEntry = {
+          id: payload.entryId,
+          path: payload.path,
+          reason: "File not found (deleted outside app)",
+        };
+        setState("brokenEntries", (prev) => [...prev, newBroken]);
+      }
+    });
+
+    listen<{ entryId: string; oldPath: string; newPath: string }>("entry-renamed", async (event) => {
+      const payload = event.payload;
+      await collectionsStore.relinkEntry(payload.entryId, payload.newPath);
+    });
   }
 };
+

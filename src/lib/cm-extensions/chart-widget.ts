@@ -172,12 +172,14 @@ class ChartPlugin {
         let lastLineNum = i;
         const specLines: string[] = [];
 
+        let foundClosing = false;
         while (lastLineNum < doc.lines) {
           const nextLine = doc.line(lastLineNum + 1);
           const nextText = nextLine.text.trim();
           if (nextText === "```") {
             endPos = nextLine.to;
             lastLineNum++;
+            foundClosing = true;
             break;
           } else {
             specLines.push(nextLine.text);
@@ -186,17 +188,20 @@ class ChartPlugin {
           }
         }
 
-        const specYaml = specLines.join("\n");
-        builder.add(
-          startPos,
-          endPos,
-          Decoration.replace({
-            widget: new ChartWidget(specYaml, startPos, endPos),
-            block: true,
-          })
-        );
-
-        i = lastLineNum + 1;
+        if (foundClosing) {
+          const specYaml = specLines.join("\n");
+          builder.add(
+            startPos,
+            endPos,
+            Decoration.replace({
+              widget: new ChartWidget(specYaml, startPos, endPos),
+              block: true,
+            })
+          );
+          i = lastLineNum + 1;
+        } else {
+          i++;
+        }
         continue;
       }
       i++;

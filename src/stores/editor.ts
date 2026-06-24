@@ -1,6 +1,7 @@
 import { createStore } from "solid-js/store";
 import * as api from "../lib/tauri";
 import { EditorMode, WikilinkFragment } from "../types";
+import { uiStore } from "./ui";
 
 interface EditorState {
   openFilePath: string | null;
@@ -93,6 +94,7 @@ export const editorStore = {
       error: null,
       pendingNavigation: null,
     });
+    uiStore.selectEntry(null);
   },
 
   navigateTo(fragment: WikilinkFragment) {

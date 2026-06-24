@@ -1,5 +1,6 @@
 import { Show } from "solid-js";
 import { editorStore } from "../../stores/editor";
+import { uiStore } from "../../stores/ui";
 import { Icon } from "../common/Icon";
 
 export function EditorToolbar() {
@@ -16,7 +17,7 @@ export function EditorToolbar() {
 
   return (
     <div class="editor-toolbar">
-      <div class="editor-title-container">
+      <div class="editor-title-container" style={{ "margin-left": !uiStore.state.isSidebarOpen ? "36px" : "0px", "transition": "margin-left var(--transition-normal)" }}>
         <Icon name="file" class="editor-file-icon" size={16} />
         <div class="editor-file-details">
           <span class="editor-file-name" title={getRelativePath()}>

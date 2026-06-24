@@ -87,28 +87,31 @@ pub fn rebuild_index_from_collections(
         extract_index_entries(&col.id, &col.entries, &mut all_entries);
     }
 
-    conn.execute("BEGIN TRANSACTION", [])
+    let tx = conn
+        .unchecked_transaction()
         .map_err(|e| format!("Failed to begin transaction: {}", e))?;
 
-    let mut stmt = conn
-        .prepare(
-            "INSERT OR REPLACE INTO link_index (display_name, collection_id, entry_id, path, entry_type)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-        )
-        .map_err(|e| format!("Failed to prepare insert statement: {}", e))?;
+    {
+        let mut stmt = tx
+            .prepare(
+                "INSERT OR REPLACE INTO link_index (display_name, collection_id, entry_id, path, entry_type)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+            )
+            .map_err(|e| format!("Failed to prepare insert statement: {}", e))?;
 
-    for entry in all_entries {
-        stmt.execute(params![
-            entry.display_name,
-            entry.collection_id,
-            entry.entry_id,
-            entry.path,
-            entry.entry_type
-        ])
-        .map_err(|e| format!("Failed to execute insert inside transaction: {}", e))?;
+        for entry in all_entries {
+            stmt.execute(params![
+                entry.display_name,
+                entry.collection_id,
+                entry.entry_id,
+                entry.path,
+                entry.entry_type
+            ])
+            .map_err(|e| format!("Failed to execute insert inside transaction: {}", e))?;
+        }
     }
 
-    conn.execute("COMMIT", [])
+    tx.commit()
         .map_err(|e| format!("Failed to commit transaction: {}", e))?;
 
     Ok(())
@@ -120,28 +123,31 @@ pub fn update_index_for_collection(conn: &Connection, collection: &Collection) -
     let mut all_entries = Vec::new();
     extract_index_entries(&collection.id, &collection.entries, &mut all_entries);
 
-    conn.execute("BEGIN TRANSACTION", [])
+    let tx = conn
+        .unchecked_transaction()
         .map_err(|e| format!("Failed to begin transaction: {}", e))?;
 
-    let mut stmt = conn
-        .prepare(
-            "INSERT OR REPLACE INTO link_index (display_name, collection_id, entry_id, path, entry_type)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-        )
-        .map_err(|e| format!("Failed to prepare insert statement: {}", e))?;
+    {
+        let mut stmt = tx
+            .prepare(
+                "INSERT OR REPLACE INTO link_index (display_name, collection_id, entry_id, path, entry_type)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+            )
+            .map_err(|e| format!("Failed to prepare insert statement: {}", e))?;
 
-    for entry in all_entries {
-        stmt.execute(params![
-            entry.display_name,
-            entry.collection_id,
-            entry.entry_id,
-            entry.path,
-            entry.entry_type
-        ])
-        .map_err(|e| format!("Failed to execute insert inside transaction: {}", e))?;
+        for entry in all_entries {
+            stmt.execute(params![
+                entry.display_name,
+                entry.collection_id,
+                entry.entry_id,
+                entry.path,
+                entry.entry_type
+            ])
+            .map_err(|e| format!("Failed to execute insert inside transaction: {}", e))?;
+        }
     }
 
-    conn.execute("COMMIT", [])
+    tx.commit()
         .map_err(|e| format!("Failed to commit transaction: {}", e))?;
 
     Ok(())
@@ -198,12 +204,13 @@ pub fn search_by_name(
     query: &str,
     limit: usize,
 ) -> Result<Vec<IndexEntry>, String> {
-    let like_query = format!("{}%", query);
+    let escaped = query.replace('%', "\\%").replace('_', "\\_");
+    let like_query = format!("%{}%", escaped);
     let mut stmt = conn
         .prepare(
             "SELECT display_name, collection_id, entry_id, path, entry_type 
              FROM link_index 
-             WHERE collection_id = ?1 AND display_name LIKE ?2 COLLATE NOCASE 
+             WHERE collection_id = ?1 AND display_name LIKE ?2 ESCAPE '\\' COLLATE NOCASE 
              LIMIT ?3",
         )
         .map_err(|e| format!("Failed to prepare search statement: {}", e))?;
@@ -341,6 +348,7 @@ mod tests {
                     ]
                 }
             ],
+            metadata: None,
         };
 
         rebuild_index_from_collections(&conn, &[col]).unwrap();

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use crate::collection::model::{Collection, Entry};
 use crate::collection::manager;
-use zip::write::FileOptions;
+use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
 use uuid::Uuid;
 use chrono::Utc;
@@ -112,6 +112,7 @@ pub fn import_folder(collections_dir: &Path, folder_path: &Path, name: &str) -> 
         created_at: now.clone(),
         updated_at: now,
         entries,
+        metadata: None,
     };
 
     manager::save_collection_to_path(collections_dir, &collection)?;
@@ -207,7 +208,7 @@ pub fn export_to_zip(
         .map_err(|e| format!("Failed to create ZIP file: {}", e))?;
     let mut zip = ZipWriter::new(file);
 
-    let options = FileOptions::default()
+    let options = SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
         .unix_permissions(0o755);
 
@@ -224,6 +225,7 @@ pub fn export_to_zip(
         created_at: collection.created_at.clone(),
         updated_at: collection.updated_at.clone(),
         entries: mapped_entries,
+        metadata: None,
     };
 
     let manifest_json = serde_json::to_string_pretty(&mapped_collection)
@@ -243,7 +245,7 @@ pub fn export_to_zip(
 fn export_entries_to_zip<W: Write + std::io::Seek>(
     entries: &[Entry],
     zip: &mut ZipWriter<W>,
-    options: FileOptions,
+    options: SimpleFileOptions,
 ) -> Result<(), String> {
     for entry in entries {
         match entry {
@@ -252,7 +254,7 @@ fn export_entries_to_zip<W: Write + std::io::Seek>(
                 if src_path.exists() {
                     let ext = src_path.extension().and_then(|e| e.to_str()).unwrap_or("md");
                     let zip_file_name = format!("assets/{}.{}", id, ext);
-                    zip.start_file(&zip_file_name, options)
+                    zip.start_file(zip_file_name.clone(), options)
                         .map_err(|e| format!("Failed to start ZIP file {}: {}", zip_file_name, e))?;
                     let content = fs::read(src_path)
                         .map_err(|e| format!("Failed to read file {:?}: {}", src_path, e))?;
@@ -281,7 +283,7 @@ fn add_dir_to_zip<W: Write + std::io::Seek>(
     zip: &mut ZipWriter<W>,
     src_dir: &Path,
     zip_prefix: &str,
-    options: FileOptions,
+    options: SimpleFileOptions,
 ) -> Result<(), String> {
     for entry in fs::read_dir(src_dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -293,7 +295,7 @@ fn add_dir_to_zip<W: Write + std::io::Seek>(
             zip.add_directory(format!("{}/", zip_path), options).map_err(|e| e.to_string())?;
             add_dir_to_zip(zip, &path, &format!("{}/", zip_path), options)?;
         } else {
-            zip.start_file(&zip_path, options).map_err(|e| e.to_string())?;
+            zip.start_file(zip_path.clone(), options).map_err(|e| e.to_string())?;
             let content = fs::read(&path).map_err(|e| e.to_string())?;
             zip.write_all(&content).map_err(|e| e.to_string())?;
         }
@@ -420,6 +422,7 @@ pub fn import_zip(
         created_at: now.clone(),
         updated_at: now,
         entries: updated_entries,
+        metadata: None,
     };
 
     manager::save_collection_to_path(collections_dir, &new_collection)?;
@@ -440,6 +443,7 @@ fn extract_zip_assets<R: Read + std::io::Seek>(
 
                 let resolution = resolutions.get(id).map(|s| s.as_str()).unwrap_or("overwrite");
                 if resolution == "skip" {
+                    *path = target_path.to_string_lossy().to_string().replace('\\', "/");
                     continue;
                 }
 
@@ -471,6 +475,7 @@ fn extract_zip_assets<R: Read + std::io::Seek>(
 
                 let resolution = resolutions.get(id).map(|s| s.as_str()).unwrap_or("overwrite");
                 if resolution == "skip" {
+                    *path = target_path.to_string_lossy().to_string().replace('\\', "/");
                     continue;
                 }
 

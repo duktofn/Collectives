@@ -3,15 +3,37 @@ import { createStore } from "solid-js/store";
 interface UIState {
   expandedNodes: Record<string, boolean>;
   selectedEntryId: string | null;
+  isSidebarOpen: boolean;
+  sidebarWidth: number;
 }
+
+const savedWidth = typeof window !== "undefined" ? localStorage.getItem("sidebarWidth") : null;
+const initialWidth = savedWidth ? parseInt(savedWidth, 10) : 280;
 
 const [state, setState] = createStore<UIState>({
   expandedNodes: {},
   selectedEntryId: null,
+  isSidebarOpen: true,
+  sidebarWidth: initialWidth,
 });
 
 export const uiStore = {
   state,
+  
+  toggleSidebar() {
+    setState("isSidebarOpen", (prev) => !prev);
+  },
+
+  setSidebarOpen(open: boolean) {
+    setState("isSidebarOpen", open);
+  },
+
+  setSidebarWidth(width: number) {
+    setState("sidebarWidth", width);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sidebarWidth", String(width));
+    }
+  },
   
   toggleExpand(id: string) {
     setState("expandedNodes", id, (prev) => !prev);

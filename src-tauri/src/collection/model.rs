@@ -21,6 +21,13 @@ pub enum Entry {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct CollectionMetadata {
+    pub last_validated_at: Option<String>,
+    pub broken_entry_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct Collection {
     pub id: String,
     pub schema_version: u32,
@@ -28,4 +35,6 @@ pub struct Collection {
     pub created_at: String,
     pub updated_at: String,
     pub entries: Vec<Entry>,
+    #[serde(default)]
+    pub metadata: Option<CollectionMetadata>,
 }

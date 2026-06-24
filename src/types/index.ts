@@ -25,11 +25,31 @@ export interface BrokenEntry {
   reason: string;
 }
 
+export interface CustomFont {
+  family: string;
+  fileName: string;
+  weight: string;
+  style: string;
+}
+
 export interface Settings {
   theme: string;
   fontBody?: string;
   fontMono?: string;
   fontScale: number;
+  sizeH1?: number;
+  sizeH2?: number;
+  sizeH3?: number;
+  sizeH4?: number;
+  colorH1?: string;
+  colorH2?: string;
+  colorH3?: string;
+  colorH4?: string;
+  colorCodeBg?: string;
+  colorCodeText?: string;
+  colorLink?: string;
+  colorLinkHover?: string;
+  customFonts?: CustomFont[];
 }
 
 export type EditorMode = "view" | "edit-source" | "edit-render";

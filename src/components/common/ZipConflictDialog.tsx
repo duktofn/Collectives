@@ -45,7 +45,7 @@ export function ZipConflictDialog(props: ZipConflictDialogProps) {
         <div class="zip-conflict-dialog modal-content" onClick={(e) => e.stopPropagation()}>
           <div class="modal-header">
             <h3>Resolve ZIP Import Conflicts</h3>
-            <button class="btn btn-text close-btn" onClick={props.onClose}>
+            <button class="btn btn-text close-btn" onClick={() => props.onClose()}>
               <Icon name="close" size={18} />
             </button>
           </div>
@@ -122,7 +122,7 @@ export function ZipConflictDialog(props: ZipConflictDialogProps) {
           </div>
 
           <div class="modal-footer">
-            <button class="btn btn-outline" onClick={props.onClose}>
+            <button class="btn btn-outline" onClick={() => props.onClose()}>
               Cancel
             </button>
             <button class="btn btn-primary" onClick={handleConfirm}>

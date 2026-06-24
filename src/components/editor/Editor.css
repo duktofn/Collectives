@@ -181,6 +181,7 @@
   font-family: var(--font-body);
   font-size: 15px;
   line-height: 1.6;
+  color: var(--color-text-primary);
 }
 
 .editor-workspace .cm-scroller {
@@ -192,36 +193,44 @@
   max-width: 760px;
   margin: 0 auto;
   width: 100%;
+  color: var(--color-text-primary);
+}
+
+.editor-workspace .cm-cursor {
+  border-left-color: var(--color-text-primary) !important;
 }
 
 /* Custom Markdown styling overrides in Render mode */
 .cm-heading {
   font-family: var(--font-body);
-  color: var(--color-text-primary);
   margin-top: 1.2em;
   margin-bottom: 0.4em;
   line-height: 1.3;
 }
 
 .cm-heading-1 {
-  font-size: 2.2em;
+  font-size: var(--size-h1);
+  color: var(--color-h1);
   font-weight: 800;
   border-bottom: 1px solid var(--color-border);
   padding-bottom: 0.3em;
 }
 
 .cm-heading-2 {
-  font-size: 1.65em;
+  font-size: var(--size-h2);
+  color: var(--color-h2);
   font-weight: 700;
 }
 
 .cm-heading-3 {
-  font-size: 1.35em;
+  font-size: var(--size-h3);
+  color: var(--color-h3);
   font-weight: 600;
 }
 
 .cm-heading-4 {
-  font-size: 1.15em;
+  font-size: var(--size-h4);
+  color: var(--color-h4);
   font-weight: 600;
 }
 
@@ -237,17 +246,22 @@
 .cm-inline-code {
   font-family: var(--font-mono);
   font-size: 0.9em;
-  background-color: var(--bg-secondary);
+  background-color: var(--color-code-bg);
   padding: 2px 6px;
   border-radius: 4px;
   border: 1px solid var(--color-border);
-  color: var(--color-accent);
+  color: var(--color-code-text);
 }
 
 .cm-link-text {
-  color: var(--color-accent);
+  color: var(--color-link);
   text-decoration: underline;
   cursor: pointer;
+  transition: color 0.15s;
+}
+
+.cm-link-text:hover {
+  color: var(--color-link-hover);
 }
 
 .cm-blockquote-line {
@@ -405,7 +419,7 @@
 
 /* === Wikilink === */
 .cm-wikilink {
-  color: var(--color-link, #6366f1);
+  color: var(--color-link);
   cursor: pointer;
   text-decoration: underline;
   text-decoration-thickness: 1px;
@@ -414,7 +428,7 @@
 }
 
 .cm-wikilink:hover {
-  color: var(--color-link-hover, #4f46e5);
+  color: var(--color-link-hover);
   text-decoration-thickness: 2px;
 }
 

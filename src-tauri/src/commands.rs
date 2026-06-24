@@ -3,7 +3,7 @@ use crate::link_index;
 use crate::settings::{self, Settings};
 use crate::fs_ops::{self, FsEntry};
 use chrono::Utc;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -39,6 +39,7 @@ pub fn create_collection(app: AppHandle, name: String) -> Result<Collection, Str
         created_at: now.clone(),
         updated_at: now,
         entries: Vec::new(),
+        metadata: None,
     };
 
     collection::save_collection(&app, &collection)?;
@@ -212,42 +213,64 @@ pub fn add_folder_ref(
 }
 
 #[tauri::command]
-pub fn validate_entries(
+pub async fn validate_entries(
     app: AppHandle,
     collection_id: String,
 ) -> Result<Vec<BrokenEntry>, String> {
-    let collection = collection::load_collection(&app, &collection_id)?;
-    let mut broken = Vec::new();
+    let mut collection = collection::load_collection(&app, &collection_id)?;
+    let mut entries_to_check = Vec::new();
     
-    fn validate_entries_recursive(entries: &[Entry], broken: &mut Vec<BrokenEntry>) {
+    fn collect_entries_recursive(entries: &[Entry], dest: &mut Vec<(String, String, bool)>) {
         for entry in entries {
             match entry {
                 Entry::File { id, path } => {
-                    if !std::path::Path::new(path).exists() {
-                        broken.push(BrokenEntry {
-                            id: id.clone(),
-                            path: path.clone(),
-                            reason: "File not found".to_string(),
-                        });
-                    }
+                    dest.push((id.clone(), path.clone(), true));
                 }
                 Entry::FolderRef { id, path } => {
-                    if !std::path::Path::new(path).exists() {
-                        broken.push(BrokenEntry {
-                            id: id.clone(),
-                            path: path.clone(),
-                            reason: "Folder not found".to_string(),
-                        });
-                    }
+                    dest.push((id.clone(), path.clone(), false));
                 }
                 Entry::Group { children, .. } => {
-                    validate_entries_recursive(children, broken);
+                    collect_entries_recursive(children, dest);
                 }
             }
         }
     }
     
-    validate_entries_recursive(&collection.entries, &mut broken);
+    collect_entries_recursive(&collection.entries, &mut entries_to_check);
+    
+    let mut tasks = Vec::new();
+    for (id, path, is_file) in entries_to_check {
+        tasks.push(tokio::task::spawn_blocking(move || {
+            let exists = std::path::Path::new(&path).exists();
+            if !exists {
+                Some(BrokenEntry {
+                    id,
+                    path,
+                    reason: if is_file { "File not found".to_string() } else { "Folder not found".to_string() },
+                })
+            } else {
+                None
+            }
+        }));
+    }
+    
+    let mut broken = Vec::new();
+    for task in tasks {
+        if let Ok(Some(broken_entry)) = task.await {
+            broken.push(broken_entry);
+        }
+    }
+    
+    let broken_ids: Vec<String> = broken.iter().map(|b| b.id.clone()).collect();
+    let timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    
+    collection.metadata = Some(collection::model::CollectionMetadata {
+        last_validated_at: Some(timestamp),
+        broken_entry_ids: broken_ids,
+    });
+    
+    collection::save_collection(&app, &collection)?;
+    
     Ok(broken)
 }
 
@@ -386,6 +409,68 @@ pub fn import_zip(
     }
 
     Ok(col)
+}
+
+#[tauri::command]
+pub fn import_font(
+    app: AppHandle,
+    source_path: String,
+    family_name: String,
+    weight: String,
+    style: String,
+) -> Result<crate::settings::CustomFont, String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    let src = std::path::Path::new(&source_path);
+    crate::font_manager::import_font(&app_data, src, &family_name, &weight, &style)
+}
+
+#[tauri::command]
+pub fn delete_font(app: AppHandle, file_name: String) -> Result<(), String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    crate::font_manager::delete_font(&app_data, &file_name)
+}
+
+#[tauri::command]
+pub fn get_fonts_dir(app: AppHandle) -> Result<String, String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    let fonts_dir = crate::font_manager::get_fonts_dir(&app_data);
+    Ok(fonts_dir.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn export_theme(
+    app: AppHandle,
+    settings: Settings,
+    dest_path: String,
+) -> Result<(), String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    let dest = std::path::Path::new(&dest_path);
+    crate::theme_io::export_theme(&app_data, &settings, dest)
+}
+
+#[tauri::command]
+pub fn import_theme(
+    app: AppHandle,
+    theme_path: String,
+) -> Result<Settings, String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    let src = std::path::Path::new(&theme_path);
+    crate::theme_io::import_theme(&app_data, src)
 }
 
 

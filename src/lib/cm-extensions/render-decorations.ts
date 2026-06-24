@@ -86,7 +86,7 @@ class RenderPlugin {
             const level = parseInt(name.replace("ATXHeading", "")) || 1;
             decs.push({
               from: nodeFrom,
-              to: nodeTo,
+              to: nodeFrom,
               value: Decoration.line({
                 class: `cm-heading cm-heading-${level}`,
               }),
@@ -96,9 +96,10 @@ class RenderPlugin {
           // Heading HeaderMark (e.g. #, ##)
           if (name === "HeaderMark" && node.parent?.name.startsWith("ATXHeading")) {
             if (!isCursorInLine) {
+              const maxTo = Math.min(nodeTo + 1, view.state.doc.length);
               decs.push({
                 from: nodeFrom,
-                to: nodeTo + 1, // include space after #
+                to: maxTo, // include space after # safely
                 value: Decoration.replace({
                   widget: new EmptyWidget(),
                 }),
