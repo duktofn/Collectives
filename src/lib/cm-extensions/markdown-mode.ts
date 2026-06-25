@@ -12,12 +12,16 @@ import { wikilinkDecorationExtension } from "./wikilink-decoration";
 import { wikilinkAutocomplete } from "./wikilink-autocomplete";
 import { blockRefExtension, blockRefDecorationExtension } from "./block-ref";
 import { editorModeFacet } from "./facet";
+import { delimiterPairExtension } from "./delimiter-pairs";
+import { formattingKeymapExtension } from "./formatting-keymap";
 
 export const baseEditorExtensions: Extension[] = [
   markdown({ codeLanguages: languages }),
   history(),
   drawSelection(),
   EditorView.lineWrapping,
+  delimiterPairExtension,
+  formattingKeymapExtension,
   keymap.of([...defaultKeymap, ...historyKeymap]),
 ];
 
