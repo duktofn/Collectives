@@ -5,6 +5,7 @@ import { editorStore } from "../../stores/editor";
 import { EditorToolbar } from "./EditorToolbar";
 import { modeCompartment, getExtensionsForMode, baseEditorExtensions } from "../../lib/cm-extensions/markdown-mode";
 import { navigateToFragment } from "../../lib/wikilink/resolver";
+import { registerEditorMeasureRequest } from "../../lib/editorMeasure";
 import "./Editor.css";
 
 export function Editor() {
@@ -12,6 +13,8 @@ export function Editor() {
   let view: EditorView | undefined;
   let autoSaveTimeout: ReturnType<typeof setTimeout> | null = null;
   let forceSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+  let unregisterMeasure: (() => void) | undefined;
+  let resizeObserver: ResizeObserver | undefined;
 
   onMount(() => {
     if (!editorRef) return;
@@ -45,9 +48,20 @@ export function Editor() {
       state: startState,
       parent: editorRef,
     });
+
+    unregisterMeasure = registerEditorMeasureRequest(() => {
+      view?.requestMeasure();
+    });
+
+    resizeObserver = new ResizeObserver(() => {
+      view?.requestMeasure();
+    });
+    resizeObserver.observe(view.dom);
   });
 
   onCleanup(() => {
+    unregisterMeasure?.();
+    resizeObserver?.disconnect();
     if (view) {
       view.destroy();
     }
@@ -71,6 +85,7 @@ export function Editor() {
           view.dispatch({
             effects: modeCompartment.reconfigure(getExtensionsForMode(mode)),
           });
+          view.requestMeasure();
         }
       },
       { defer: true }

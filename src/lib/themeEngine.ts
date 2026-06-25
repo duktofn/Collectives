@@ -1,5 +1,6 @@
 import { Settings, CustomFont } from "../types";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { requestEditorMeasure } from "./editorMeasure";
 
 const variableMappings: Record<keyof Omit<Settings, "theme" | "customFonts">, string> = {
   fontScale: "--font-scale",
@@ -50,6 +51,8 @@ export function applyThemeSettings(settings: Settings): void {
       root.style.removeProperty(varName);
     }
   }
+
+  requestEditorMeasure();
 }
 
 /**

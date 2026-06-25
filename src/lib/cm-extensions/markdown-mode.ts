@@ -4,6 +4,7 @@ import { languages } from "@codemirror/language-data";
 import { EditorView, drawSelection, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { renderDecorationsExtension } from "./render-decorations";
+import { codeBlockWidgetExtension } from "./code-block-widget";
 import { tableWidgetExtension } from "./table-widget";
 import { chartWidgetExtension } from "./chart-widget";
 import { annotationExtension } from "./annotation";
@@ -36,6 +37,7 @@ export function getExtensionsForMode(mode: "view" | "edit-source" | "edit-render
         EditorView.editable.of(true),
         EditorState.readOnly.of(false),
         renderDecorationsExtension,
+        codeBlockWidgetExtension,
         tableWidgetExtension,
         chartWidgetExtension,
         annotationExtension,
@@ -49,6 +51,7 @@ export function getExtensionsForMode(mode: "view" | "edit-source" | "edit-render
         EditorView.editable.of(false),
         EditorState.readOnly.of(true),
         renderDecorationsExtension,
+        codeBlockWidgetExtension,
         tableWidgetExtension,
         chartWidgetExtension,
         annotationExtension,

@@ -110,8 +110,17 @@ class ChartWidget extends WidgetType {
       this.chartInstance = new Chart(canvas, {
         type: chartType,
         data: chartData,
-        options: chartOptions,
+        options: {
+          ...chartOptions,
+          animation: {
+            ...(typeof chartOptions.animation === "object" ? chartOptions.animation : {}),
+            onComplete: () => {
+              view.requestMeasure();
+            },
+          },
+        },
       });
+      requestAnimationFrame(() => view.requestMeasure());
     } catch (err: unknown) {
       // If error, show error details instead
       chartWrapper.style.display = "none";
@@ -127,6 +136,7 @@ class ChartWidget extends WidgetType {
       errorDiv.appendChild(pre);
 
       container.appendChild(errorDiv);
+      requestAnimationFrame(() => view.requestMeasure());
     }
 
     if (isEditable) {
