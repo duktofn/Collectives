@@ -4,7 +4,7 @@ import {
   EditorView,
   WidgetType,
 } from "@codemirror/view";
-import { RangeSetBuilder, StateField, EditorState } from "@codemirror/state";
+import { RangeSetBuilder, StateField, EditorState, Extension } from "@codemirror/state";
 
 
 
@@ -165,7 +165,7 @@ class TableWidget extends WidgetType {
     if (this.container && this.container.isConnected) {
       try {
         const pos = view.posAtDOM(this.container);
-        const tableField = view.state.field(tableWidgetExtension, false);
+        const tableField = view.state.field(tableWidgetField, false);
         if (tableField) {
           let foundRange: any = null;
           tableField.between(pos, pos + 1, (f, t, value: any) => {
@@ -251,7 +251,7 @@ function buildTableDecorations(state: EditorState): DecorationSet {
   return builder.finish();
 }
 
-export const tableWidgetExtension = StateField.define<DecorationSet>({
+const tableWidgetField = StateField.define<DecorationSet>({
   create(state) {
     return buildTableDecorations(state);
   },
@@ -263,3 +263,10 @@ export const tableWidgetExtension = StateField.define<DecorationSet>({
   },
   provide: (f) => EditorView.decorations.from(f),
 });
+
+export const tableWidgetExtension: Extension = [
+  tableWidgetField,
+  EditorView.atomicRanges.of((view) => {
+    return view.state.field(tableWidgetField, false) ?? Decoration.none;
+  }),
+];

@@ -4,7 +4,7 @@ import {
   EditorView,
   WidgetType,
 } from "@codemirror/view";
-import { RangeSetBuilder, StateField, EditorState } from "@codemirror/state";
+import { RangeSetBuilder, StateField, EditorState, Extension } from "@codemirror/state";
 
 import * as yaml from "js-yaml";
 import { Chart, registerables } from "chart.js";
@@ -147,7 +147,7 @@ class ChartWidget extends WidgetType {
     if (this.container && this.container.isConnected) {
       try {
         const pos = view.posAtDOM(this.container);
-        const chartField = view.state.field(chartWidgetExtension, false);
+        const chartField = view.state.field(chartWidgetField, false);
         if (chartField) {
           let foundRange: any = null;
           chartField.between(pos, pos + 1, (f, t, value: any) => {
@@ -233,7 +233,7 @@ function buildChartDecorations(state: EditorState): DecorationSet {
   return builder.finish();
 }
 
-export const chartWidgetExtension = StateField.define<DecorationSet>({
+const chartWidgetField = StateField.define<DecorationSet>({
   create(state) {
     return buildChartDecorations(state);
   },
@@ -245,3 +245,10 @@ export const chartWidgetExtension = StateField.define<DecorationSet>({
   },
   provide: (f) => EditorView.decorations.from(f),
 });
+
+export const chartWidgetExtension: Extension = [
+  chartWidgetField,
+  EditorView.atomicRanges.of((view) => {
+    return view.state.field(chartWidgetField, false) ?? Decoration.none;
+  }),
+];
