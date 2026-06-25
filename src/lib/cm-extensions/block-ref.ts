@@ -40,7 +40,12 @@ class BlockRefPlugin {
   }
 
   update(update: ViewUpdate) {
-    if (update.docChanged || update.viewportChanged || update.selectionSet) {
+    if (
+      update.docChanged ||
+      update.viewportChanged ||
+      update.selectionSet ||
+      update.transactions.some(tr => tr.reconfigured)
+    ) {
       const { decorations, atomic } = this.buildDecorations(update.view);
       this.decorations = decorations;
       this.atomic = atomic;
@@ -156,15 +161,19 @@ export const blockRefKeymap: KeyBinding[] = [
   },
 ];
 
-const blockRefPluginInstance = ViewPlugin.fromClass(BlockRefPlugin, {
+export const blockRefPluginInstance = ViewPlugin.fromClass(BlockRefPlugin, {
   decorations: (v) => v.decorations,
 });
 
-export const blockRefExtension: Extension = [
+export const blockRefDecorationExtension: Extension = [
   blockRefPluginInstance,
-  keymap.of(blockRefKeymap),
   EditorView.atomicRanges.of((view) => {
     const plugin = view.plugin(blockRefPluginInstance);
     return plugin ? plugin.atomic : Decoration.none;
   }),
+];
+
+export const blockRefExtension: Extension = [
+  blockRefDecorationExtension,
+  keymap.of(blockRefKeymap),
 ];

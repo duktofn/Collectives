@@ -48,7 +48,12 @@ class WikilinkDecorationPlugin {
   }
 
   update(update: ViewUpdate) {
-    if (update.docChanged || update.viewportChanged || update.selectionSet) {
+    if (
+      update.docChanged ||
+      update.viewportChanged ||
+      update.selectionSet ||
+      update.transactions.some(tr => tr.reconfigured)
+    ) {
       const { decorations, atomic } = this.buildDecorations(update.view);
       this.decorations = decorations;
       this.atomic = atomic;
@@ -91,12 +96,16 @@ class WikilinkDecorationPlugin {
               const exists = candidate !== null;
               if (wikilinkCache.get(cacheKey) !== exists) {
                 setCacheValue(cacheKey, exists);
-                view.dispatch({});
+                if (view.dom.isConnected) {
+                  view.dispatch({});
+                }
               }
             })
             .catch(() => {
               setCacheValue(cacheKey, false);
-              view.dispatch({});
+              if (view.dom.isConnected) {
+                view.dispatch({});
+              }
             });
         }
 

@@ -9,31 +9,30 @@ import { chartWidgetExtension } from "./chart-widget";
 import { annotationExtension } from "./annotation";
 import { wikilinkDecorationExtension } from "./wikilink-decoration";
 import { wikilinkAutocomplete } from "./wikilink-autocomplete";
-import { blockRefExtension } from "./block-ref";
+import { blockRefExtension, blockRefDecorationExtension } from "./block-ref";
 import { editorModeFacet } from "./facet";
+
+export const baseEditorExtensions: Extension[] = [
+  markdown({ codeLanguages: languages }),
+  history(),
+  drawSelection(),
+  EditorView.lineWrapping,
+  keymap.of([...defaultKeymap, ...historyKeymap]),
+];
 
 export const modeCompartment = new Compartment();
 
 export function getExtensionsForMode(mode: "view" | "edit-source" | "edit-render"): Extension[] {
-  const baseExtensions = [
-    markdown({ codeLanguages: languages }),
-    history(),
-    drawSelection(),
-    EditorView.lineWrapping,
-    keymap.of([...defaultKeymap, ...historyKeymap]),
-    editorModeFacet.of(mode),
-  ];
-
   switch (mode) {
     case "edit-source":
       return [
-        ...baseExtensions,
+        editorModeFacet.of(mode),
         EditorView.editable.of(true),
         EditorState.readOnly.of(false),
       ];
     case "edit-render":
       return [
-        ...baseExtensions,
+        editorModeFacet.of(mode),
         EditorView.editable.of(true),
         EditorState.readOnly.of(false),
         renderDecorationsExtension,
@@ -46,7 +45,7 @@ export function getExtensionsForMode(mode: "view" | "edit-source" | "edit-render
       ];
     case "view":
       return [
-        ...baseExtensions,
+        editorModeFacet.of(mode),
         EditorView.editable.of(false),
         EditorState.readOnly.of(true),
         renderDecorationsExtension,
@@ -54,7 +53,7 @@ export function getExtensionsForMode(mode: "view" | "edit-source" | "edit-render
         chartWidgetExtension,
         annotationExtension,
         wikilinkDecorationExtension,
-        blockRefExtension,
+        blockRefDecorationExtension,
       ];
   }
 }

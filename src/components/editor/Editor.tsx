@@ -3,7 +3,7 @@ import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { editorStore } from "../../stores/editor";
 import { EditorToolbar } from "./EditorToolbar";
-import { modeCompartment, getExtensionsForMode } from "../../lib/cm-extensions/markdown-mode";
+import { modeCompartment, getExtensionsForMode, baseEditorExtensions } from "../../lib/cm-extensions/markdown-mode";
 import { navigateToFragment } from "../../lib/wikilink/resolver";
 import "./Editor.css";
 
@@ -20,6 +20,7 @@ export function Editor() {
     const startState = EditorState.create({
       doc: editorStore.state.currentContent,
       extensions: [
+        baseEditorExtensions,
         modeCompartment.of(getExtensionsForMode(editorStore.state.mode)),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
@@ -62,14 +63,19 @@ export function Editor() {
   });
 
   // Reconfigure extensions when editor mode changes
-  createEffect(() => {
-    const mode = editorStore.state.mode;
-    if (view) {
-      view.dispatch({
-        effects: modeCompartment.reconfigure(getExtensionsForMode(mode)),
-      });
-    }
-  });
+  createEffect(
+    on(
+      () => editorStore.state.mode,
+      (mode) => {
+        if (view) {
+          view.dispatch({
+            effects: modeCompartment.reconfigure(getExtensionsForMode(mode)),
+          });
+        }
+      },
+      { defer: true }
+    )
+  );
 
   // Listen to openFilePath changes to load new content
   createEffect(
@@ -85,7 +91,8 @@ export function Editor() {
             },
           });
         }
-      }
+      },
+      { defer: true }
     )
   );
 

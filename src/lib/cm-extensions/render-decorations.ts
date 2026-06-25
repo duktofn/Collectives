@@ -29,7 +29,8 @@ class RenderPlugin {
     if (
       update.docChanged ||
       update.viewportChanged ||
-      update.selectionSet
+      update.selectionSet ||
+      update.transactions.some(tr => tr.reconfigured)
     ) {
       const { decorations, atomic } = this.buildDecorations(update.view);
       this.decorations = decorations;

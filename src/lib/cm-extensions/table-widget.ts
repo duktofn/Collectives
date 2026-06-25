@@ -9,6 +9,7 @@ import { RangeSetBuilder, StateField, EditorState } from "@codemirror/state";
 
 
 class TableWidget extends WidgetType {
+  private container: HTMLElement | null = null;
 
   constructor(
     public markdown: string,
@@ -31,6 +32,7 @@ class TableWidget extends WidgetType {
 
   toDOM(view: EditorView) {
     const container = document.createElement("div");
+    this.container = container;
     container.className = "cm-table-widget-container";
 
     const lines = this.markdown
@@ -160,23 +162,30 @@ class TableWidget extends WidgetType {
 
     let from = this.from;
     let to = this.to;
-    try {
-      const tableField = view.state.field(tableWidgetExtension, false);
-      if (tableField) {
-        let foundRange: any = null;
-        tableField.between(0, view.state.doc.length, (f, t, value: any) => {
-          if (value.spec.widget === this) {
+    if (this.container && this.container.isConnected) {
+      try {
+        const pos = view.posAtDOM(this.container);
+        const tableField = view.state.field(tableWidgetExtension, false);
+        if (tableField) {
+          let foundRange: any = null;
+          tableField.between(pos, pos + 1, (f, t, value: any) => {
             foundRange = { from: f, to: t };
             return false;
+          });
+          if (foundRange) {
+            from = foundRange.from;
+            to = foundRange.to;
+          } else {
+            from = pos;
+            to = pos + this.markdown.length;
           }
-        });
-        if (foundRange) {
-          from = foundRange.from;
-          to = foundRange.to;
+        } else {
+          from = pos;
+          to = pos + this.markdown.length;
         }
+      } catch (e) {
+        console.error("Error finding table position via posAtDOM:", e);
       }
-    } catch (e) {
-      console.error("Error finding table position via StateField:", e);
     }
 
     view.dispatch({

@@ -14,6 +14,7 @@ Chart.register(...registerables);
 
 class ChartWidget extends WidgetType {
   private chartInstance: Chart | null = null;
+  private container: HTMLElement | null = null;
 
   constructor(
     public specYaml: string,
@@ -33,6 +34,7 @@ class ChartWidget extends WidgetType {
 
   toDOM(view: EditorView) {
     const container = document.createElement("div");
+    this.container = container;
     container.className = "cm-chart-widget-container";
 
     const isEditable = !view.state.facet(EditorState.readOnly);
@@ -142,23 +144,30 @@ class ChartWidget extends WidgetType {
   updateDocument(view: EditorView, newSpec: string) {
     let from = this.from;
     let to = this.to;
-    try {
-      const chartField = view.state.field(chartWidgetExtension, false);
-      if (chartField) {
-        let foundRange: any = null;
-        chartField.between(0, view.state.doc.length, (f, t, value: any) => {
-          if (value.spec.widget === this) {
+    if (this.container && this.container.isConnected) {
+      try {
+        const pos = view.posAtDOM(this.container);
+        const chartField = view.state.field(chartWidgetExtension, false);
+        if (chartField) {
+          let foundRange: any = null;
+          chartField.between(pos, pos + 1, (f, t, value: any) => {
             foundRange = { from: f, to: t };
             return false;
+          });
+          if (foundRange) {
+            from = foundRange.from;
+            to = foundRange.to;
+          } else {
+            from = pos;
+            to = pos + `\`\`\`chart\n${this.specYaml}\n\`\`\``.length;
           }
-        });
-        if (foundRange) {
-          from = foundRange.from;
-          to = foundRange.to;
+        } else {
+          from = pos;
+          to = pos + `\`\`\`chart\n${this.specYaml}\n\`\`\``.length;
         }
+      } catch (e) {
+        console.error("Error finding chart position via posAtDOM:", e);
       }
-    } catch (e) {
-      console.error("Error finding chart position via StateField:", e);
     }
 
     const serialized = `\`\`\`chart\n${newSpec}\n\`\`\``;

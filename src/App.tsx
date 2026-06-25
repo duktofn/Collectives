@@ -11,6 +11,7 @@ import * as api from "./lib/tauri";
 import { ZipConflictDialog } from "./components/common/ZipConflictDialog";
 import { ThemePanel } from "./components/theme/ThemePanel";
 import { applyThemeSettings, registerCustomFonts } from "./lib/themeEngine";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import "./App.css";
 
 
@@ -45,9 +46,28 @@ export default function App() {
     };
     window.addEventListener("unhandledrejection", handleUnhandledRejection);
 
+    let unlistenClose: (() => void) | undefined;
+    if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined) {
+      try {
+        const appWindow = getCurrentWebviewWindow();
+        unlistenClose = await appWindow.onCloseRequested(async (event) => {
+          event.preventDefault();
+          if (editorStore.state.isDirty && !editorStore.state.isReadOnly) {
+            await editorStore.saveFile();
+          }
+          await appWindow.destroy();
+        });
+      } catch (err) {
+        console.error("Failed to register close request listener:", err);
+      }
+    }
+
     onCleanup(() => {
       window.removeEventListener("error", handleGlobalError);
       window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+      if (unlistenClose) {
+        unlistenClose();
+      }
     });
 
     try {

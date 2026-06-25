@@ -384,12 +384,16 @@ export const collectionsStore = {
       return () => {};
     }
     
-    const unlisten1 = await listen<{ entryId: string; path: string }>("file-modified", (event) => {
+    const unlisten1 = await listen<{ entryId: string; path: string }>("file-modified", async (event) => {
       const payload = event.payload;
       const openPath = editorStore.state.openFilePath;
       const isDirty = editorStore.state.isDirty;
       if (openPath && openPath === payload.path && !isDirty) {
-        editorStore.openFile(payload.path, editorStore.state.isReadOnly);
+        const prevMode = editorStore.state.mode;
+        await editorStore.openFile(payload.path, editorStore.state.isReadOnly);
+        if (prevMode !== "view" && !editorStore.state.isReadOnly) {
+          editorStore.setMode(prevMode);
+        }
       }
     });
 
