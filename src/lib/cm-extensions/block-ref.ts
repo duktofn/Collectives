@@ -54,6 +54,7 @@ class BlockRefPlugin {
 
   buildDecorations(view: EditorView): { decorations: DecorationSet; atomic: DecorationSet } {
     const decs: DecSpec[] = [];
+    const atomicDecs: DecSpec[] = [];
     const doc = view.state.doc;
     const selection = view.state.selection.main;
 
@@ -72,6 +73,14 @@ class BlockRefPlugin {
           if (start >= from && end <= to) {
             const isCursorInLine = selection.head >= line.from && selection.head <= line.to;
 
+            const valReplace = Decoration.replace({ widget: new EmptyWidget() });
+
+            atomicDecs.push({
+              from: start,
+              to: end,
+              value: valReplace,
+            });
+
             if (isCursorInLine) {
               decs.push({
                 from: start,
@@ -82,7 +91,7 @@ class BlockRefPlugin {
               decs.push({
                 from: start,
                 to: end,
-                value: Decoration.replace({ widget: new EmptyWidget() }),
+                value: valReplace,
               });
             }
           }
@@ -92,14 +101,40 @@ class BlockRefPlugin {
     }
 
     decs.sort((a, b) => a.from - b.from);
+    atomicDecs.sort((a, b) => a.from - b.from);
 
     const builder = new RangeSetBuilder<Decoration>();
     const atomicBuilder = new RangeSetBuilder<Decoration>();
+
+    let lastFrom = -1;
+    let lastTo = -1;
     for (const d of decs) {
-      const isReplacement = d.value.spec.widget !== undefined;
-      builder.add(d.from, d.to, d.value);
-      if (isReplacement) {
-        atomicBuilder.add(d.from, d.to, d.value);
+      if (d.from >= lastFrom) {
+        const isReplacement = d.value.spec.widget !== undefined;
+        if (isReplacement && d.from < lastTo) {
+          continue;
+        }
+        builder.add(d.from, d.to, d.value);
+        if (isReplacement) {
+          lastTo = d.to;
+        }
+        lastFrom = d.from;
+      }
+    }
+
+    lastFrom = -1;
+    lastTo = -1;
+    for (const d of atomicDecs) {
+      if (d.from >= lastFrom) {
+        const isReplacement = d.value.spec.widget !== undefined;
+        if (isReplacement && d.from < lastTo) {
+          continue;
+        }
+        if (isReplacement) {
+          atomicBuilder.add(d.from, d.to, d.value);
+          lastTo = d.to;
+        }
+        lastFrom = d.from;
       }
     }
     return {

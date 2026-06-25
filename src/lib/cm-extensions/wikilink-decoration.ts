@@ -62,6 +62,7 @@ class WikilinkDecorationPlugin {
 
   buildDecorations(view: EditorView): { decorations: DecorationSet; atomic: DecorationSet } {
     const decs: DecSpec[] = [];
+    const atomicDecs: DecSpec[] = [];
     const doc = view.state.doc;
     const selection = view.state.selection.main;
     const collectionId = collectionsStore.state.activeCollectionId;
@@ -115,27 +116,51 @@ class WikilinkDecorationPlugin {
         const hashIndex = rawText.indexOf("#");
         const noteNameEnd = hashIndex !== -1 ? matchStart + hashIndex : matchEnd - 2;
 
+        const valStart = Decoration.replace({ widget: new EmptyWidget() });
+        const valEnd = Decoration.replace({ widget: new EmptyWidget() });
+        const valFrag = parsed.fragment && hashIndex !== -1 ? Decoration.replace({ widget: new EmptyWidget() }) : null;
+
+        atomicDecs.push({
+          from: matchStart,
+          to: matchStart + 2,
+          value: valStart,
+        });
+
+        atomicDecs.push({
+          from: matchEnd - 2,
+          to: matchEnd,
+          value: valEnd,
+        });
+
+        if (valFrag) {
+          atomicDecs.push({
+            from: noteNameEnd,
+            to: matchEnd - 2,
+            value: valFrag,
+          });
+        }
+
         if (!isCursorInLine) {
           // Hide [[
           decs.push({
             from: matchStart,
             to: matchStart + 2,
-            value: Decoration.replace({ widget: new EmptyWidget() }),
+            value: valStart,
           });
 
           // Hide ]]
           decs.push({
             from: matchEnd - 2,
             to: matchEnd,
-            value: Decoration.replace({ widget: new EmptyWidget() }),
+            value: valEnd,
           });
 
           // Hide fragment if present
-          if (parsed.fragment && hashIndex !== -1) {
+          if (valFrag) {
             decs.push({
               from: noteNameEnd,
               to: matchEnd - 2,
-              value: Decoration.replace({ widget: new EmptyWidget() }),
+              value: valFrag,
             });
           }
         }
@@ -160,6 +185,14 @@ class WikilinkDecorationPlugin {
       return b.to - a.to;
     });
 
+    atomicDecs.sort((a, b) => {
+      if (a.from !== b.from) return a.from - b.from;
+      if (a.value.startSide !== b.value.startSide) {
+        return a.value.startSide - b.value.startSide;
+      }
+      return b.to - a.to;
+    });
+
     const builder = new RangeSetBuilder<Decoration>();
     const atomicBuilder = new RangeSetBuilder<Decoration>();
     let lastFrom = -1;
@@ -174,6 +207,22 @@ class WikilinkDecorationPlugin {
         }
 
         builder.add(dec.from, dec.to, dec.value);
+        if (isReplacement) {
+          lastTo = dec.to;
+        }
+        lastFrom = dec.from;
+      }
+    }
+
+    lastFrom = -1;
+    lastTo = -1;
+    for (const dec of atomicDecs) {
+      if (dec.from >= lastFrom) {
+        const isReplacement = dec.value.spec.widget !== undefined;
+        if (isReplacement && dec.from < lastTo) {
+          continue;
+        }
+
         if (isReplacement) {
           atomicBuilder.add(dec.from, dec.to, dec.value);
           lastTo = dec.to;

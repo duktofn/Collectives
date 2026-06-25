@@ -40,6 +40,7 @@ class RenderPlugin {
 
   buildDecorations(view: EditorView): { decorations: DecorationSet; atomic: DecorationSet } {
     const decs: DecSpec[] = [];
+    const atomicDecs: DecSpec[] = [];
     const tree = syntaxTree(view.state);
     const selection = view.state.selection.main;
 
@@ -92,15 +93,23 @@ class RenderPlugin {
 
           // Heading HeaderMark (e.g. #, ##)
           if (name === "HeaderMark" && node.node.parent?.name.startsWith("ATXHeading")) {
+            const lineEnd = view.state.doc.lineAt(nodeFrom).to;
+            const maxTo = Math.min(nodeTo + 1, lineEnd);
+            const val = Decoration.replace({
+              widget: new EmptyWidget(),
+            });
+
+            atomicDecs.push({
+              from: nodeFrom,
+              to: maxTo,
+              value: val,
+            });
+
             if (!isCursorInLine) {
-              const lineEnd = view.state.doc.lineAt(nodeFrom).to;
-              const maxTo = Math.min(nodeTo + 1, lineEnd);
               decs.push({
                 from: nodeFrom,
                 to: maxTo, // include space after # safely
-                value: Decoration.replace({
-                  widget: new EmptyWidget(),
-                }),
+                value: val,
               });
             }
           }
@@ -115,17 +124,31 @@ class RenderPlugin {
               }),
             });
 
-            // Hide the ** markers if cursor is not in line
+            // Hide the ** markers
+            const val1 = Decoration.replace({ widget: new EmptyWidget() });
+            const val2 = Decoration.replace({ widget: new EmptyWidget() });
+
+            atomicDecs.push({
+              from: nodeFrom,
+              to: nodeFrom + 2,
+              value: val1,
+            });
+            atomicDecs.push({
+              from: nodeTo - 2,
+              to: nodeTo,
+              value: val2,
+            });
+
             if (!isCursorInLine) {
               decs.push({
                 from: nodeFrom,
                 to: nodeFrom + 2,
-                value: Decoration.replace({ widget: new EmptyWidget() }),
+                value: val1,
               });
               decs.push({
                 from: nodeTo - 2,
                 to: nodeTo,
-                value: Decoration.replace({ widget: new EmptyWidget() }),
+                value: val2,
               });
             }
           }
@@ -140,17 +163,31 @@ class RenderPlugin {
               }),
             });
 
-            // Hide the * markers if cursor is not in line
+            // Hide the * markers
+            const val1 = Decoration.replace({ widget: new EmptyWidget() });
+            const val2 = Decoration.replace({ widget: new EmptyWidget() });
+
+            atomicDecs.push({
+              from: nodeFrom,
+              to: nodeFrom + 1,
+              value: val1,
+            });
+            atomicDecs.push({
+              from: nodeTo - 1,
+              to: nodeTo,
+              value: val2,
+            });
+
             if (!isCursorInLine) {
               decs.push({
                 from: nodeFrom,
                 to: nodeFrom + 1,
-                value: Decoration.replace({ widget: new EmptyWidget() }),
+                value: val1,
               });
               decs.push({
                 from: nodeTo - 1,
                 to: nodeTo,
-                value: Decoration.replace({ widget: new EmptyWidget() }),
+                value: val2,
               });
             }
           }
@@ -165,17 +202,31 @@ class RenderPlugin {
               }),
             });
 
-            // Hide backticks if cursor is not in line
+            // Hide backticks
+            const val1 = Decoration.replace({ widget: new EmptyWidget() });
+            const val2 = Decoration.replace({ widget: new EmptyWidget() });
+
+            atomicDecs.push({
+              from: nodeFrom,
+              to: nodeFrom + 1,
+              value: val1,
+            });
+            atomicDecs.push({
+              from: nodeTo - 1,
+              to: nodeTo,
+              value: val2,
+            });
+
             if (!isCursorInLine) {
               decs.push({
                 from: nodeFrom,
                 to: nodeFrom + 1,
-                value: Decoration.replace({ widget: new EmptyWidget() }),
+                value: val1,
               });
               decs.push({
                 from: nodeTo - 1,
                 to: nodeTo,
-                value: Decoration.replace({ widget: new EmptyWidget() }),
+                value: val2,
               });
             }
           }
@@ -190,31 +241,54 @@ class RenderPlugin {
               }),
             });
 
-            // Hide brackets if cursor is not in the Link node
+            // Hide brackets
+            const val1 = Decoration.replace({ widget: new EmptyWidget() });
+            const val2 = Decoration.replace({ widget: new EmptyWidget() });
+
+            atomicDecs.push({
+              from: nodeFrom,
+              to: nodeFrom + 1,
+              value: val1,
+            });
+            atomicDecs.push({
+              from: nodeTo - 1,
+              to: nodeTo,
+              value: val2,
+            });
+
             if (!isCursorInLink(nodeFrom, nodeTo)) {
               decs.push({
                 from: nodeFrom,
                 to: nodeFrom + 1,
-                value: Decoration.replace({ widget: new EmptyWidget() }),
+                value: val1,
               });
               decs.push({
                 from: nodeTo - 1,
                 to: nodeTo,
-                value: Decoration.replace({ widget: new EmptyWidget() }),
+                value: val2,
               });
             }
           }
 
           if (name === "LinkResource") {
-            // Hide the (url) part if cursor is not in the Link node
+            // Hide the (url) part
+            const val = Decoration.replace({ widget: new EmptyWidget() });
+
+            atomicDecs.push({
+              from: nodeFrom,
+              to: nodeTo,
+              value: val,
+            });
+
             if (!isCursorInLink(nodeFrom, nodeTo)) {
               decs.push({
                 from: nodeFrom,
                 to: nodeTo,
-                value: Decoration.replace({ widget: new EmptyWidget() }),
+                value: val,
               });
             }
           }
+
           // FencedCode
           if (name === "FencedCode") {
             const startLine = view.state.doc.lineAt(nodeFrom);
@@ -224,6 +298,20 @@ class RenderPlugin {
 
             // Check if selection is anywhere inside the fenced code block (inclusive of the fences)
             const isCursorInCodeBlock = selection.head >= nodeFrom && selection.head <= nodeTo;
+
+            const fence1Val = Decoration.replace({ widget: new EmptyWidget() });
+            const fence2Val = Decoration.replace({ widget: new EmptyWidget() });
+
+            atomicDecs.push({
+              from: startLine.from,
+              to: startLine.to,
+              value: fence1Val,
+            });
+            atomicDecs.push({
+              from: endLine.from,
+              to: endLine.to,
+              value: fence2Val,
+            });
 
             if (isCursorInCodeBlock) {
               // The cursor is inside the code block. Show all lines, including fences.
@@ -244,7 +332,7 @@ class RenderPlugin {
               decs.push({
                 from: startLine.from,
                 to: startLine.to,
-                value: Decoration.replace({ widget: new EmptyWidget() }),
+                value: fence1Val,
               });
               decs.push({
                 from: startLine.from,
@@ -255,7 +343,7 @@ class RenderPlugin {
               decs.push({
                 from: endLine.from,
                 to: endLine.to,
-                value: Decoration.replace({ widget: new EmptyWidget() }),
+                value: fence2Val,
               });
               decs.push({
                 from: endLine.from,
@@ -320,6 +408,14 @@ class RenderPlugin {
       return b.to - a.to;
     });
 
+    atomicDecs.sort((a, b) => {
+      if (a.from !== b.from) return a.from - b.from;
+      if (a.value.startSide !== b.value.startSide) {
+        return a.value.startSide - b.value.startSide;
+      }
+      return b.to - a.to;
+    });
+
     const builder = new RangeSetBuilder<Decoration>();
     const atomicBuilder = new RangeSetBuilder<Decoration>();
     let lastFrom = -1;
@@ -333,6 +429,22 @@ class RenderPlugin {
         }
 
         builder.add(dec.from, dec.to, dec.value);
+        if (isReplacement) {
+          lastTo = dec.to;
+        }
+        lastFrom = dec.from;
+      }
+    }
+
+    lastFrom = -1;
+    lastTo = -1;
+    for (const dec of atomicDecs) {
+      if (dec.from >= lastFrom) {
+        const isReplacement = dec.value.spec.widget !== undefined;
+        if (isReplacement && dec.from < lastTo) {
+          continue;
+        }
+
         if (isReplacement) {
           atomicBuilder.add(dec.from, dec.to, dec.value);
           lastTo = dec.to;
