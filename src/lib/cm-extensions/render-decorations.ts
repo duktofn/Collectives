@@ -93,7 +93,8 @@ class RenderPlugin {
           // Heading HeaderMark (e.g. #, ##)
           if (name === "HeaderMark" && node.node.parent?.name.startsWith("ATXHeading")) {
             if (!isCursorInLine) {
-              const maxTo = Math.min(nodeTo + 1, view.state.doc.length);
+              const lineEnd = view.state.doc.lineAt(nodeFrom).to;
+              const maxTo = Math.min(nodeTo + 1, lineEnd);
               decs.push({
                 from: nodeFrom,
                 to: maxTo, // include space after # safely
