@@ -248,30 +248,25 @@ const wikilinkClickEffect = EditorView.domEventHandlers({
     }
 
     const pos = view.posAtDOM(target);
-    const docText = view.state.doc.toString();
-
+    const line = view.state.doc.lineAt(pos);
+    const lineText = line.text;
+    const regex = /\[\[([^\]]+)\]\]/g;
+    let match;
     let startPos = -1;
     let endPos = -1;
 
-    for (let i = pos; i >= 0; i--) {
-      if (docText.startsWith("[[", i)) {
-        startPos = i;
+    while ((match = regex.exec(lineText)) !== null) {
+      const matchStart = line.from + match.index;
+      const matchEnd = matchStart + match[0].length;
+      if (pos >= matchStart && pos <= matchEnd) {
+        startPos = matchStart;
+        endPos = matchEnd;
         break;
-      }
-      if (docText[i] === "\n" || (i < pos && docText.startsWith("]]", i))) {
-        break;
-      }
-    }
-
-    if (startPos !== -1) {
-      const closing = docText.indexOf("]]", startPos);
-      if (closing !== -1 && closing >= pos - 2) {
-        endPos = closing + 2;
       }
     }
 
     if (startPos !== -1 && endPos !== -1) {
-      const raw = docText.slice(startPos, endPos);
+      const raw = view.state.doc.sliceString(startPos, endPos);
       const parsed = parseWikilink(raw);
       const collectionId = collectionsStore.state.activeCollectionId;
 
