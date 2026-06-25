@@ -93,22 +93,20 @@ class RenderPlugin {
 
           // Heading HeaderMark (e.g. #, ##)
           if (name === "HeaderMark" && node.node.parent?.name.startsWith("ATXHeading")) {
-            const lineEnd = view.state.doc.lineAt(nodeFrom).to;
-            const maxTo = Math.min(nodeTo + 1, lineEnd);
-            const val = Decoration.replace({
-              widget: new EmptyWidget(),
-            });
-
-            atomicDecs.push({
-              from: nodeFrom,
-              to: maxTo,
-              value: val,
-            });
-
             if (!isCursorInLine) {
+              const lineEnd = view.state.doc.lineAt(nodeFrom).to;
+              const maxTo = Math.min(nodeTo + 1, lineEnd);
+              const val = Decoration.replace({
+                widget: new EmptyWidget(),
+              });
               decs.push({
                 from: nodeFrom,
                 to: maxTo, // include space after # safely
+                value: val,
+              });
+              atomicDecs.push({
+                from: nodeFrom,
+                to: maxTo,
                 value: val,
               });
             }
@@ -124,28 +122,28 @@ class RenderPlugin {
               }),
             });
 
-            // Hide the ** markers
-            const val1 = Decoration.replace({ widget: new EmptyWidget() });
-            const val2 = Decoration.replace({ widget: new EmptyWidget() });
-
-            atomicDecs.push({
-              from: nodeFrom,
-              to: nodeFrom + 2,
-              value: val1,
-            });
-            atomicDecs.push({
-              from: nodeTo - 2,
-              to: nodeTo,
-              value: val2,
-            });
-
             if (!isCursorInLine) {
+              // Hide the ** markers
+              const val1 = Decoration.replace({ widget: new EmptyWidget() });
+              const val2 = Decoration.replace({ widget: new EmptyWidget() });
+
               decs.push({
                 from: nodeFrom,
                 to: nodeFrom + 2,
                 value: val1,
               });
               decs.push({
+                from: nodeTo - 2,
+                to: nodeTo,
+                value: val2,
+              });
+
+              atomicDecs.push({
+                from: nodeFrom,
+                to: nodeFrom + 2,
+                value: val1,
+              });
+              atomicDecs.push({
                 from: nodeTo - 2,
                 to: nodeTo,
                 value: val2,
@@ -163,28 +161,28 @@ class RenderPlugin {
               }),
             });
 
-            // Hide the * markers
-            const val1 = Decoration.replace({ widget: new EmptyWidget() });
-            const val2 = Decoration.replace({ widget: new EmptyWidget() });
-
-            atomicDecs.push({
-              from: nodeFrom,
-              to: nodeFrom + 1,
-              value: val1,
-            });
-            atomicDecs.push({
-              from: nodeTo - 1,
-              to: nodeTo,
-              value: val2,
-            });
-
             if (!isCursorInLine) {
+              // Hide the * markers
+              const val1 = Decoration.replace({ widget: new EmptyWidget() });
+              const val2 = Decoration.replace({ widget: new EmptyWidget() });
+
               decs.push({
                 from: nodeFrom,
                 to: nodeFrom + 1,
                 value: val1,
               });
               decs.push({
+                from: nodeTo - 1,
+                to: nodeTo,
+                value: val2,
+              });
+
+              atomicDecs.push({
+                from: nodeFrom,
+                to: nodeFrom + 1,
+                value: val1,
+              });
+              atomicDecs.push({
                 from: nodeTo - 1,
                 to: nodeTo,
                 value: val2,
@@ -202,28 +200,28 @@ class RenderPlugin {
               }),
             });
 
-            // Hide backticks
-            const val1 = Decoration.replace({ widget: new EmptyWidget() });
-            const val2 = Decoration.replace({ widget: new EmptyWidget() });
-
-            atomicDecs.push({
-              from: nodeFrom,
-              to: nodeFrom + 1,
-              value: val1,
-            });
-            atomicDecs.push({
-              from: nodeTo - 1,
-              to: nodeTo,
-              value: val2,
-            });
-
             if (!isCursorInLine) {
+              // Hide backticks
+              const val1 = Decoration.replace({ widget: new EmptyWidget() });
+              const val2 = Decoration.replace({ widget: new EmptyWidget() });
+
               decs.push({
                 from: nodeFrom,
                 to: nodeFrom + 1,
                 value: val1,
               });
               decs.push({
+                from: nodeTo - 1,
+                to: nodeTo,
+                value: val2,
+              });
+
+              atomicDecs.push({
+                from: nodeFrom,
+                to: nodeFrom + 1,
+                value: val1,
+              });
+              atomicDecs.push({
                 from: nodeTo - 1,
                 to: nodeTo,
                 value: val2,
@@ -241,22 +239,11 @@ class RenderPlugin {
               }),
             });
 
-            // Hide brackets
-            const val1 = Decoration.replace({ widget: new EmptyWidget() });
-            const val2 = Decoration.replace({ widget: new EmptyWidget() });
-
-            atomicDecs.push({
-              from: nodeFrom,
-              to: nodeFrom + 1,
-              value: val1,
-            });
-            atomicDecs.push({
-              from: nodeTo - 1,
-              to: nodeTo,
-              value: val2,
-            });
-
             if (!isCursorInLink(nodeFrom, nodeTo)) {
+              // Hide brackets
+              const val1 = Decoration.replace({ widget: new EmptyWidget() });
+              const val2 = Decoration.replace({ widget: new EmptyWidget() });
+
               decs.push({
                 from: nodeFrom,
                 to: nodeFrom + 1,
@@ -267,21 +254,32 @@ class RenderPlugin {
                 to: nodeTo,
                 value: val2,
               });
+
+              atomicDecs.push({
+                from: nodeFrom,
+                to: nodeFrom + 1,
+                value: val1,
+              });
+              atomicDecs.push({
+                from: nodeTo - 1,
+                to: nodeTo,
+                value: val2,
+              });
             }
           }
 
           if (name === "LinkResource") {
-            // Hide the (url) part
-            const val = Decoration.replace({ widget: new EmptyWidget() });
-
-            atomicDecs.push({
-              from: nodeFrom,
-              to: nodeTo,
-              value: val,
-            });
-
             if (!isCursorInLink(nodeFrom, nodeTo)) {
+              // Hide the (url) part
+              const val = Decoration.replace({ widget: new EmptyWidget() });
+
               decs.push({
+                from: nodeFrom,
+                to: nodeTo,
+                value: val,
+              });
+
+              atomicDecs.push({
                 from: nodeFrom,
                 to: nodeTo,
                 value: val,
@@ -299,20 +297,6 @@ class RenderPlugin {
             // Check if selection is anywhere inside the fenced code block (inclusive of the fences)
             const isCursorInCodeBlock = selection.head >= nodeFrom && selection.head <= nodeTo;
 
-            const fence1Val = Decoration.replace({ widget: new EmptyWidget() });
-            const fence2Val = Decoration.replace({ widget: new EmptyWidget() });
-
-            atomicDecs.push({
-              from: startLine.from,
-              to: startLine.to,
-              value: fence1Val,
-            });
-            atomicDecs.push({
-              from: endLine.from,
-              to: endLine.to,
-              value: fence2Val,
-            });
-
             if (isCursorInCodeBlock) {
               // The cursor is inside the code block. Show all lines, including fences.
               for (let i = lineStart; i <= lineEnd; i++) {
@@ -328,6 +312,20 @@ class RenderPlugin {
                 });
               }
             } else {
+              const fence1Val = Decoration.replace({ widget: new EmptyWidget() });
+              const fence2Val = Decoration.replace({ widget: new EmptyWidget() });
+
+              atomicDecs.push({
+                from: startLine.from,
+                to: startLine.to,
+                value: fence1Val,
+              });
+              atomicDecs.push({
+                from: endLine.from,
+                to: endLine.to,
+                value: fence2Val,
+              });
+
               // The cursor is outside the code block. Hide opening and closing fences.
               decs.push({
                 from: startLine.from,

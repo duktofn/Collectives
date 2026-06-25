@@ -73,22 +73,22 @@ class BlockRefPlugin {
           if (start >= from && end <= to) {
             const isCursorInLine = selection.head >= line.from && selection.head <= line.to;
 
-            const valReplace = Decoration.replace({ widget: new EmptyWidget() });
-
-            atomicDecs.push({
-              from: start,
-              to: end,
-              value: valReplace,
-            });
-
             if (isCursorInLine) {
               decs.push({
                 from: start,
                 to: end,
-                value: Decoration.mark({ class: "cm-block-ref-visible" }),
+                value: Decoration.mark({
+                  class: "cm-block-ref-id",
+                }),
               });
             } else {
+              const valReplace = Decoration.replace({ widget: new EmptyWidget() });
               decs.push({
+                from: start,
+                to: end,
+                value: valReplace,
+              });
+              atomicDecs.push({
                 from: start,
                 to: end,
                 value: valReplace,

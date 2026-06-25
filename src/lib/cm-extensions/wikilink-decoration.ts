@@ -120,26 +120,6 @@ class WikilinkDecorationPlugin {
         const valEnd = Decoration.replace({ widget: new EmptyWidget() });
         const valFrag = parsed.fragment && hashIndex !== -1 ? Decoration.replace({ widget: new EmptyWidget() }) : null;
 
-        atomicDecs.push({
-          from: matchStart,
-          to: matchStart + 2,
-          value: valStart,
-        });
-
-        atomicDecs.push({
-          from: matchEnd - 2,
-          to: matchEnd,
-          value: valEnd,
-        });
-
-        if (valFrag) {
-          atomicDecs.push({
-            from: noteNameEnd,
-            to: matchEnd - 2,
-            value: valFrag,
-          });
-        }
-
         if (!isCursorInLine) {
           // Hide [[
           decs.push({
@@ -158,6 +138,26 @@ class WikilinkDecorationPlugin {
           // Hide fragment if present
           if (valFrag) {
             decs.push({
+              from: noteNameEnd,
+              to: matchEnd - 2,
+              value: valFrag,
+            });
+          }
+
+          atomicDecs.push({
+            from: matchStart,
+            to: matchStart + 2,
+            value: valStart,
+          });
+
+          atomicDecs.push({
+            from: matchEnd - 2,
+            to: matchEnd,
+            value: valEnd,
+          });
+
+          if (valFrag) {
+            atomicDecs.push({
               from: noteNameEnd,
               to: matchEnd - 2,
               value: valFrag,

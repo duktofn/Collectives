@@ -23,17 +23,57 @@ class TableWidget extends WidgetType {
     return this.markdown === other.markdown;
   }
 
-  updateDOM(dom: HTMLElement, _view: EditorView): boolean {
-    if (dom.contains(document.activeElement)) {
-      return true;
+  // Accurate height estimation based on actual CSS measurements:
+  // .cm-table-widget-container: margin 20px*2 + padding 12px*2 = 64px
+  // Header row: ~40px (padding 8px*2 + font + border)
+  // Data rows: ~36px each
+  // .cm-table-controls bar: ~30px (button + margin-top 8px)
+  get estimatedHeight() {
+    const lines = this.markdown.split("\n").map(l => l.trim()).filter(Boolean);
+    if (lines.length < 2) return 80;
+    const dataRowCount = Math.max(0, lines.length - 2); // subtract header + separator "---"
+    const containerChrome = 64;  // margin 20*2 + padding 12*2
+    const controlsBar = 30;      // "+Row/+Col" bar
+    return containerChrome + 40 /* header */ + dataRowCount * 36 + controlsBar;
+  }
+
+  updateDOM(dom: HTMLElement, view: EditorView): boolean {
+    // Save the index of the currently focused editable cell (if any)
+    const activeCellIndex = dom.contains(document.activeElement)
+      ? Array.from(dom.querySelectorAll("[contenteditable='true']")).indexOf(document.activeElement as HTMLElement)
+      : -1;
+
+    // Re-render the table content into the existing DOM node
+    this.renderInto(dom, view);
+
+    // Restore focus to the same cell position
+    if (activeCellIndex >= 0) {
+      const cells = dom.querySelectorAll("[contenteditable='true']");
+      (cells[activeCellIndex] as HTMLElement)?.focus();
     }
-    return false;
+
+    // Notify CM6 that the widget's DOM height may have changed
+    view.requestMeasure();
+    return true;
   }
 
   toDOM(view: EditorView) {
     const container = document.createElement("div");
     this.container = container;
     container.className = "cm-table-widget-container";
+
+    this.renderInto(container, view);
+
+    return container;
+  }
+
+  /**
+   * Builds the table DOM (thead, tbody, controls) inside the given container.
+   * Shared by toDOM (initial creation) and updateDOM (in-place patching).
+   */
+  private renderInto(container: HTMLElement, view: EditorView) {
+    // Clear previous content
+    container.innerHTML = "";
 
     const lines = this.markdown
       .split("\n")
@@ -42,7 +82,7 @@ class TableWidget extends WidgetType {
 
     if (lines.length < 2) {
       container.textContent = this.markdown;
-      return container;
+      return;
     }
 
     const parseRow = (line: string) => {
@@ -148,8 +188,6 @@ class TableWidget extends WidgetType {
       controls.appendChild(addColBtn);
       container.appendChild(controls);
     }
-
-    return container;
   }
 
   updateDocument(view: EditorView, headers: string[], rows: string[][]) {

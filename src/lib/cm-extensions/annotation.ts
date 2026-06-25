@@ -127,28 +127,27 @@ class AnnotationDecPlugin {
                 }),
               });
 
-              const valStart = Decoration.replace({ widget: new EmptyWidget() });
-              const valEnd = Decoration.replace({ widget: new EmptyWidget() });
-
-              atomicDecs.push({
-                from: start,
-                to: start + 2,
-                value: valStart,
-              });
-              atomicDecs.push({
-                from: end - 1,
-                to: end,
-                value: valEnd,
-              });
-
-              // Hide [^ and ] if cursor is not in line
               if (!isCursorInLine) {
+                const valStart = Decoration.replace({ widget: new EmptyWidget() });
+                const valEnd = Decoration.replace({ widget: new EmptyWidget() });
+
                 decs.push({
                   from: start,
                   to: start + 2,
                   value: valStart,
                 });
                 decs.push({
+                  from: end - 1,
+                  to: end,
+                  value: valEnd,
+                });
+
+                atomicDecs.push({
+                  from: start,
+                  to: start + 2,
+                  value: valStart,
+                });
+                atomicDecs.push({
                   from: end - 1,
                   to: end,
                   value: valEnd,

@@ -15,6 +15,9 @@ Chart.register(...registerables);
 class ChartWidget extends WidgetType {
   private chartInstance: Chart | null = null;
   private container: HTMLElement | null = null;
+  // Cache YAML validity once at construction to avoid re-parsing in estimatedHeight getter,
+  // which CM6 calls frequently during height-map rebuilds.
+  private _isValidConfig: boolean;
 
   constructor(
     public specYaml: string,
@@ -22,10 +25,25 @@ class ChartWidget extends WidgetType {
     public to: number
   ) {
     super();
+    try {
+      const parsed = yaml.load(this.specYaml);
+      this._isValidConfig = !!(parsed && typeof parsed === "object");
+    } catch {
+      this._isValidConfig = false;
+    }
   }
 
   eq(other: ChartWidget) {
     return this.specYaml === other.specYaml;
+  }
+
+  // Accurate height estimation based on actual CSS measurements:
+  // .cm-chart-widget-container: margin 24px*2 + padding 16px*2 = 80px chrome
+  // Valid chart: chartWrapper height 250px (set in JS) → 80 + 250 = 330px
+  // Error case: .cm-chart-error padding 12px*2 + content ~80px + chrome 80px ≈ 180px
+  get estimatedHeight() {
+    if (this._isValidConfig) return 330;
+    return 180;
   }
 
   updateDOM(_dom: HTMLElement, _view: EditorView): boolean {
@@ -120,6 +138,9 @@ class ChartWidget extends WidgetType {
         } else {
           editorWrapper.style.display = "none";
         }
+        // Notify CM6 that the widget's DOM height changed due to showing/hiding
+        // the YAML editor panel, so it can re-measure and update the height map.
+        view.requestMeasure();
       };
 
       chartWrapper.addEventListener("click", toggleEditor);
