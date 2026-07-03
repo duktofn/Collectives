@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { EditorView, runScopeHandlers } from "@codemirror/view";
 import { markdown } from "@codemirror/lang-markdown";
+import { formattingKeymapExtension } from "./formatting-keymap";
 import {
   buildLinePrefixSpec,
   buildListIndentSpec,
@@ -40,6 +41,30 @@ function mountView(doc: string, anchor: number) {
     parent,
   });
   return { view, parent };
+}
+
+function mountFormattingView(doc: string, selection: { anchor: number; head?: number }) {
+  const parent = document.createElement("div");
+  document.body.appendChild(parent);
+  const view = new EditorView({
+    state: EditorState.create({
+      doc,
+      selection: { anchor: selection.anchor, head: selection.head ?? selection.anchor },
+      extensions: [markdown(), formattingKeymapExtension],
+    }),
+    parent,
+  });
+  return { view, parent };
+}
+
+function runAltArrow(view: EditorView, key: "ArrowUp" | "ArrowDown") {
+  const event = new KeyboardEvent("keydown", {
+    key,
+    altKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  return runScopeHandlers(view, event, "editor");
 }
 
 describe("formatting-utils", () => {
@@ -146,6 +171,43 @@ describe("formatting-utils", () => {
     expect(findEnclosingFencedBlock(state, state.selection.main.from, state.selection.main.to)).not.toBeNull();
     const spec = buildToggleCodeBlockSpec(state);
     expect(spec.changes).toEqual({ from: 0, to: doc.length, insert: "code" });
+  });
+
+  it("moves the current line with Alt-ArrowUp", () => {
+    const doc = "one\ntwo\nthree";
+    const { view, parent } = mountFormattingView(doc, { anchor: doc.indexOf("two") });
+
+    expect(runAltArrow(view, "ArrowUp")).toBe(true);
+    expect(view.state.doc.toString()).toBe("two\none\nthree");
+    expect(view.state.doc.lineAt(view.state.selection.main.head).text).toBe("two");
+
+    view.destroy();
+    parent.remove();
+  });
+
+  it("moves selected line blocks with Alt-ArrowDown", () => {
+    const doc = "one\ntwo\nthree\nfour";
+    const from = doc.indexOf("two");
+    const to = doc.indexOf("four") - 1;
+    const { view, parent } = mountFormattingView(doc, { anchor: from, head: to });
+
+    expect(runAltArrow(view, "ArrowDown")).toBe(true);
+    expect(view.state.doc.toString()).toBe("one\nfour\ntwo\nthree");
+    expect(view.state.doc.sliceString(view.state.selection.main.from, view.state.selection.main.to)).toBe("two\nthree");
+
+    view.destroy();
+    parent.remove();
+  });
+
+  it("handles Alt-ArrowUp at the top boundary without changing the document", () => {
+    const doc = "one\ntwo";
+    const { view, parent } = mountFormattingView(doc, { anchor: 0 });
+
+    expect(runAltArrow(view, "ArrowUp")).toBe(true);
+    expect(view.state.doc.toString()).toBe(doc);
+
+    view.destroy();
+    parent.remove();
   });
 });
 

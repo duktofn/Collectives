@@ -180,8 +180,9 @@
   outline: none;
   font-family: var(--font-body);
   font-size: var(--size-body);
-  line-height: 1.6;
+  line-height: var(--line-height, 1.6);
   color: var(--color-text-primary);
+  min-height: 0;
 }
 
 .editor-workspace .cm-scroller {
@@ -194,6 +195,11 @@
   margin: 0 auto;
   width: 100%;
   color: var(--color-text-primary);
+  line-height: var(--line-height, 1.6);
+}
+
+.editor-workspace .cm-line {
+  line-height: var(--line-height, 1.6);
 }
 
 .editor-workspace .cm-cursor {
@@ -481,9 +487,216 @@
   margin: 0;
   font-family: var(--font-mono);
   font-size: 0.9em;
-  line-height: 1.5;
+  line-height: var(--line-height, 1.6);
   color: var(--color-code-text);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Language badge in code block widget */
+.cm-codeblock-lang-badge {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  background-color: var(--bg-active);
+  padding: 1px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  pointer-events: none;
+  user-select: none;
+  line-height: 1.6;
+}
+
+/* === Syntax Highlighting Tokens (dark mode default) === */
+.cm-codeblock-widget-pre .hljs-keyword,
+.cm-codeblock-widget-pre .hljs-selector-tag,
+.cm-codeblock-widget-pre .hljs-built_in,
+.cm-codeblock-widget-pre .hljs-type {
+  color: #e8916e;
+}
+
+.cm-codeblock-widget-pre .hljs-string,
+.cm-codeblock-widget-pre .hljs-addition {
+  color: #a8c97b;
+}
+
+.cm-codeblock-widget-pre .hljs-comment,
+.cm-codeblock-widget-pre .hljs-quote {
+  color: #726f67;
+  font-style: italic;
+}
+
+.cm-codeblock-widget-pre .hljs-number,
+.cm-codeblock-widget-pre .hljs-literal {
+  color: #d4a55c;
+}
+
+.cm-codeblock-widget-pre .hljs-function .hljs-title,
+.cm-codeblock-widget-pre .hljs-title.function_,
+.cm-codeblock-widget-pre .hljs-title {
+  color: #7fbfdf;
+}
+
+.cm-codeblock-widget-pre .hljs-variable,
+.cm-codeblock-widget-pre .hljs-attr,
+.cm-codeblock-widget-pre .hljs-params {
+  color: #e6e3dd;
+}
+
+.cm-codeblock-widget-pre .hljs-meta,
+.cm-codeblock-widget-pre .hljs-meta .hljs-keyword {
+  color: #c49ed0;
+}
+
+.cm-codeblock-widget-pre .hljs-regexp {
+  color: #e8916e;
+}
+
+.cm-codeblock-widget-pre .hljs-symbol,
+.cm-codeblock-widget-pre .hljs-bullet {
+  color: #d4a55c;
+}
+
+.cm-codeblock-widget-pre .hljs-deletion {
+  color: #e8654c;
+}
+
+.cm-codeblock-widget-pre .hljs-selector-class,
+.cm-codeblock-widget-pre .hljs-selector-id {
+  color: #7fbfdf;
+}
+
+.cm-codeblock-widget-pre .hljs-property {
+  color: #e8916e;
+}
+
+.cm-codeblock-widget-pre .hljs-operator,
+.cm-codeblock-widget-pre .hljs-punctuation {
+  color: #a39f96;
+}
+
+/* === Syntax Highlighting Tokens (light mode) === */
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-keyword,
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-selector-tag,
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-built_in,
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-type {
+  color: #c44e24;
+}
+
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-string,
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-addition {
+  color: #388659;
+}
+
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-comment,
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-quote {
+  color: #9f9a91;
+  font-style: italic;
+}
+
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-number,
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-literal {
+  color: #b5830c;
+}
+
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-function .hljs-title,
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-title.function_,
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-title {
+  color: #2570a0;
+}
+
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-variable,
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-attr,
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-params {
+  color: #191919;
+}
+
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-meta,
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-meta .hljs-keyword {
+  color: #8a4dab;
+}
+
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-regexp {
+  color: #c44e24;
+}
+
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-symbol,
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-bullet {
+  color: #b5830c;
+}
+
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-deletion {
+  color: #cf4b30;
+}
+
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-selector-class,
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-selector-id {
+  color: #2570a0;
+}
+
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-property {
+  color: #c44e24;
+}
+
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-operator,
+:root[data-theme="light"] .cm-codeblock-widget-pre .hljs-punctuation {
+  color: #706b64;
+}
+
+/* Light mode via media query (system preference) */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-keyword,
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-selector-tag,
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-built_in,
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-type {
+    color: #c44e24;
+  }
+
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-string,
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-addition {
+    color: #388659;
+  }
+
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-comment,
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-quote {
+    color: #9f9a91;
+    font-style: italic;
+  }
+
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-number,
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-literal {
+    color: #b5830c;
+  }
+
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-function .hljs-title,
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-title.function_,
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-title {
+    color: #2570a0;
+  }
+
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-variable,
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-attr,
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-params {
+    color: #191919;
+  }
+
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-meta,
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-meta .hljs-keyword {
+    color: #8a4dab;
+  }
+
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-property {
+    color: #c44e24;
+  }
+
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-operator,
+  :root:not([data-theme="dark"]) .cm-codeblock-widget-pre .hljs-punctuation {
+    color: #706b64;
+  }
 }
 

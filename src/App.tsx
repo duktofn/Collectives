@@ -18,6 +18,7 @@ import "./App.css";
 export default function App() {
   const [isNewCollectionOpen, setIsNewCollectionOpen] = createSignal(false);
   const [newCollectionError, setNewCollectionError] = createSignal("");
+  const [appNotice, setAppNotice] = createSignal<{ title: string; message: string } | null>(null);
 
   const [isSettingsOpen, setIsSettingsOpen] = createSignal(false);
   const [settings, setSettings] = createSignal<Settings>({
@@ -26,6 +27,11 @@ export default function App() {
   });
 
   const [globalError, setGlobalError] = createSignal<{ message: string; stack?: string } | null>(null);
+
+  const showAppNotice = (title: string, err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err || "Something went wrong");
+    setAppNotice({ title, message });
+  };
 
   onMount(async () => {
     const handleGlobalError = (event: ErrorEvent) => {
@@ -178,6 +184,7 @@ export default function App() {
       }
     } catch (err) {
       console.error("Failed to pick folder", err);
+      showAppNotice("Folder import could not start", err);
     }
   };
 
@@ -191,6 +198,7 @@ export default function App() {
       setIsImportFolderNameOpen(false);
     } catch (err: unknown) {
       setImportFolderNameError((err as Error).message || "Failed to import folder");
+      showAppNotice("Folder import failed", err);
     }
   };
 
@@ -215,6 +223,7 @@ export default function App() {
       }
     } catch (err) {
       console.error("Failed to import ZIP", err);
+      showAppNotice("ZIP import failed", err);
     }
   };
 
@@ -224,6 +233,7 @@ export default function App() {
       setIsZipConflictOpen(false);
     } catch (err) {
       console.error("Failed to import ZIP after conflicts resolved", err);
+      showAppNotice("ZIP import failed", err);
     }
   };
 
@@ -231,7 +241,7 @@ export default function App() {
   createEffect(() => {
     const info = getSelectedEntryInfo();
     if (info && (info.type === "file" || info.type === "file (inside folder-ref)")) {
-      const isReadOnly = info.type === "file (inside folder-ref)";
+      const isReadOnly = false;
       if (editorStore.state.openFilePath !== info.path) {
         editorStore.openFile(info.path, isReadOnly);
       }
@@ -299,6 +309,23 @@ export default function App() {
 
   return (
     <div class="app-container">
+      <Show when={appNotice()}>
+        {(notice) => (
+          <div class="app-notice" role="alert">
+            <div class="app-notice-icon">
+              <Icon name="warning" size={16} />
+            </div>
+            <div class="app-notice-copy">
+              <strong>{notice().title}</strong>
+              <span>{notice().message}</span>
+            </div>
+            <button class="btn btn-text btn-icon" onClick={() => setAppNotice(null)} title="Dismiss notification">
+              <Icon name="close" size={14} />
+            </button>
+          </div>
+        )}
+      </Show>
+
       <Sidebar
         onNewCollectionClick={() => {
           setNewCollectionError("");
@@ -327,7 +354,7 @@ export default function App() {
           }}>
             <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center" }}>
               <span style={{ "font-weight": "600", "font-size": "14px" }}>
-                ⚠️ Unhandled Application Error Detected
+                Unhandled application error
               </span>
               <button
                 class="btn btn-text"
@@ -399,11 +426,12 @@ export default function App() {
           when={collectionsStore.activeCollection()}
           fallback={
             <div class="welcome-screen">
-              <div class="welcome-logo">📂</div>
+              <div class="welcome-logo" aria-hidden="true">
+                <Icon name="folder" size={46} />
+              </div>
               <h1 class="welcome-title">Welcome to Collections</h1>
               <p class="welcome-subtitle">
-                A modern Markdown note taking experience designed around your local files and folders.
-                Create a collection to get started.
+                Create a fresh workspace or bring in an existing Markdown folder. Your notes stay local and editable on disk.
               </p>
               <div class="welcome-actions">
                 <button
@@ -415,6 +443,14 @@ export default function App() {
                 >
                   <Icon name="plus" size={16} />
                   New Collection
+                </button>
+                <button class="btn" onClick={handleImportFolderClick}>
+                  <Icon name="folder-plus" size={16} />
+                  Import Folder
+                </button>
+                <button class="btn" onClick={handleImportZipClick}>
+                  <Icon name="file" size={16} />
+                  Import ZIP
                 </button>
               </div>
 
@@ -476,10 +512,12 @@ export default function App() {
                         "align-items": "center",
                         "justify-content": "center",
                         flex: 1,
-                        color: "var(--color-text-muted)"
+                        color: "var(--color-text-muted)",
+                        gap: "10px",
+                        "text-align": "center"
                       }}>
-                        <Icon name="file" size={48} style={{ opacity: 0.15, "margin-bottom": "16px" }} />
-                        <span>Select a note from the tree to view details</span>
+                        <Icon name="file" size={44} style={{ opacity: 0.18 }} />
+                        <span>Select a Markdown note from the sidebar to start reading or editing.</span>
                       </div>
                     }
                   >

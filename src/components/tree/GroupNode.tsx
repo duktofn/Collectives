@@ -185,6 +185,10 @@ export function GroupNode(props: GroupNodeProps) {
         onClick={toggleExpand}
         onContextMenu={handleContextMenu}
       >
+        <div class="tree-node-icon">
+          <Icon name="virtual-folder" size={14} style={{ color: "var(--color-accent)" }} />
+        </div>
+        <span class="tree-node-name">{entry().name}</span>
         <div
           class="tree-node-arrow"
           style={{
@@ -193,10 +197,6 @@ export function GroupNode(props: GroupNodeProps) {
         >
           <Icon name="chevron-right" size={12} />
         </div>
-        <div class="tree-node-icon">
-          <Icon name="virtual-folder" size={14} style={{ color: "var(--color-accent)" }} />
-        </div>
-        <span class="tree-node-name">{entry().name}</span>
       </div>
 
       <Show when={isExpanded() && entry().children.length > 0}>

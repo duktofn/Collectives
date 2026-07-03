@@ -1,6 +1,7 @@
 import { Compartment, Extension, EditorState } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
+import { indentOnInput } from "@codemirror/language";
 import { EditorView, drawSelection, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { renderDecorationsExtension } from "./render-decorations";
@@ -19,6 +20,7 @@ export const baseEditorExtensions: Extension[] = [
   markdown({ codeLanguages: languages }),
   history(),
   drawSelection(),
+  indentOnInput(),
   EditorView.lineWrapping,
   delimiterPairExtension,
   formattingKeymapExtension,

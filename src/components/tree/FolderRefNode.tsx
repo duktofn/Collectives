@@ -220,15 +220,6 @@ export function FolderRefNode(props: FolderRefNodeProps) {
         onContextMenu={handleContextMenu}
         title={entry().path}
       >
-        <div
-          class="tree-node-arrow"
-          style={{
-            transform: isExpanded() ? "rotate(90deg)" : "none",
-            opacity: isBroken() ? 0.3 : 1
-          }}
-        >
-          <Icon name="chevron-right" size={12} />
-        </div>
         <div class="tree-node-icon">
           <Show when={isBroken()} fallback={<Icon name="folder" size={14} />}>
             <Icon name="warning" size={14} />
@@ -238,6 +229,15 @@ export function FolderRefNode(props: FolderRefNodeProps) {
         <Show when={loading()}>
           <div class="tree-node-loading-spinner" />
         </Show>
+        <div
+          class="tree-node-arrow"
+          style={{
+            transform: isExpanded() ? "rotate(90deg)" : "none",
+            opacity: isBroken() ? 0.3 : 1
+          }}
+        >
+          <Icon name="chevron-right" size={12} />
+        </div>
       </div>
 
       <Show when={isExpanded() && !isBroken() && children().length > 0}>
@@ -342,23 +342,6 @@ function FsNode(props: FsNodeProps) {
         onClick={handleClick}
         title={props.item.path}
       >
-        <Show
-          when={props.item.isDir}
-          fallback={
-            <div style={{ width: "18px", height: "18px", "flex-shrink": 0 }} />
-          }
-        >
-          <div
-            class="tree-node-arrow"
-            style={{
-              transform: isExpanded() ? "rotate(90deg)" : "none",
-              opacity: broken() ? 0.3 : 1
-            }}
-          >
-            <Icon name="chevron-right" size={12} />
-          </div>
-        </Show>
-        
         <div class="tree-node-icon">
           <Show when={broken()} fallback={<Icon name={props.item.isDir ? "folder" : "file"} size={14} />}>
             <Icon name="warning" size={14} />
@@ -368,6 +351,18 @@ function FsNode(props: FsNodeProps) {
         <span class="tree-node-name">{getDisplayName()}</span>
         <Show when={loading()}>
           <div class="tree-node-loading-spinner" />
+        </Show>
+
+        <Show when={props.item.isDir}>
+          <div
+            class="tree-node-arrow"
+            style={{
+              transform: isExpanded() ? "rotate(90deg)" : "none",
+              opacity: broken() ? 0.3 : 1
+            }}
+          >
+            <Icon name="chevron-right" size={12} />
+          </div>
         </Show>
       </div>
 

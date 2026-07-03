@@ -206,7 +206,7 @@ class TableWidget extends WidgetType {
         const tableField = view.state.field(tableWidgetField, false);
         if (tableField) {
           let foundRange: any = null;
-          tableField.between(pos, pos + 1, (f, t, value: any) => {
+          tableField.between(pos, pos + 1, (f, t, _value: any) => {
             foundRange = { from: f, to: t };
             return false;
           });

@@ -19,6 +19,7 @@ const variableMappings: Record<keyof Omit<Settings, "theme" | "customFonts">, st
   colorCodeText: "--color-code-text",
   colorLink: "--color-link",
   colorLinkHover: "--color-link-hover",
+  lineHeight: "--line-height",
 };
 
 /**
@@ -120,6 +121,7 @@ export function getDefaultThemeValues(isDarkMode: boolean): Record<string, strin
       sizeH2: "1.65",
       sizeH3: "1.35",
       sizeH4: "1.15",
+      lineHeight: "1.6",
       colorH1: "#e6e3dd",
       colorBody: "#e6e3dd",
       colorH2: "#e6e3dd",
@@ -137,6 +139,7 @@ export function getDefaultThemeValues(isDarkMode: boolean): Record<string, strin
       sizeH2: "1.65",
       sizeH3: "1.35",
       sizeH4: "1.15",
+      lineHeight: "1.6",
       colorH1: "#191919",
       colorBody: "#191919",
       colorH2: "#191919",

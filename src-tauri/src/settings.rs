@@ -39,6 +39,9 @@ pub struct Settings {
     pub color_link: Option<String>,
     pub color_link_hover: Option<String>,
     
+    // Line spacing
+    pub line_height: Option<f32>,
+    
     // Imported custom fonts registry
     pub custom_fonts: Option<Vec<CustomFont>>,
 }
@@ -62,6 +65,7 @@ impl Default for Settings {
             color_code_text: None,
             color_link: None,
             color_link_hover: None,
+            line_height: None,
             custom_fonts: None,
         }
     }

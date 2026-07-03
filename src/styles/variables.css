@@ -33,6 +33,7 @@
   --size-h2: 1.65em;
   --size-h3: 1.35em;
   --size-h4: 1.15em;
+  --line-height: 1.6;
   
   --color-h1: var(--color-text-primary);
   --color-h2: var(--color-text-primary);

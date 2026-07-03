@@ -127,7 +127,12 @@ export function Sidebar(props: SidebarProps) {
           when={activeCol()}
           fallback={
             <div class="sidebar-empty">
-              Open a collection from the footer dropdown to view notes.
+              <Icon name="folder" size={22} />
+              <span>Choose a collection or start from your local notes.</span>
+              <button class="btn btn-primary sidebar-empty-action" onClick={props.onNewCollectionClick}>
+                <Icon name="plus" size={14} />
+                New Collection
+              </button>
             </div>
           }
         >
@@ -169,7 +174,18 @@ export function Sidebar(props: SidebarProps) {
                   when={col().entries.length > 0}
                   fallback={
                     <div class="tree-empty">
-                      No entries. Add files or folders using options.
+                      <Icon name="file-plus" size={22} />
+                      <span>No notes here yet.</span>
+                      <div class="tree-empty-actions">
+                        <button class="btn btn-text" onClick={handleAddFiles}>
+                          <Icon name="file-plus" size={14} />
+                          Add Files
+                        </button>
+                        <button class="btn btn-text" onClick={handleAddFolderRef}>
+                          <Icon name="folder-plus" size={14} />
+                          Add Folder
+                        </button>
+                      </div>
                     </div>
                   }
                 >

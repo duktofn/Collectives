@@ -77,6 +77,7 @@ export function ThemePanel(props: ThemePanelProps) {
       fontBody: undefined,
       fontMono: undefined,
       fontScale: 1.0,
+      lineHeight: undefined,
       sizeH1: undefined,
       colorBody: undefined,
       sizeH2: undefined,
@@ -308,6 +309,21 @@ export function ThemePanel(props: ThemePanelProps) {
                   {(font) => <option value={font}>{font}</option>}
                 </For>
               </select>
+            </div>
+
+            <div class="input-group">
+              <div style={{ display: "flex", "justify-content": "space-between" }}>
+                <label>Line Height</label>
+                <span class="value-display">{(props.settings.lineHeight ?? 1.6).toFixed(1)}</span>
+              </div>
+              <input 
+                type="range" 
+                min="1.0" 
+                max="2.5" 
+                step="0.1"
+                value={props.settings.lineHeight ?? 1.6}
+                onInput={(e) => updateSetting("lineHeight", parseFloat(e.currentTarget.value))}
+              />
             </div>
 
             <div class="input-group">

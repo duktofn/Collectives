@@ -415,10 +415,24 @@ export const collectionsStore = {
       await collectionsStore.relinkEntry(payload.entryId, payload.newPath);
     });
 
+    const unlistenFolderChanged = await listen<{ entryId: string; path: string; changedFilePath: string }>("folder-changed", async (event) => {
+      const payload = event.payload;
+      const openPath = editorStore.state.openFilePath;
+      const isDirty = editorStore.state.isDirty;
+      if (openPath && openPath === payload.changedFilePath && !isDirty) {
+        const prevMode = editorStore.state.mode;
+        await editorStore.openFile(payload.changedFilePath, editorStore.state.isReadOnly);
+        if (prevMode !== "view" && !editorStore.state.isReadOnly) {
+          editorStore.setMode(prevMode);
+        }
+      }
+    });
+
     return () => {
       unlisten1();
       unlisten2();
       unlisten3();
+      unlistenFolderChanged();
     };
   }
 };

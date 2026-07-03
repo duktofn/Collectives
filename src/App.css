@@ -49,6 +49,44 @@ body {
   position: relative;
 }
 
+.app-notice {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 2200;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: min(420px, calc(100vw - 32px));
+  padding: 12px;
+  background-color: var(--bg-modal);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  color: var(--color-text-primary);
+}
+
+.app-notice-icon {
+  display: flex;
+  color: var(--color-danger);
+  padding-top: 2px;
+}
+
+.app-notice-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.app-notice-copy span {
+  color: var(--color-text-secondary);
+  word-break: break-word;
+}
+
 .main-content {
   flex: 1;
   display: flex;
@@ -73,7 +111,10 @@ body {
 }
 
 .welcome-logo {
-  font-size: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
   margin-bottom: 20px;
   filter: drop-shadow(0 4px 12px rgba(217, 98, 54, 0.2));
 }
@@ -97,6 +138,8 @@ body {
 
 .welcome-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 12px;
 }
 

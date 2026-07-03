@@ -1,5 +1,6 @@
 import { Prec, Extension } from "@codemirror/state";
 import { EditorView, KeyBinding, keymap } from "@codemirror/view";
+import { moveLineDown, moveLineUp } from "@codemirror/commands";
 import { isCursorInFencedCode } from "./code-block-widget";
 import {
   canRunFormatting,
@@ -71,7 +72,29 @@ const listIndentKeymap: KeyBinding[] = [
   },
 ];
 
+const lineMoveKeymap: KeyBinding[] = [
+  {
+    key: "Alt-ArrowUp",
+    preventDefault: true,
+    run: (view) => {
+      const moved = moveLineUp(view);
+      if (moved) view.requestMeasure();
+      return moved;
+    },
+  },
+  {
+    key: "Alt-ArrowDown",
+    preventDefault: true,
+    run: (view) => {
+      const moved = moveLineDown(view);
+      if (moved) view.requestMeasure();
+      return moved;
+    },
+  },
+];
+
 export const formattingKeymapExtension: Extension = [
+  Prec.highest(keymap.of(lineMoveKeymap)),
   keymap.of(formattingBindings),
   Prec.high(keymap.of(listIndentKeymap)),
 ];

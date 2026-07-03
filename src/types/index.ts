@@ -50,6 +50,7 @@ export interface Settings {
   colorCodeText?: string;
   colorLink?: string;
   colorLinkHover?: string;
+  lineHeight?: number;
   customFonts?: CustomFont[];
 }
 

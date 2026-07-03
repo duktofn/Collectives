@@ -181,7 +181,7 @@ class ChartWidget extends WidgetType {
         const chartField = view.state.field(chartWidgetField, false);
         if (chartField) {
           let foundRange: any = null;
-          chartField.between(pos, pos + 1, (f, t, value: any) => {
+          chartField.between(pos, pos + 1, (f, t, _value: any) => {
             foundRange = { from: f, to: t };
             return false;
           });

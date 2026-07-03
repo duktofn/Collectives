@@ -85,11 +85,25 @@
 }
 
 .sidebar-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   padding: 32px 16px;
   color: var(--color-text-muted);
   font-size: 13px;
   text-align: center;
   line-height: 1.6;
+}
+
+.sidebar-empty svg {
+  color: var(--color-text-muted);
+  opacity: 0.55;
+}
+
+.sidebar-empty-action {
+  width: 100%;
+  max-width: 180px;
 }
 
 .tree-content-container {
@@ -131,11 +145,30 @@
 }
 
 .tree-empty {
-  padding: 24px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 8px;
   color: var(--color-text-muted);
   font-size: 12.5px;
   text-align: center;
   line-height: 1.5;
+}
+
+.tree-empty svg {
+  opacity: 0.55;
+}
+
+.tree-empty-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.tree-empty-actions .btn {
+  width: 100%;
 }
 
 /* Footer */

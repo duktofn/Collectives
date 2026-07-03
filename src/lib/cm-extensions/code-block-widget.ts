@@ -6,6 +6,7 @@ import {
   WidgetType,
 } from "@codemirror/view";
 import { RangeSetBuilder, StateField, EditorState, Extension } from "@codemirror/state";
+import { highlightCode } from "./syntax-highlight";
 
 export function isChartFencedCode(state: EditorState, nodeFrom: number): boolean {
   return state.doc.lineAt(nodeFrom).text.trim().startsWith("```chart");
@@ -57,12 +58,26 @@ class CodeBlockWidget extends WidgetType {
     const pre = dom.querySelector("pre");
     const code = dom.querySelector("code");
     if (pre && code) {
-      code.textContent = this.codeText || " ";
+      code.innerHTML = highlightCode(this.codeText, this.language) || " ";
       if (this.language) {
         code.setAttribute("data-lang", this.language);
       } else {
         code.removeAttribute("data-lang");
       }
+    }
+    // Update language badge
+    const existingBadge = dom.querySelector(".cm-codeblock-lang-badge");
+    if (this.language) {
+      if (existingBadge) {
+        existingBadge.textContent = this.language;
+      } else {
+        const badge = document.createElement("span");
+        badge.className = "cm-codeblock-lang-badge";
+        badge.textContent = this.language;
+        dom.appendChild(badge);
+      }
+    } else if (existingBadge) {
+      existingBadge.remove();
     }
     view.requestMeasure();
     return true;
@@ -71,18 +86,27 @@ class CodeBlockWidget extends WidgetType {
   toDOM(_view: EditorView) {
     const container = document.createElement("div");
     container.className = "cm-codeblock-widget-container";
+    container.style.position = "relative";
 
     const pre = document.createElement("pre");
     pre.className = "cm-codeblock-widget-pre";
 
     const code = document.createElement("code");
-    code.textContent = this.codeText || " ";
+    code.innerHTML = highlightCode(this.codeText, this.language) || " ";
     if (this.language) {
       code.setAttribute("data-lang", this.language);
     }
 
     pre.appendChild(code);
     container.appendChild(pre);
+
+    if (this.language) {
+      const badge = document.createElement("span");
+      badge.className = "cm-codeblock-lang-badge";
+      badge.textContent = this.language;
+      container.appendChild(badge);
+    }
+
     return container;
   }
 }
