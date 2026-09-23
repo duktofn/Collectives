@@ -1,6 +1,6 @@
+use crate::settings::CustomFont;
 use std::fs;
 use std::path::{Path, PathBuf};
-use crate::settings::CustomFont;
 
 pub fn get_fonts_dir(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join("fonts")
@@ -14,7 +14,10 @@ pub fn import_font(
     style: &str,
 ) -> Result<CustomFont, String> {
     if !source_path.exists() {
-        return Err(format!("Source font file does not exist: {:?}", source_path));
+        return Err(format!(
+            "Source font file does not exist: {:?}",
+            source_path
+        ));
     }
 
     let extension = source_path
@@ -28,7 +31,8 @@ pub fn import_font(
     }
 
     let fonts_dir = get_fonts_dir(app_data_dir);
-    fs::create_dir_all(&fonts_dir).map_err(|e| format!("Failed to create fonts directory: {}", e))?;
+    fs::create_dir_all(&fonts_dir)
+        .map_err(|e| format!("Failed to create fonts directory: {}", e))?;
 
     // Sanitize family name for safe file path
     let sanitized_family: String = family_name
@@ -39,8 +43,7 @@ pub fn import_font(
     let file_name = format!("{}_{}_{}.{}", sanitized_family, weight, style, extension);
     let target_path = fonts_dir.join(&file_name);
 
-    fs::copy(source_path, &target_path)
-        .map_err(|e| format!("Failed to copy font file: {}", e))?;
+    fs::copy(source_path, &target_path).map_err(|e| format!("Failed to copy font file: {}", e))?;
 
     Ok(CustomFont {
         family: family_name.to_string(),
@@ -55,7 +58,7 @@ pub fn delete_font(app_data_dir: &Path, file_name: &str) -> Result<(), String> {
     if file_name.contains('/') || file_name.contains('\\') || file_name == ".." {
         return Err("Invalid file name".to_string());
     }
-    
+
     let font_path = get_fonts_dir(app_data_dir).join(file_name);
     if font_path.exists() {
         fs::remove_file(font_path).map_err(|e| format!("Failed to remove font file: {}", e))?;
@@ -72,7 +75,7 @@ mod tests {
     fn test_import_delete_font() {
         let temp_app_data = tempdir().unwrap();
         let temp_src_dir = tempdir().unwrap();
-        
+
         let dummy_font_path = temp_src_dir.path().join("test_font.woff2");
         fs::write(&dummy_font_path, b"dummy font contents").unwrap();
 
@@ -83,7 +86,8 @@ mod tests {
             "My Font",
             "400",
             "normal",
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(imported.family, "My Font");
         assert_eq!(imported.file_name, "My_Font_400_normal.woff2");
@@ -93,7 +97,10 @@ mod tests {
         // Verify file copied
         let target_font_path = get_fonts_dir(temp_app_data.path()).join("My_Font_400_normal.woff2");
         assert!(target_font_path.exists());
-        assert_eq!(fs::read_to_string(&target_font_path).unwrap(), "dummy font contents");
+        assert_eq!(
+            fs::read_to_string(&target_font_path).unwrap(),
+            "dummy font contents"
+        );
 
         // 2. Reject unsupported extension
         let invalid_font_path = temp_src_dir.path().join("test_font.txt");

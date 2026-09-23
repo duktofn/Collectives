@@ -6,7 +6,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
 // Mock Tauri APIs
-vi.mock("../tauri", () => {
+vi.mock("../../features/links", () => {
   return {
     resolveWikilink: vi.fn((_collectionId: string, noteName: string) => {
       if (noteName === "exists") {

@@ -1,0 +1,21 @@
+import { collectionsIpcAdapter } from "./infrastructure/ipc";
+
+export const getCollections = collectionsIpcAdapter.getCollections;
+export const createCollection = collectionsIpcAdapter.createCollection;
+export const updateCollection = collectionsIpcAdapter.updateCollection;
+export const deleteCollection = collectionsIpcAdapter.deleteCollection;
+export const addEntry = collectionsIpcAdapter.addEntry;
+export const removeEntry = collectionsIpcAdapter.removeEntry;
+export const deleteGroupAndPromote = collectionsIpcAdapter.deleteGroupAndPromote;
+export const moveEntry = collectionsIpcAdapter.moveEntry;
+export const createGroup = collectionsIpcAdapter.createGroup;
+export const renameGroup = collectionsIpcAdapter.renameGroup;
+export const addFileEntries = collectionsIpcAdapter.addFileEntries;
+export const addFolderRef = collectionsIpcAdapter.addFolderRef;
+export const validateEntries = collectionsIpcAdapter.validateEntries;
+export const initializeIdentityCache = collectionsIpcAdapter.initializeIdentityCache;
+export const detectMovedEntry = collectionsIpcAdapter.detectMovedEntry;
+export const applyCollectionMutationV2 = collectionsIpcAdapter.applyCollectionMutationV2;
+export const migrationStatus = collectionsIpcAdapter.migrationStatus;
+export const migrationRetry = collectionsIpcAdapter.migrationRetry;
+export const reconcileCollectionSnapshot = collectionsIpcAdapter.reconcileCollectionSnapshot;

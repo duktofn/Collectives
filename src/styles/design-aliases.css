@@ -1,0 +1,31 @@
+:root {
+  /* Semantic aliases intentionally consume the persisted-theme legacy variables. */
+  --ds-canvas: var(--bg-primary);
+  --ds-surface: var(--bg-secondary);
+  --ds-surface-raised: var(--bg-modal);
+  --ds-surface-active: var(--bg-active);
+  --ds-surface-hover: var(--bg-hover);
+  --ds-border: var(--color-border);
+  --ds-border-strong: var(--color-border-hover);
+  --ds-text-primary: var(--color-text-primary);
+  --ds-text-secondary: var(--color-text-secondary);
+  --ds-text-muted: var(--color-text-muted);
+  --ds-accent: var(--color-accent);
+  --ds-accent-hover: var(--color-accent-hover);
+  --ds-accent-subtle: var(--color-accent-bg);
+  --ds-danger: var(--color-danger);
+  --ds-danger-subtle: var(--color-danger-bg);
+  --ds-warning: var(--color-warning);
+  --ds-warning-subtle: var(--color-warning-bg);
+  --ds-success: var(--color-success);
+  --ds-font-body: var(--font-body);
+  --ds-font-mono: var(--font-mono);
+  --ds-radius-sm: var(--radius-sm);
+  --ds-radius-md: var(--radius-md);
+  --ds-radius-lg: var(--radius-lg);
+  --ds-shadow-sm: var(--shadow-sm);
+  --ds-shadow-md: var(--shadow-md);
+  --ds-shadow-lg: var(--shadow-lg);
+  --ds-transition-fast: var(--transition-fast);
+  --ds-transition-normal: var(--transition-normal);
+}

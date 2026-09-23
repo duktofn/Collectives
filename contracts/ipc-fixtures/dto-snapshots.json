@@ -1,0 +1,15 @@
+{
+  "fixtureVersion": 1,
+  "snapshots": {
+    "fileSnapshot": {"content":"# Note","versionToken":"token-v1"},
+    "folderRefSnapshot": {"content":"# Synthetic FolderRef Note","versionToken":"token-folderref-v1"},
+    "folderRefRetryableError": {"code":"stale_read","message":"FolderRef child is not ready yet","details":{"classification":"retryable","reason":"absent_or_create_rename"}},
+    "zipConflict": {"conflictId":"conflict-1","entryId":"entry-1","displayName":"note.md","targetPath":"C:/notes/note.md","originMembers":["assets/note.md"],"allowedResolutions":["overwrite","rename","skip"],"kind":"destination-existing"},
+    "eventPayloads": {
+      "entry-renamed": {"entryId":"entry-1","oldPath":"C:/old.md","newPath":"C:/new.md"},
+      "file-modified": {"entryId":"entry-1","path":"C:/new.md"},
+      "entry-deleted": {"entryId":"entry-1","path":"C:/new.md"},
+      "folder-changed": {"entryId":"folder-1","path":"C:/notes","changedFilePath":"C:/notes/new.md"}
+    }
+  }
+}

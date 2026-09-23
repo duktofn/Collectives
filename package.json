@@ -12,7 +12,11 @@
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
-    "test": "vitest"
+    "test": "vitest --exclude e2e",
+    "phase0:frontend-bench": "vitest bench --run src/benchmarks/phase0-frontend.bench.ts",
+    "phase0:verify-quality": "node scripts/phase0/verify-quality.mjs",
+    "phase0:fixtures": "node scripts/phase0/generate-fixtures.mjs",
+    "phase0:bench": "node scripts/phase0/run-benchmarks.mjs"
   },
   "license": "MIT",
   "dependencies": {
@@ -36,6 +40,7 @@
     "solid-js": "^1.9.3"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "@solidjs/testing-library": "^0.8.10",
     "@tauri-apps/cli": "^2",
     "@types/js-yaml": "^4.0.9",

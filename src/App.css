@@ -1,5 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
 @import "./styles/variables.css";
+@import "./styles/design-tokens.css";
+@import "./styles/design-aliases.css";
+@import "./styles/design-system.css";
 
 /* Reset & Base */
 *, *::before, *::after {
@@ -95,6 +98,10 @@ body {
   overflow: hidden;
   position: relative;
   background-color: var(--bg-primary);
+}
+
+.collection-workspace {
+  display: contents;
 }
 
 /* Empty State */

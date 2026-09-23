@@ -1,0 +1,23 @@
+name: Phase 6 quality
+
+on:
+  workflow_dispatch:
+
+jobs:
+  controlled-quality:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: node scripts/phase5/resolve-predecessors.mjs --check --run-id phase5-20260824-feature42-final
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test -- --run
+      - run: cargo fmt --all -- --check
+        working-directory: src-tauri
+      - run: cargo test --locked --test phase6_watcher_stress
+        working-directory: src-tauri

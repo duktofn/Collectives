@@ -1,6 +1,6 @@
+use crate::collection::{Collection, Entry};
 use rusqlite::{params, Connection};
 use std::path::{Path, PathBuf};
-use crate::collection::{Collection, Entry};
 use tauri::AppHandle;
 use tauri::Manager;
 
@@ -16,8 +16,8 @@ pub fn init_db_at_path(db_path: &Path) -> Result<Connection, String> {
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let conn = Connection::open(db_path)
-        .map_err(|e| format!("Failed to open SQLite database: {}", e))?;
+    let conn =
+        Connection::open(db_path).map_err(|e| format!("Failed to open SQLite database: {}", e))?;
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS link_index (
@@ -117,7 +117,10 @@ pub fn rebuild_index_from_collections(
     Ok(())
 }
 
-pub fn update_index_for_collection(conn: &Connection, collection: &Collection) -> Result<(), String> {
+pub fn update_index_for_collection(
+    conn: &Connection,
+    collection: &Collection,
+) -> Result<(), String> {
     clear_collection_entries(conn, &collection.id)?;
 
     let mut all_entries = Vec::new();
@@ -159,7 +162,7 @@ fn extract_index_entries(collection_id: &str, entries: &[Entry], out: &mut Vec<I
             Entry::File { id, path } => {
                 let path_buf = Path::new(path);
                 let file_name = path_buf.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                let display_name = if path_buf.extension().map_or(false, |ext| ext == "md") {
+                let display_name = if path_buf.extension().is_some_and(|ext| ext == "md") {
                     path_buf
                         .file_stem()
                         .and_then(|s| s.to_str())
@@ -317,12 +320,16 @@ mod tests {
         insert_or_replace_entry(&conn, &entry2).unwrap();
 
         // Query count
-        let count: i32 = conn.query_row("SELECT COUNT(*) FROM link_index", [], |row| row.get(0)).unwrap();
+        let count: i32 = conn
+            .query_row("SELECT COUNT(*) FROM link_index", [], |row| row.get(0))
+            .unwrap();
         assert_eq!(count, 2);
 
         // Delete one
         delete_entry(&conn, "col-1", "entry-1").unwrap();
-        let count_after_delete: i32 = conn.query_row("SELECT COUNT(*) FROM link_index", [], |row| row.get(0)).unwrap();
+        let count_after_delete: i32 = conn
+            .query_row("SELECT COUNT(*) FROM link_index", [], |row| row.get(0))
+            .unwrap();
         assert_eq!(count_after_delete, 1);
 
         // Rebuild test
@@ -340,13 +347,11 @@ mod tests {
                 Entry::Group {
                     id: "virtual-g".to_string(),
                     name: "Group".to_string(),
-                    children: vec![
-                        Entry::File {
-                            id: "nested-file".to_string(),
-                            path: "d:/other/Nested.md".to_string(),
-                        }
-                    ]
-                }
+                    children: vec![Entry::File {
+                        id: "nested-file".to_string(),
+                        path: "d:/other/Nested.md".to_string(),
+                    }],
+                },
             ],
             metadata: None,
         };
@@ -354,15 +359,19 @@ mod tests {
         rebuild_index_from_collections(&conn, &[col]).unwrap();
 
         // Total count should be 2 (Awesome Note + Nested)
-        let final_count: i32 = conn.query_row("SELECT COUNT(*) FROM link_index", [], |row| row.get(0)).unwrap();
+        let final_count: i32 = conn
+            .query_row("SELECT COUNT(*) FROM link_index", [], |row| row.get(0))
+            .unwrap();
         assert_eq!(final_count, 2);
 
         // Verify nested file resolved name (without extension)
-        let resolved_name: String = conn.query_row(
-            "SELECT display_name FROM link_index WHERE entry_id = 'nested-file'",
-            [],
-            |row| row.get(0)
-        ).unwrap();
+        let resolved_name: String = conn
+            .query_row(
+                "SELECT display_name FROM link_index WHERE entry_id = 'nested-file'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(resolved_name, "Nested");
 
         // Test search_by_name and resolve_by_name
@@ -416,4 +425,3 @@ mod tests {
         assert!(resolve_res_none.is_none());
     }
 }
-

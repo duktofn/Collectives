@@ -23,6 +23,11 @@
   gap: 8px;
   overflow: hidden;
   max-width: 50%;
+  transition: margin-left var(--transition-normal);
+}
+
+.editor-title-container.sidebar-collapsed {
+  margin-left: var(--ds-sidebar-collapsed-gutter);
 }
 
 .editor-file-icon {

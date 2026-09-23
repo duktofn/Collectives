@@ -1,5 +1,5 @@
 import { Settings, CustomFont } from "../types";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc } from "../platform";
 import { requestEditorMeasure } from "./editorMeasure";
 
 const variableMappings: Record<keyof Omit<Settings, "theme" | "customFonts">, string> = {

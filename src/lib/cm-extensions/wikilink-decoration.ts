@@ -10,8 +10,8 @@ import { parseWikilink } from "../wikilink/parser";
 import { resolveAndNavigate } from "../wikilink/resolver";
 import { collectionsStore } from "../../stores/collections";
 import { editorStore } from "../../stores/editor";
-import { resolveWikilink } from "../tauri";
-import { message } from "@tauri-apps/plugin-dialog";
+import { resolveWikilink } from "../../features/links";
+import { message } from "../../platform";
 import { EmptyWidget } from "./empty-widget";
 
 interface DecSpec {

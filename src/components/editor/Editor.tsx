@@ -1,9 +1,8 @@
-import { onMount, onCleanup, createEffect, on } from "solid-js";
+import { onMount, onCleanup, createEffect, on, createUniqueId } from "solid-js";
 import { EditorView } from "@codemirror/view";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { editorStore } from "../../stores/editor";
-import { EditorToolbar } from "./EditorToolbar";
-import { modeCompartment, getExtensionsForMode, baseEditorExtensions } from "../../lib/cm-extensions/markdown-mode";
+import { modeCompartment, getExtensionsForMode, getBaseExtensionsForFile } from "../../lib/cm-extensions/markdown-mode";
 import { navigateToFragment } from "../../lib/wikilink/resolver";
 import { registerEditorMeasureRequest } from "../../lib/editorMeasure";
 import "./Editor.css";
@@ -15,6 +14,27 @@ export function Editor() {
   let forceSaveTimeout: ReturnType<typeof setTimeout> | null = null;
   let unregisterMeasure: (() => void) | undefined;
   let resizeObserver: ResizeObserver | undefined;
+  const contentAttributesCompartment = new Compartment();
+  const baseCompartment = new Compartment();
+  const helpId = `editor-help-${createUniqueId()}`;
+
+  const fileName = () => {
+    const path = editorStore.state.openFilePath;
+    return path ? path.split(/[/\\]/).pop() || path : "untitled document";
+  };
+
+  const modeDescription = () => {
+    if (editorStore.state.fileKind === "text-source") return "text-source mode";
+    if (editorStore.state.mode === "view") return "Markdown render mode";
+    if (editorStore.state.mode === "edit-source") return "Markdown source mode";
+    return "Markdown edit mode";
+  };
+
+  const contentAttributes = () => EditorView.contentAttributes.of({
+    "aria-label": `${fileName()} — ${modeDescription()}`,
+    "aria-readonly": editorStore.state.isReadOnly ? "true" : "false",
+    "aria-describedby": helpId,
+  });
 
   onMount(() => {
     if (!editorRef) return;
@@ -23,8 +43,9 @@ export function Editor() {
     const startState = EditorState.create({
       doc: editorStore.state.currentContent,
       extensions: [
-        baseEditorExtensions,
-        modeCompartment.of(getExtensionsForMode(editorStore.state.mode)),
+        baseCompartment.of(getBaseExtensionsForFile(editorStore.state.fileKind)),
+        contentAttributesCompartment.of(contentAttributes()),
+        modeCompartment.of(getExtensionsForMode(editorStore.state.mode, editorStore.state.fileKind)),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             editorStore.updateContent(update.state.doc.toString());
@@ -53,10 +74,12 @@ export function Editor() {
       view?.requestMeasure();
     });
 
-    resizeObserver = new ResizeObserver(() => {
-      view?.requestMeasure();
-    });
-    resizeObserver.observe(view.dom);
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => {
+        view?.requestMeasure();
+      });
+      resizeObserver.observe(view.dom);
+    }
   });
 
   onCleanup(() => {
@@ -71,19 +94,22 @@ export function Editor() {
     if (forceSaveTimeout) {
       clearTimeout(forceSaveTimeout);
     }
-    if (editorStore.state.isDirty && !editorStore.state.isReadOnly) {
-      editorStore.saveFile();
-    }
+    // Critical saves are owned by App/window-close and selection transitions;
+    // component cleanup only cancels timers and listeners.
   });
 
   // Reconfigure extensions when editor mode changes
   createEffect(
     on(
-      () => editorStore.state.mode,
-      (mode) => {
+      () => `${editorStore.state.mode}:${editorStore.state.fileKind ?? "markdown"}`,
+      (modeKey) => {
         if (view) {
+          const [mode, kind] = modeKey.split(":") as ["view" | "edit-source" | "edit-render", "markdown" | "text-source"];
           view.dispatch({
-            effects: modeCompartment.reconfigure(getExtensionsForMode(mode)),
+            effects: [
+              baseCompartment.reconfigure(getBaseExtensionsForFile(kind)),
+              modeCompartment.reconfigure(getExtensionsForMode(mode, kind)),
+            ],
           });
           view.requestMeasure();
         }
@@ -92,12 +118,22 @@ export function Editor() {
     )
   );
 
+  createEffect(
+    on(
+      () => `${editorStore.state.openFilePath ?? ""}:${editorStore.state.mode}:${editorStore.state.fileKind ?? "markdown"}:${editorStore.state.isReadOnly}`,
+      () => {
+        view?.dispatch({ effects: contentAttributesCompartment.reconfigure(contentAttributes()) });
+      },
+      { defer: true },
+    ),
+  );
+
   // Listen to openFilePath changes to load new content
   createEffect(
     on(
-      () => editorStore.state.openFilePath,
+      () => [editorStore.state.generation, editorStore.state.openFileContent],
       () => {
-        if (view) {
+        if (view && view.state.doc.toString() !== editorStore.state.currentContent) {
           view.dispatch({
             changes: {
               from: 0,
@@ -115,7 +151,7 @@ export function Editor() {
   createEffect(() => {
     const isDirty = editorStore.state.isDirty;
     const isReadOnly = editorStore.state.isReadOnly;
-    editorStore.state.currentContent; // depend on content to run on every keystroke
+    void editorStore.state.currentContent; // depend on content to run on every keystroke
 
     if (autoSaveTimeout) {
       clearTimeout(autoSaveTimeout);
@@ -160,15 +196,23 @@ export function Editor() {
 
   return (
     <div class="editor-container">
-      <EditorToolbar />
       {editorStore.state.error && (
         <div class="editor-error-banner">
           <span>Error: {editorStore.state.error}</span>
-          <button class="btn-close" onClick={() => editorStore.closeFile()}>
+          <button class="btn-close" onClick={async () => { try { await editorStore.saveFile(); } catch { /* retain draft and error */ } }}>
+            Retry save
+          </button>
+          <button class="btn-close" onClick={async () => { await editorStore.reloadAndDiscard(); }}>
+            Reload and discard local draft
+          </button>
+          <button class="btn-close" onClick={async () => { await editorStore.closeFile(); }}>
             Close
           </button>
         </div>
       )}
+      <p id={helpId} class="ds-visually-hidden">
+        {editorStore.state.isReadOnly ? "Read-only document." : "Editable document."} Use standard text editing keys. {modeDescription()} preserves Markdown and text-source source positions.
+      </p>
       <div class="editor-workspace" ref={editorRef} />
     </div>
   );

@@ -1,25 +1,192 @@
-use std::fs;
-use std::path::{Path, PathBuf};
 use crate::collection::model::{Collection, Entry};
+use std::fs;
+use std::fs::OpenOptions;
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri::Manager;
 
 // Core filesystem operations (generic and testable)
-pub fn save_collection_to_path(collections_dir: &Path, collection: &Collection) -> Result<(), String> {
-    validate_collection_name_in_path(collections_dir, &collection.name, &collection.id)?;
+pub fn save_collection_to_path(
+    collections_dir: &Path,
+    collection: &Collection,
+) -> Result<(), String> {
+    save_collection_to_path_impl(collections_dir, collection, true)
+}
 
-    let file_path = collections_dir.join(format!("{}.json", collection.id));
-    let tmp_path = collections_dir.join(format!("{}.json.tmp", collection.id));
+pub(crate) fn save_collection_to_path_during_transaction(
+    collections_dir: &Path,
+    collection: &Collection,
+) -> Result<(), String> {
+    save_collection_to_path_impl(collections_dir, collection, false)
+}
+
+fn save_collection_to_path_impl(
+    collections_dir: &Path,
+    collection: &Collection,
+    recover_first: bool,
+) -> Result<(), String> {
+    if recover_first {
+        crate::collection::import_transaction::recover(collections_dir)
+            .map_err(|e| e.to_string())?;
+    }
+    validate_collection_name_in_path(collections_dir, &collection.name, &collection.id)?;
 
     let json_data = serde_json::to_string_pretty(collection)
         .map_err(|e| format!("Failed to serialize collection: {}", e))?;
-
-    fs::write(&tmp_path, json_data)
+    let file_path = collections_dir.join(format!("{}.json", collection.id));
+    let mut journal = crate::collection::import_transaction::create_journal(
+        collections_dir,
+        &file_path,
+        vec!["metadata-replace".to_string()],
+        if file_path.exists() {
+            Some(&file_path)
+        } else {
+            None
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    let journal_root = crate::collection::import_transaction::transaction_root(collections_dir)
+        .join(&journal.transaction_id);
+    let staged_path = PathBuf::from(&journal.stage_root).join("metadata.json");
+    fs::create_dir_all(Path::new(&journal.stage_root)).map_err(|e| format!("stage_failed: {e}"))?;
+    let mut temp = OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(&staged_path)
+        .map_err(|e| format!("Failed to open temp collection file: {}", e))?;
+    use std::io::Write;
+    temp.write_all(json_data.as_bytes())
         .map_err(|e| format!("Failed to write temp collection file: {}", e))?;
-    fs::rename(&tmp_path, &file_path)
-        .map_err(|e| format!("Failed to rename temp collection file to final: {}", e))?;
+    temp.sync_all()
+        .map_err(|e| format!("Failed to flush temp collection file: {}", e))?;
+    drop(temp);
+    crate::collection::import_transaction::transition(
+        &journal_root,
+        &mut journal,
+        crate::collection::import_transaction::TransactionState::Staged,
+    )
+    .map_err(|e| e.to_string())?;
+    let backup_path = journal_root.join("backup").join("metadata.json");
+    let had_original = file_path.exists();
+    let after_sha256 = crate::collection::import_transaction::path_digest(&staged_path)
+        .map_err(|e| e.to_string())?;
+    if had_original {
+        let before_sha256 = crate::collection::import_transaction::path_digest(&file_path)
+            .map_err(|e| e.to_string())?;
+        fs::create_dir_all(backup_path.parent().unwrap())
+            .map_err(|e| format!("recoverable_transaction: cannot create backup: {e}"))?;
+        crate::collection::import_transaction::add_backup(
+            &journal_root,
+            &mut journal,
+            &file_path,
+            &backup_path,
+            Some(before_sha256),
+            Some(after_sha256.clone()),
+        )
+        .map_err(|e| e.to_string())?;
+        crate::collection::import_transaction::transition(
+            &journal_root,
+            &mut journal,
+            crate::collection::import_transaction::TransactionState::AssetsCommitting,
+        )
+        .map_err(|e| e.to_string())?;
+        crate::collection::import_transaction::set_operation_status(
+            &journal_root,
+            &mut journal,
+            "metadata-replace",
+            "backup-started",
+        )
+        .map_err(|e| e.to_string())?;
+        fs::rename(&file_path, &backup_path).map_err(|e| {
+            format!(
+                "recoverable_transaction: cannot preserve collection backup: {}",
+                e
+            )
+        })?;
+    } else {
+        crate::collection::import_transaction::add_backup(
+            &journal_root,
+            &mut journal,
+            &file_path,
+            &backup_path,
+            None,
+            Some(after_sha256),
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    crate::collection::import_transaction::set_operation_status(
+        &journal_root,
+        &mut journal,
+        "metadata-replace",
+        "backup-complete",
+    )
+    .map_err(|e| e.to_string())?;
+    crate::collection::import_transaction::transition(
+        &journal_root,
+        &mut journal,
+        crate::collection::import_transaction::TransactionState::MetadataCommitting,
+    )
+    .map_err(|e| e.to_string())?;
+    if let Err(error) = fs::rename(&staged_path, &file_path) {
+        return Err(format!(
+            "recoverable_transaction: failed to publish collection: {}",
+            error
+        ));
+    }
+    crate::collection::import_transaction::set_operation_status(
+        &journal_root,
+        &mut journal,
+        "metadata-replace",
+        "published",
+    )
+    .map_err(|e| e.to_string())?;
+    crate::collection::import_transaction::transition(
+        &journal_root,
+        &mut journal,
+        crate::collection::import_transaction::TransactionState::Committed,
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+fn promote_group(entries: &mut Vec<Entry>, group_id: &str) -> bool {
+    let mut index = 0;
+    while index < entries.len() {
+        if let Entry::Group { id, .. } = &entries[index] {
+            if id == group_id {
+                let removed = entries.remove(index);
+                if let Entry::Group { children, .. } = removed {
+                    for (offset, child) in children.into_iter().enumerate() {
+                        entries.insert(index + offset, child);
+                    }
+                }
+                return true;
+            }
+        }
+        if let Entry::Group { children, .. } = &mut entries[index] {
+            if promote_group(children, group_id) {
+                return true;
+            }
+        }
+        index += 1;
+    }
+    false
+}
+
+pub fn delete_group_and_promote_to_collection_path(
+    collections_dir: &Path,
+    collection_id: &str,
+    group_id: &str,
+) -> Result<(), String> {
+    crate::collection::import_transaction::recover(collections_dir).map_err(|e| e.to_string())?;
+    let mut collection = load_collection_from_path(collections_dir, collection_id)?;
+    if !promote_group(&mut collection.entries, group_id) {
+        return Err(format!("Group with ID {} not found", group_id));
+    }
+    collection.updated_at = chrono::Utc::now().to_rfc3339();
+    save_collection_to_path(collections_dir, &collection)
 }
 
 pub fn load_collection_from_path(collections_dir: &Path, id: &str) -> Result<Collection, String> {
@@ -51,7 +218,7 @@ pub fn get_all_collections_from_path(collections_dir: &Path) -> Result<Vec<Colle
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
         let path = entry.path();
-        if path.is_file() && path.extension().map_or(false, |ext| ext == "json") {
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "json") {
             let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if file_name != "settings.json" {
                 let data = fs::read_to_string(&path)
@@ -117,7 +284,10 @@ pub fn get_all_collections(app: &AppHandle) -> Result<Vec<Collection>, String> {
     get_all_collections_from_path(&dir)
 }
 
-fn get_group_mut<'a>(entries: &'a mut Vec<Entry>, path: &[usize]) -> Result<&'a mut Vec<Entry>, String> {
+fn get_group_mut<'a>(
+    entries: &'a mut Vec<Entry>,
+    path: &[usize],
+) -> Result<&'a mut Vec<Entry>, String> {
     let mut current_entries = entries;
     for &idx in path {
         if idx >= current_entries.len() {
@@ -213,10 +383,10 @@ pub fn move_entry_in_collection_path(
     new_index: usize,
 ) -> Result<(), String> {
     let mut collection = load_collection_from_path(collections_dir, collection_id)?;
-    
+
     let old_path = find_entry_path(&collection.entries, entry_id)
         .ok_or_else(|| format!("Entry with ID {} not found", entry_id))?;
-        
+
     let mut adjusted_parent_path = new_parent_path.to_vec();
     let mut adjusted_index = new_index;
 
@@ -271,7 +441,11 @@ pub fn find_entry_by_id<'a>(entries: &'a [Entry], id: &str) -> Option<&'a Entry>
                     return Some(entry);
                 }
             }
-            Entry::Group { id: entry_id, children, .. } => {
+            Entry::Group {
+                id: entry_id,
+                children,
+                ..
+            } => {
                 if entry_id == id {
                     return Some(entry);
                 }
@@ -315,8 +489,6 @@ pub fn move_entry_in_collection(
     move_entry_in_collection_path(&dir, collection_id, entry_id, new_parent_path, new_index)
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,12 +505,10 @@ mod tests {
             name: "My Collection".to_string(),
             created_at: "2026-06-24T00:00:00Z".to_string(),
             updated_at: "2026-06-24T00:00:00Z".to_string(),
-            entries: vec![
-                Entry::File {
-                    id: "file1".to_string(),
-                    path: "d:/test/note.md".to_string(),
-                }
-            ],
+            entries: vec![Entry::File {
+                id: "file1".to_string(),
+                path: "d:/test/note.md".to_string(),
+            }],
             metadata: None,
         };
 
@@ -397,13 +567,11 @@ mod tests {
             name: "Test Collection".to_string(),
             created_at: "2026-06-24T00:00:00Z".to_string(),
             updated_at: "2026-06-24T00:00:00Z".to_string(),
-            entries: vec![
-                Entry::Group {
-                    id: "group1".to_string(),
-                    name: "My Group".to_string(),
-                    children: vec![],
-                }
-            ],
+            entries: vec![Entry::Group {
+                id: "group1".to_string(),
+                name: "My Group".to_string(),
+                children: vec![],
+            }],
             metadata: None,
         };
 
@@ -465,7 +633,8 @@ mod tests {
         }
 
         // 5. Remove entry by ID
-        let removed = remove_entry_from_collection_path(dir_path, "col-id", "file-in-group").unwrap();
+        let removed =
+            remove_entry_from_collection_path(dir_path, "col-id", "file-in-group").unwrap();
         assert_eq!(removed, new_file);
 
         let loaded = load_collection_from_path(dir_path, "col-id").unwrap();
@@ -481,7 +650,7 @@ mod tests {
     fn test_move_entry_forward_index_adjustment() {
         let temp_dir = tempfile::tempdir().unwrap();
         let dir_path = temp_dir.path();
-        
+
         let col_id = "col-id-forward";
         let collection = Collection {
             id: col_id.to_string(),
@@ -575,5 +744,3 @@ mod tests {
         }
     }
 }
-
-

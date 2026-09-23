@@ -1,0 +1,9 @@
+{
+  "version": "file-capabilities.v1",
+  "schemaVersion": 1,
+  "capabilities": [
+    { "kind": "markdown", "extensions": ["md", "markdown"] },
+    { "kind": "text-source", "extensions": ["txt", "cs", "json", "toml", "yaml", "yml", "xml", "html", "htm", "js", "ts", "tsx", "jsx", "css", "scss", "sass", "less", "rs", "py", "java", "c", "h", "cpp", "hpp", "go", "sh", "ps1", "sql", "ini", "cfg", "conf", "log"] }
+  ],
+  "directories": { "visible": true }
+}

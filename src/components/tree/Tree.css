@@ -46,6 +46,22 @@
   flex-direction: column;
 }
 
+.folder-ref-child-ghost {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.folder-ref-readiness-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border-bottom: var(--ds-border-width) solid var(--ds-danger);
+  background: var(--ds-danger-subtle);
+  color: var(--ds-danger);
+}
+
 .tree-node {
   display: flex;
   align-items: center;
@@ -131,6 +147,16 @@
   color: var(--color-danger);
 }
 
+.tree-node:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.tree-node.unsupported {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 /* Loading animations */
 .tree-node-loading-spinner {
   width: 12px;
@@ -176,6 +202,31 @@
 .parent-select-item.selected {
   background-color: var(--bg-active);
   font-weight: 500;
+}
+
+.move-target-radio-group {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.move-target-radio-group legend {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  padding: 0;
+}
+
+.move-target-radio-group .parent-select-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.move-target-radio-group input[type="radio"] {
+  accent-color: var(--color-accent);
+  flex: 0 0 auto;
 }
 
 /* Tree Footer for collapsed sidebar mode */

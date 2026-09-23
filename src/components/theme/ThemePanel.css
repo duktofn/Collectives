@@ -1,38 +1,20 @@
 .theme-panel-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background-color: rgba(0, 0, 0, 0.2);
-  z-index: 1000;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.25s ease;
-}
-
-.theme-panel-backdrop.open {
-  opacity: 1;
-  pointer-events: auto;
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 0;
 }
 
 .theme-panel {
-  position: fixed;
-  top: 0;
-  right: -380px;
-  width: 380px;
-  height: 100vh;
-  background-color: var(--bg-primary);
-  border-left: 1px solid var(--color-border);
-  box-shadow: var(--shadow-lg);
-  z-index: 1001;
+  width: min(100%, var(--ds-panel-width));
+  height: 100%;
+  max-height: none;
+  background-color: var(--ds-canvas);
+  border-left: var(--ds-border-width) solid var(--ds-border);
+  box-shadow: var(--ds-shadow-lg);
+  border-radius: 0;
   display: flex;
   flex-direction: column;
-  transition: right 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.theme-panel-backdrop.open .theme-panel {
-  right: 0;
+  overflow: hidden;
 }
 
 .theme-panel-header {

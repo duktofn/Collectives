@@ -1,21 +1,72 @@
 import { createSignal, Show, createEffect, onMount, onCleanup } from "solid-js";
 import { collectionsStore } from "./stores/collections";
 import { uiStore } from "./stores/ui";
-import { Sidebar } from "./components/sidebar/Sidebar";
 import { Dialog } from "./components/common/Dialog";
 import { Icon } from "./components/common/Icon";
 import { Entry, ZipConflict, Settings } from "./types";
 import { editorStore } from "./stores/editor";
-import { Editor } from "./components/editor/Editor";
-import * as api from "./lib/tauri";
-import { ZipConflictDialog } from "./components/common/ZipConflictDialog";
-import { ThemePanel } from "./components/theme/ThemePanel";
+import { EditorToolbar } from "./components/editor/EditorToolbar";
+import { AppShell } from "./components/shell/AppShell";
+import { WorkspaceHeader } from "./components/shell/WorkspaceHeader";
+import { ActivityStatus } from "./components/shell/ActivityStatus";
+import { EmptyWorkspace } from "./components/shell/EmptyWorkspace";
+import * as settingsApi from "./features/settings";
+import * as archiveApi from "./features/archive";
+import { pickDirectory, pickZipFile, getCurrentAppWindow } from "./platform";
+import { FolderRefReadinessNotice } from "./components/common/FolderRefReadinessNotice";
 import { applyThemeSettings, registerCustomFonts } from "./lib/themeEngine";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { cancelFolderRefReadiness, getFolderRefReadiness, resolveFolderRefIntent, retryFolderRefChild, folderRefReadiness } from "./features/filesystem/folderRefReadiness";
+import { formatIpcError } from "./shared/ipc/errors";
+import { createOperationLeaseRegistry } from "./workflows/operationLease";
+import { ArchiveWorkflow, runArchiveOperation } from "./workflows/ArchiveWorkflow";
+import { SettingsWorkflow } from "./workflows/SettingsWorkflow";
+import { TreeWorkspace } from "./workflows/TreeWorkspace";
+import { CollectionWorkspace } from "./workflows/CollectionWorkspace";
+import { DocumentWorkspace } from "./workflows/DocumentWorkspace";
+import { requestFolderRefChild } from "./features/filesystem/folderRefReadiness";
+import { announcementKey, announcer, mountAnnouncer } from "./a11y/announcer";
 import "./App.css";
+
+export function createCloseRequestHandler(
+  close: () => Promise<boolean>,
+  destroy: () => Promise<void>,
+  onError: (error: unknown) => void = () => {},
+) {
+  let closeInProgress = false;
+  return async (event: { preventDefault: () => void }) => {
+    event.preventDefault();
+    if (closeInProgress) return;
+    closeInProgress = true;
+    try {
+      const closed = await close();
+      if (closed) await destroy();
+      else closeInProgress = false;
+    } catch (error) {
+      closeInProgress = false;
+      onError(error);
+    }
+  };
+}
+
+export function createAppCloseTransactionHandler(
+  operationLeaseRegistry: ReturnType<typeof createOperationLeaseRegistry>,
+  flush: () => Promise<boolean>,
+  destroy: () => Promise<void>,
+  onError: (error: unknown) => void = () => {},
+) {
+  return createCloseRequestHandler(
+    async () => {
+      await operationLeaseRegistry.waitForIdle();
+      return flush();
+    },
+    destroy,
+    onError,
+  );
+}
 
 
 export default function App() {
+  const operationLeaseRegistry = createOperationLeaseRegistry();
   const [isNewCollectionOpen, setIsNewCollectionOpen] = createSignal(false);
   const [newCollectionError, setNewCollectionError] = createSignal("");
   const [appNotice, setAppNotice] = createSignal<{ title: string; message: string } | null>(null);
@@ -29,17 +80,26 @@ export default function App() {
   const [globalError, setGlobalError] = createSignal<{ message: string; stack?: string } | null>(null);
 
   const showAppNotice = (title: string, err: unknown) => {
-    const message = err instanceof Error ? err.message : String(err || "Something went wrong");
+    const message = formatIpcError(err) || "Something went wrong";
     setAppNotice({ title, message });
+    announcer.alert(message, announcementKey("urgent-error", "", message));
+  };
+
+  const closeEditorForTransition = async () => {
+    const closed = await editorStore.closeFile();
+    if (!closed) showAppNotice("Close blocked", editorStore.state.error || "Save failed; draft retained");
+    return closed;
   };
 
   onMount(async () => {
+    const disposeAnnouncer = mountAnnouncer(document.querySelector<HTMLElement>("[data-app-shell-root]") ?? document.body);
     const handleGlobalError = (event: ErrorEvent) => {
       console.error("Caught global error:", event.error);
       setGlobalError({
         message: event.message || "Unhandled JavaScript Error",
         stack: event.error?.stack,
       });
+      announcer.alert(event.message || "Unhandled JavaScript error", announcementKey("urgent-error", "", event.message));
     };
     window.addEventListener("error", handleGlobalError);
 
@@ -49,26 +109,29 @@ export default function App() {
         message: event.reason?.message || String(event.reason) || "Unhandled Promise Rejection",
         stack: event.reason?.stack,
       });
+      announcer.alert(event.reason?.message || String(event.reason) || "Unhandled promise rejection", announcementKey("urgent-error", "", String(event.reason)));
     };
     window.addEventListener("unhandledrejection", handleUnhandledRejection);
 
     let unlistenClose: (() => void) | undefined;
     if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined) {
       try {
-        const appWindow = getCurrentWebviewWindow();
-        unlistenClose = await appWindow.onCloseRequested(async (event) => {
-          event.preventDefault();
-          if (editorStore.state.isDirty && !editorStore.state.isReadOnly) {
-            await editorStore.saveFile();
-          }
-          await appWindow.destroy();
-        });
+        const appWindow = getCurrentAppWindow();
+        unlistenClose = await appWindow.onCloseRequested(
+          createAppCloseTransactionHandler(
+            operationLeaseRegistry,
+            () => editorStore.closeFile(),
+            () => appWindow.destroy(),
+            (error) => showAppNotice("Close blocked", error),
+          ),
+        );
       } catch (err) {
         console.error("Failed to register close request listener:", err);
       }
     }
 
     onCleanup(() => {
+      disposeAnnouncer();
       window.removeEventListener("error", handleGlobalError);
       window.removeEventListener("unhandledrejection", handleUnhandledRejection);
       if (unlistenClose) {
@@ -83,7 +146,7 @@ export default function App() {
         const lastSelectedId = localStorage.getItem("lastSelectedEntryId");
         await collectionsStore.openCollection(lastActiveId);
         if (lastSelectedId) {
-          uiStore.selectEntry(lastSelectedId);
+          await editorStore.selectEntry(lastSelectedId);
           const activeCol = collectionsStore.activeCollection();
           if (activeCol) {
             const findAndExpand = (entries: Entry[], parentIds: string[]): boolean => {
@@ -145,11 +208,11 @@ export default function App() {
     let unlisten: (() => void) | undefined;
     try {
       unlisten = await collectionsStore.initializeListeners();
-      const loaded = await api.loadSettings();
+      const loaded = await settingsApi.loadSettings();
       setSettings(loaded);
       applyThemeSettings(loaded);
       
-      const fontsDir = await api.getFontsDir();
+      const fontsDir = await settingsApi.getFontsDir();
       registerCustomFonts(loaded.customFonts, fontsDir);
     } catch (err) {
       console.error("Failed to load settings on mount", err);
@@ -176,7 +239,7 @@ export default function App() {
   // Import Folder triggers
   const handleImportFolderClick = async () => {
     try {
-      const selected = await api.pickDirectory("Select Folder to Import");
+      const selected = await pickDirectory("Select Folder to Import");
       if (selected) {
         setImportFolderPath(selected);
         setImportFolderNameError("");
@@ -205,21 +268,21 @@ export default function App() {
   // Import ZIP triggers
   const handleImportZipClick = async () => {
     try {
-      const zipPath = await api.pickZipFile("Select ZIP Package to Import");
+      const zipPath = await pickZipFile("Select ZIP Package to Import");
       if (!zipPath) return;
 
-      const destFolder = await api.pickDirectory("Select Extraction Destination Folder");
+      const destFolder = await pickDirectory("Select Extraction Destination Folder");
       if (!destFolder) return;
 
       setZipFilePath(zipPath);
       setZipDestFolder(destFolder);
 
-      const conflicts = await api.checkZipConflicts(zipPath, destFolder);
+      const conflicts = await archiveApi.checkZipConflicts(zipPath, destFolder);
       if (conflicts.length > 0) {
         setZipConflicts(conflicts);
         setIsZipConflictOpen(true);
       } else {
-        await collectionsStore.importZip(zipPath, destFolder, {});
+        await runArchiveOperation(operationLeaseRegistry, "Import ZIP", () => collectionsStore.importZip(zipPath, destFolder, {}));
       }
     } catch (err) {
       console.error("Failed to import ZIP", err);
@@ -237,17 +300,64 @@ export default function App() {
     }
   };
 
+  let selectionTransition: Promise<void> = Promise.resolve();
+  const queueSelectionTransition = (transition: () => Promise<void>) => {
+    selectionTransition = selectionTransition
+      .then(transition)
+      .catch((error) => showAppNotice("Selection transition failed", error));
+  };
+
   // Synchronize selection store with editor store
+  let lastFolderRefAnnouncement = "";
   createEffect(() => {
+    const intent = folderRefReadiness.state.activeIntent;
+    const record = intent ? getFolderRefReadiness(intent.collectionId, intent.folderRefEntryId, intent.childPath) : null;
+    if (!intent || !record) return;
+    const stateKey = `${record.key}:${record.status}`;
+    if (!lastFolderRefAnnouncement) {
+      lastFolderRefAnnouncement = stateKey;
+      return;
+    }
+    if (stateKey === lastFolderRefAnnouncement) return;
+    lastFolderRefAnnouncement = stateKey;
+    const message = record.status === "checking"
+      ? "Checking folder reference file readiness."
+      : record.status === "ready"
+        ? "Folder reference file is ready."
+        : "Folder reference file could not be opened; retry is available when supported.";
+    if (record.status !== "broken") announcer.transition("folder-ref", intent.folderRefEntryId, record.status, message);
+  });
+
+  let lastEditorError = "";
+  createEffect(() => {
+    const error = editorStore.state.error;
+    if (!error || error === lastEditorError) return;
+    lastEditorError = error;
+    announcer.alert(error, announcementKey("urgent-error", "", error));
+  });
+
+  createEffect(() => {
+    const folderIntent = folderRefReadiness.state.activeIntent;
+    if (folderIntent && uiStore.state.selectedEntryId !== folderIntent.childPath) {
+      cancelFolderRefReadiness(folderIntent.folderRefEntryId);
+    } else if (folderIntent && uiStore.state.selectedEntryId === folderIntent.childPath) {
+      const record = getFolderRefReadiness(folderIntent.collectionId, folderIntent.folderRefEntryId, folderIntent.childPath);
+      if (record?.status === "checking") void resolveFolderRefIntent(folderIntent);
+      return;
+    }
     const info = getSelectedEntryInfo();
     if (info && (info.type === "file" || info.type === "file (inside folder-ref)")) {
       const isReadOnly = false;
       if (editorStore.state.openFilePath !== info.path) {
-        editorStore.openFile(info.path, isReadOnly);
+        queueSelectionTransition(async () => {
+          await editorStore.openFile(info.path, isReadOnly);
+        });
       }
     } else {
       if (editorStore.state.openFilePath !== null) {
-        editorStore.closeFile();
+        queueSelectionTransition(async () => {
+          await closeEditorForTransition();
+        });
       }
     }
   });
@@ -307,250 +417,165 @@ export default function App() {
     };
   };
 
+  const activeFolderRefReadiness = () => {
+    const intent = folderRefReadiness.state.activeIntent;
+    return intent ? getFolderRefReadiness(intent.collectionId, intent.folderRefEntryId, intent.childPath) : null;
+  };
+
+  const getActivityStatus = () => {
+    if (globalError()) return { label: "Application error", tone: "danger" as const };
+    if (editorStore.state.error) return { label: "Save needs attention", tone: "danger" as const };
+    if (editorStore.state.isSaving) return { label: "Saving", tone: "warning" as const };
+    if (editorStore.state.isDirty) return { label: "Unsaved changes", tone: "warning" as const };
+    if (editorStore.state.openFilePath) return { label: "Saved", tone: "success" as const };
+    if (collectionsStore.activeCollection()) return { label: "Collection ready", tone: "neutral" as const };
+    return { label: "No collection selected", tone: "neutral" as const };
+  };
+
   return (
-    <div class="app-container">
-      <Show when={appNotice()}>
-        {(notice) => (
-          <div class="app-notice" role="alert">
-            <div class="app-notice-icon">
-              <Icon name="warning" size={16} />
-            </div>
-            <div class="app-notice-copy">
-              <strong>{notice().title}</strong>
-              <span>{notice().message}</span>
-            </div>
-            <button class="btn btn-text btn-icon" onClick={() => setAppNotice(null)} title="Dismiss notification">
-              <Icon name="close" size={14} />
-            </button>
-          </div>
-        )}
-      </Show>
-
-      <Sidebar
-        onNewCollectionClick={() => {
-          setNewCollectionError("");
-          setIsNewCollectionOpen(true);
-        }}
-        onImportFolderClick={handleImportFolderClick}
-        onImportZipClick={handleImportZipClick}
-        onSettingsClick={() => setIsSettingsOpen(true)}
-      />
-
-      <main class="main-content">
-        <Show when={globalError()}>
-          <div class="global-error-banner" style={{
-            "background-color": "var(--color-danger-bg)",
-            color: "var(--color-danger)",
-            border: "1px solid var(--color-danger)",
-            padding: "16px",
-            margin: "16px",
-            "border-radius": "var(--radius-md)",
-            display: "flex",
-            "flex-direction": "column",
-            gap: "8px",
-            "z-index": 1000,
-            position: "relative",
-            "box-shadow": "var(--shadow-md)"
-          }}>
-            <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center" }}>
-              <span style={{ "font-weight": "600", "font-size": "14px" }}>
-                Unhandled application error
-              </span>
-              <button
-                class="btn btn-text"
-                onClick={() => setGlobalError(null)}
-                style={{
-                  color: "var(--color-danger)",
-                  border: "1px solid var(--color-danger)",
-                  padding: "2px 8px",
-                  "border-radius": "4px",
-                  cursor: "pointer"
-                }}
-              >
-                Dismiss
-              </button>
-            </div>
-            <div style={{ "font-family": "var(--font-mono)", "font-size": "12px", "white-space": "pre-wrap", "word-break": "break-all" }}>
-              {globalError()?.message}
-              {globalError()?.stack && (
-                <details style={{ "margin-top": "8px" }}>
-                  <summary style={{ cursor: "pointer", "font-weight": "500" }}>View Stack Trace</summary>
-                  <pre style={{ "margin-top": "6px", "max-height": "150px", overflow: "auto", padding: "8px", "background-color": "rgba(0,0,0,0.05)", "border-radius": "4px" }}>
-                    {globalError()?.stack}
-                  </pre>
-                </details>
-              )}
-            </div>
-          </div>
-        </Show>
-
-        <Show when={!uiStore.state.isSidebarOpen}>
-          <button
-            class="btn btn-text btn-icon sidebar-expand-btn"
-            onClick={() => uiStore.toggleSidebar()}
-            title="Expand sidebar"
-            style={{
-              position: "absolute",
-              top: "10px",
-              left: "10px",
-              "z-index": 100,
-              "background-color": "var(--bg-secondary)",
-              "border": "1px solid var(--color-border)",
-              "box-shadow": "var(--shadow-md)"
-            }}
-          >
-            <Icon name="menu" size={18} />
-          </button>
-
-          <Show when={collectionsStore.activeCollection()}>
-            <button
-              class="btn btn-text btn-icon sidebar-collapsed-settings-btn"
-              onClick={() => setIsSettingsOpen(true)}
-              title="Settings"
-              style={{
-                position: "absolute",
-                bottom: "10px",
-                left: "10px",
-                "z-index": 100,
-                "background-color": "var(--bg-secondary)",
-                "border": "1px solid var(--color-border)",
-                "box-shadow": "var(--shadow-md)"
-              }}
-            >
-              <Icon name="settings" size={18} />
-            </button>
+    <>
+      <AppShell
+      sidebar={
+        <TreeWorkspace
+          onNewCollectionClick={() => {
+            setNewCollectionError("");
+            setIsNewCollectionOpen(true);
+          }}
+          onImportFolderClick={handleImportFolderClick}
+          onImportZipClick={handleImportZipClick}
+          onSettingsClick={() => setIsSettingsOpen(true)}
+          requestSelect={(entryId) => editorStore.selectEntry(entryId)}
+          requestFolderRefSelect={requestFolderRefChild}
+          requestSwitch={async (collectionId) => {
+            try {
+              await collectionsStore.openCollection(collectionId);
+              return true;
+            } catch (error) {
+              showAppNotice("Collection switch failed", error);
+              return false;
+            }
+          }}
+          operationLeaseRegistry={operationLeaseRegistry}
+        />
+      }
+      workspaceHeader={
+        <WorkspaceHeader isEditorOpen={Boolean(editorStore.state.openFilePath)}>
+          <Show when={editorStore.state.openFilePath}>
+            <EditorToolbar />
           </Show>
-        </Show>
-
-        <Show
-          when={collectionsStore.activeCollection()}
-          fallback={
-            <div class="welcome-screen">
-              <div class="welcome-logo" aria-hidden="true">
-                <Icon name="folder" size={46} />
-              </div>
-              <h1 class="welcome-title">Welcome to Collections</h1>
-              <p class="welcome-subtitle">
-                Create a fresh workspace or bring in an existing Markdown folder. Your notes stay local and editable on disk.
-              </p>
-              <div class="welcome-actions">
-                <button
-                  class="btn btn-primary"
-                  onClick={() => {
-                    setNewCollectionError("");
-                    setIsNewCollectionOpen(true);
-                  }}
-                >
-                  <Icon name="plus" size={16} />
-                  New Collection
-                </button>
-                <button class="btn" onClick={handleImportFolderClick}>
-                  <Icon name="folder-plus" size={16} />
-                  Import Folder
-                </button>
-                <button class="btn" onClick={handleImportZipClick}>
-                  <Icon name="file" size={16} />
-                  Import ZIP
-                </button>
-              </div>
-
-              <Show when={!uiStore.state.isSidebarOpen}>
-                <div class="welcome-footer" style={{
-                  position: "absolute",
-                  bottom: "0",
-                  left: "0",
-                  right: "0",
-                  padding: "16px 20px",
-                  display: "flex",
-                  "align-items": "center",
-                  "justify-content": "space-between",
-                  "border-top": "1px solid var(--color-border)"
-                }}>
-                  <div class="vault-info" style={{ display: "flex", "align-items": "center", gap: "8px", "font-size": "13px", "font-weight": "500", color: "var(--color-text-secondary)" }}>
-                    <Icon name="folder" size={14} class="vault-icon" style={{ color: "var(--color-text-secondary)", opacity: "0.8" }} />
-                    <span>Local Vault</span>
-                  </div>
-                  <button
-                    class="btn btn-text"
-                    onClick={() => setIsSettingsOpen(true)}
-                    title="Settings"
-                    style={{ padding: "4px" }}
-                  >
-                    <Icon name="settings" size={18} />
-                  </button>
-                </div>
-              </Show>
-            </div>
-          }
-        >
+        </WorkspaceHeader>
+      }
+      activityStatus={<ActivityStatus label={getActivityStatus().label} tone={getActivityStatus().tone} />}
+      workspaceBody={
+        <CollectionWorkspace>
+          <FolderRefReadinessNotice
+            record={activeFolderRefReadiness()}
+            onRetry={() => {
+              const record = activeFolderRefReadiness();
+              if (record) retryFolderRefChild(record);
+            }}
+          />
           <Show
-            when={editorStore.state.openFilePath}
+            when={collectionsStore.activeCollection()}
+            fallback={
+              <EmptyWorkspace
+                onNewCollection={() => {
+                  setNewCollectionError("");
+                  setIsNewCollectionOpen(true);
+                }}
+                onImportFolder={handleImportFolderClick}
+                onImportZip={handleImportZipClick}
+              />
+            }
+          >
+            <Show
+              when={editorStore.state.openFilePath}
               fallback={
-                <div class="info-panel" style={{ "padding-left": !uiStore.state.isSidebarOpen ? "48px" : "40px" }}>
-                  <Show when={editorStore.state.error}>
-                    <div class="editor-error-banner" style={{ "margin-bottom": "16px" }}>
-                      <span>Error: {editorStore.state.error}</span>
-                      <button class="btn-close" onClick={() => editorStore.closeFile()} style={{
-                        background: "none",
-                        border: "1px solid var(--color-danger)",
-                        color: "var(--color-danger)",
-                        padding: "2px 8px",
-                        "border-radius": "4px",
-                        cursor: "pointer",
-                        "margin-left": "16px"
-                      }}>
-                        Clear
-                      </button>
+                <div class="selected-entry-panel">
+                <Show when={editorStore.state.error}>
+                  <div class="editor-error-banner selected-entry-error">
+                    <span>Error: {editorStore.state.error}</span>
+                    <button class="btn-close selected-entry-error-clear" onClick={async () => { await closeEditorForTransition(); }}>
+                      Clear
+                    </button>
+                  </div>
+                </Show>
+                <Show
+                  when={getSelectedEntryInfo()}
+                  fallback={
+                    <div class="selected-entry-empty">
+                      <Icon name="file" size={44} aria-hidden="true" />
+                      <span>Select a Markdown note from the sidebar to start reading or editing.</span>
                     </div>
-                  </Show>
-                  <Show
-                    when={getSelectedEntryInfo()}
-                    fallback={
-                      <div style={{
-                        display: "flex",
-                        "flex-direction": "column",
-                        "align-items": "center",
-                        "justify-content": "center",
-                        flex: 1,
-                        color: "var(--color-text-muted)",
-                        gap: "10px",
-                        "text-align": "center"
-                      }}>
-                        <Icon name="file" size={44} style={{ opacity: 0.18 }} />
-                        <span>Select a Markdown note from the sidebar to start reading or editing.</span>
+                  }
+                >
+                  {(info) => (
+                    <>
+                      <div class="selected-entry-header">
+                        <h2 class="selected-entry-title">{info().name}</h2>
+                        <div class="selected-entry-meta">
+                          <strong>Type:</strong> {info().type}
+                        </div>
                       </div>
-                    }
-                  >
-                    {(info) => (
-                      <>
-                        <div class="info-header">
-                          <h2 class="info-title">{info().name}</h2>
-                          <div class="info-meta">
-                            <span class="meta-item">
-                              <strong>Type:</strong> {info().type}
-                            </span>
-                          </div>
+                      <div class="selected-entry-body">
+                        <p>You have selected a file in the collection explorer.</p>
+                        <div class="selected-entry-card">
+                          <h4>File Details</h4>
+                          <code>Path: {info().path}</code>
+                          <code>ID: {info().id}</code>
                         </div>
-
-                        <div class="info-body">
-                          <p>You have selected a file in the collection explorer.</p>
-                          <div class="info-card">
-                            <h4>File Details</h4>
-                            <code>Path: {info().path}</code>
-                            <code style={{ "margin-top": "8px" }}>ID: {info().id}</code>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </Show>
+                      </div>
+                    </>
+                  )}
+                </Show>
                 </div>
               }
             >
-              <Editor />
+              <DocumentWorkspace isOpen={true} />
             </Show>
-        </Show>
-      </main>
-
+          </Show>
+        </CollectionWorkspace>
+      }
+      sidebarCollapsed={!uiStore.state.isSidebarOpen}
+      onExpandSidebar={() => uiStore.toggleSidebar()}
+      notice={
+        <>
+          <Show when={appNotice()}>
+            {(notice) => (
+              <div class="app-notice">
+                <div class="app-notice-icon"><Icon name="warning" size={16} /></div>
+                <div class="app-notice-copy">
+                  <strong>{notice().title}</strong>
+                  <span>{notice().message}</span>
+                </div>
+                <button class="btn btn-text btn-icon" aria-label="Dismiss notification" onClick={() => setAppNotice(null)} title="Dismiss notification">
+                  <Icon name="close" size={14} />
+                </button>
+              </div>
+            )}
+          </Show>
+          <Show when={globalError()}>
+            {(error) => (
+              <div class="app-shell-global-error">
+                <div class="app-shell-global-error-header">
+                  <span>Unhandled application error</span>
+                  <button class="btn btn-text app-shell-global-error-dismiss" onClick={() => setGlobalError(null)}>Dismiss</button>
+                </div>
+                <div class="app-shell-global-error-details">
+                  {error().message}
+                  {error().stack && (
+                    <details>
+                      <summary>View Stack Trace</summary>
+                      <pre>{error().stack}</pre>
+                    </details>
+                  )}
+                </div>
+              </div>
+            )}
+          </Show>
+        </>
+      }
+      />
       <Dialog
         isOpen={isNewCollectionOpen()}
         title="Create New Collection"
@@ -561,29 +586,27 @@ export default function App() {
         onClose={() => setIsNewCollectionOpen(false)}
       />
 
-      <ThemePanel
+      <SettingsWorkflow
         isOpen={isSettingsOpen()}
+        leaseRegistry={operationLeaseRegistry}
         onClose={() => setIsSettingsOpen(false)}
         settings={settings()}
         onSettingsChange={setSettings}
       />
 
-      <Dialog
-        isOpen={isImportFolderNameOpen()}
-        title="Import Folder: Choose Collection Name"
-        type="input"
-        defaultValue={importFolderPath().replace(/\\/g, "/").split("/").pop() || "Imported Vault"}
-        placeholder="Collection name"
-        errorMessage={importFolderNameError()}
-        onConfirm={handleImportFolderConfirm}
-        onClose={() => setIsImportFolderNameOpen(false)}
-      />
-
-      <ZipConflictDialog
-        isOpen={isZipConflictOpen()}
-        conflicts={zipConflicts()}
-        onConfirm={handleZipConflictConfirm}
-        onClose={() => setIsZipConflictOpen(false)}
+      <ArchiveWorkflow
+        leaseRegistry={operationLeaseRegistry}
+        importFolderPath={importFolderPath()}
+        importFolderNameOpen={isImportFolderNameOpen()}
+        importFolderNameError={importFolderNameError()}
+        onImportFolderConfirm={handleImportFolderConfirm}
+        onImportFolderClose={() => setIsImportFolderNameOpen(false)}
+        zipFilePath={zipFilePath()}
+        zipDestFolder={zipDestFolder()}
+        zipConflicts={zipConflicts()}
+        zipConflictOpen={isZipConflictOpen()}
+        onZipConfirm={handleZipConflictConfirm}
+        onZipClose={() => setIsZipConflictOpen(false)}
       />
 
       <Dialog
@@ -624,6 +647,6 @@ export default function App() {
           Do you want to update its path in the collection? If you select <strong>Cancel (No)</strong>, the entry will be removed from the collection.
         </p>
       </Dialog>
-    </div>
+    </>
   );
 }

@@ -1,9 +1,12 @@
-import { createSignal, Show, For, onMount, onCleanup } from "solid-js";
+import { createSignal, Show, For, createUniqueId, onMount, onCleanup } from "solid-js";
 import { Settings, CustomFont } from "../../types";
 import { Icon } from "../common/Icon";
-import * as api from "../../lib/tauri";
+import { ModalLayer } from "../common/ModalLayer";
+import { FileVisibilityPreference } from "./FileVisibilityPreference";
+import type { OperationLeaseRegistry } from "../../workflows/operationLease";
+import * as settingsApi from "../../features/settings";
 import { applyThemeSettings, registerCustomFonts, getDefaultThemeValues } from "../../lib/themeEngine";
-import { ask, message } from "@tauri-apps/plugin-dialog";
+import { ask, message, pickFontFile, saveThemeDialog, pickThemeFile } from "../../platform";
 import "./ThemePanel.css";
 
 interface ThemePanelProps {
@@ -11,9 +14,11 @@ interface ThemePanelProps {
   onClose: () => void;
   settings: Settings;
   onSettingsChange: (newSettings: Settings) => void;
+  operationLeaseRegistry?: OperationLeaseRegistry;
 }
 
 export function ThemePanel(props: ThemePanelProps) {
+  const titleId = `theme-panel-title-${createUniqueId()}`;
   // Local state for font import form
   const [isImporting, setIsImporting] = createSignal(false);
   const [importFilePath, setImportFilePath] = createSignal("");
@@ -21,6 +26,18 @@ export function ThemePanel(props: ThemePanelProps) {
   const [importWeight, setImportWeight] = createSignal("400");
   const [importStyle, setImportStyle] = createSignal("normal");
   const [importError, setImportError] = createSignal("");
+  const [isLongOperationPending, setIsLongOperationPending] = createSignal(false);
+
+  const runLongOperation = async <T,>(label: string, operation: () => Promise<T>): Promise<T> => {
+    setIsLongOperationPending(true);
+    const lease = props.operationLeaseRegistry?.register(label);
+    try {
+      return await operation();
+    } finally {
+      lease?.release();
+      setIsLongOperationPending(false);
+    }
+  };
 
   // Check if system is in dark mode
   const [systemIsDark, setSystemIsDark] = createSignal(false);
@@ -65,7 +82,7 @@ export function ThemePanel(props: ThemePanelProps) {
     applyThemeSettings(updated);
     
     // Save to settings.json
-    api.saveSettings(updated).catch((err) => {
+    settingsApi.saveSettings(updated).catch((err) => {
       console.error("Failed to save settings", err);
     });
   };
@@ -95,7 +112,7 @@ export function ThemePanel(props: ThemePanelProps) {
     };
     props.onSettingsChange(resetSettings);
     applyThemeSettings(resetSettings);
-    api.saveSettings(resetSettings).catch((err) => console.error(err));
+    settingsApi.saveSettings(resetSettings).catch((err) => console.error(err));
   };
 
   // Font Picker Options
@@ -116,7 +133,7 @@ export function ThemePanel(props: ThemePanelProps) {
   // Import font handlers
   const handlePickFontFile = async () => {
     try {
-      const selected = await api.pickFontFile("Select Font File");
+      const selected = await pickFontFile("Select Font File");
       if (selected) {
         setImportFilePath(selected);
         // Autopopulate family name from file name
@@ -144,12 +161,9 @@ export function ThemePanel(props: ThemePanelProps) {
 
     setImportError("");
     try {
-      const newFont = await api.importFont(
-        importFilePath(),
-        importFamily().trim(),
-        importWeight(),
-        importStyle()
-      );
+      const newFont = await runLongOperation("Import font", () => settingsApi.importFont(
+        importFilePath(), importFamily().trim(), importWeight(), importStyle()
+      ));
 
       const existingFonts = props.settings.customFonts || [];
       const updatedFonts = [...existingFonts, newFont];
@@ -157,7 +171,7 @@ export function ThemePanel(props: ThemePanelProps) {
       updateSetting("customFonts", updatedFonts);
 
       // Re-register fonts in engine
-      const fontsDir = await api.getFontsDir();
+      const fontsDir = await settingsApi.getFontsDir();
       registerCustomFonts(updatedFonts, fontsDir);
 
       // Reset form
@@ -180,14 +194,14 @@ export function ThemePanel(props: ThemePanelProps) {
       return;
     }
     try {
-      await api.deleteFont(font.fileName);
+      await settingsApi.deleteFont(font.fileName);
       const existingFonts = props.settings.customFonts || [];
       const updatedFonts = existingFonts.filter(f => f.fileName !== font.fileName);
       
       updateSetting("customFonts", updatedFonts);
 
       // Re-register in engine
-      const fontsDir = await api.getFontsDir();
+      const fontsDir = await settingsApi.getFontsDir();
       registerCustomFonts(updatedFonts, fontsDir);
     } catch (err) {
       console.error("Failed to delete font file", err);
@@ -197,10 +211,10 @@ export function ThemePanel(props: ThemePanelProps) {
   // Export Theme Handler
   const handleExportTheme = async () => {
     try {
-      const destPath = await api.saveThemeDialog("Export Theme JSON");
+      const destPath = await saveThemeDialog("Export Theme JSON");
       if (!destPath) return;
 
-      await api.exportTheme(props.settings, destPath);
+      await runLongOperation("Export theme", () => settingsApi.exportTheme(props.settings, destPath));
       await message("Theme exported successfully!", {
         title: "Export Theme",
         kind: "info",
@@ -217,24 +231,20 @@ export function ThemePanel(props: ThemePanelProps) {
   // Import Theme Handler
   const handleImportTheme = async () => {
     try {
-      const themePath = await api.pickThemeFile("Select Theme JSON to Import");
+      const themePath = await pickThemeFile("Select Theme JSON to Import");
       if (!themePath) return;
 
-      const importedSettings = await api.importTheme(themePath);
-      
-      props.onSettingsChange(importedSettings);
-      applyThemeSettings(importedSettings);
-      
-      // Save settings.json
-      await api.saveSettings(importedSettings);
-
-      // Re-register custom fonts from imported settings
-      const fontsDir = await api.getFontsDir();
-      registerCustomFonts(importedSettings.customFonts, fontsDir);
-
-      await message("Theme imported and applied successfully!", {
-        title: "Import Theme",
-        kind: "info",
+      await runLongOperation("Import theme", async () => {
+        const importedSettings = await settingsApi.importTheme(themePath);
+        props.onSettingsChange(importedSettings);
+        applyThemeSettings(importedSettings);
+        await settingsApi.saveSettings(importedSettings);
+        const fontsDir = await settingsApi.getFontsDir();
+        registerCustomFonts(importedSettings.customFonts, fontsDir);
+        await message("Theme imported and applied successfully!", {
+          title: "Import Theme",
+          kind: "info",
+        });
       });
     } catch (err) {
       console.error(err);
@@ -246,33 +256,40 @@ export function ThemePanel(props: ThemePanelProps) {
   };
 
   return (
-    <div class={`theme-panel-backdrop ${props.isOpen ? "open" : ""}`} onClick={() => props.onClose()}>
-      <div class="theme-panel" onClick={(e) => e.stopPropagation()}>
+    <ModalLayer
+      pending={isLongOperationPending()}
+      isOpen={props.isOpen}
+      labelledBy={titleId}
+      overlayClass="theme-panel-backdrop"
+      contentClass="theme-panel"
+      onClose={props.onClose}
+    >
         <div class="theme-panel-header">
-          <h3>Appearance & Theming</h3>
-          <button class="btn-close" onClick={() => props.onClose()}>
+          <h3 id={titleId}>Appearance & Theming</h3>
+          <button class="btn-close" aria-label="Close appearance settings" disabled={isLongOperationPending()} onClick={() => props.onClose()}>
             <Icon name="x" size={18} />
           </button>
         </div>
 
-        <div class="theme-panel-content">
+        <div class="theme-panel-content" aria-busy={isLongOperationPending() ? "true" : "false"}>
+          <FileVisibilityPreference />
           {/* Section: Theme Mode */}
           <div class="theme-section">
             <h4>Theme Mode</h4>
             <div class="theme-mode-options">
-              <button 
+              <button disabled={isLongOperationPending()}
                 class={`mode-option-btn ${props.settings.theme === "light" ? "active" : ""}`}
                 onClick={() => updateSetting("theme", "light")}
               >
                 <Icon name="sun" size={14} /> Light
               </button>
-              <button 
+              <button disabled={isLongOperationPending()}
                 class={`mode-option-btn ${props.settings.theme === "dark" ? "active" : ""}`}
                 onClick={() => updateSetting("theme", "dark")}
               >
                 <Icon name="moon" size={14} /> Dark
               </button>
-              <button 
+              <button disabled={isLongOperationPending()}
                 class={`mode-option-btn ${props.settings.theme === "system" ? "active" : ""}`}
                 onClick={() => updateSetting("theme", "system")}
               >
@@ -549,7 +566,7 @@ export function ThemePanel(props: ThemePanelProps) {
           <div class="theme-section">
             <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center", "margin-bottom": "8px" }}>
               <h4>Custom Fonts</h4>
-              <button 
+              <button disabled={isLongOperationPending()}
                 class="btn btn-secondary btn-compact" 
                 onClick={() => setIsImporting(!isImporting())}
               >
@@ -636,16 +653,15 @@ export function ThemePanel(props: ThemePanelProps) {
           <div class="theme-section">
             <h4>Theme Profiles</h4>
             <div style={{ display: "flex", gap: "12px" }}>
-              <button class="btn btn-secondary" style={{ flex: 1 }} onClick={handleExportTheme}>
+              <button class="btn btn-secondary" style={{ flex: 1 }} disabled={isLongOperationPending()} onClick={handleExportTheme}>
                 <Icon name="download" size={14} /> Export Theme
               </button>
-              <button class="btn btn-secondary" style={{ flex: 1 }} onClick={handleImportTheme}>
+              <button class="btn btn-secondary" style={{ flex: 1 }} disabled={isLongOperationPending()} onClick={handleImportTheme}>
                 <Icon name="upload" size={14} /> Import Theme
               </button>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </ModalLayer>
   );
 }

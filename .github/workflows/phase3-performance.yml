@@ -1,0 +1,47 @@
+name: phase3-performance
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 2 * * 1"
+
+jobs:
+  quality:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+          components: rustfmt, clippy
+      - run: npm ci
+      - run: node scripts/ipc/generate-contracts.mjs --check
+      - run: node scripts/ipc/verify-handler-registry.mjs
+      - run: node scripts/ipc/check-boundaries.mjs
+      - run: node scripts/phase0/verify-quality.mjs frontend
+      - run: node scripts/phase0/verify-quality.mjs backend
+
+  performance:
+    needs: quality
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+      - run: npm ci
+      - run: node scripts/phase3/run-benchmarks.mjs --run-id phase3-${{ github.run_id }}
+      - run: node scripts/phase3/verify-artifacts.mjs artifacts/phase3 --run-id phase3-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase3-${{ github.run_id }}
+          path: artifacts/phase3/phase3-${{ github.run_id }}/
+          retention-days: 90

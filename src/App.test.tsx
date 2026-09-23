@@ -4,18 +4,26 @@ import App from './App';
 import { uiStore } from './stores/ui';
 
 // Mock Tauri APIs
-vi.mock("@tauri-apps/api/core", () => ({
-  convertFileSrc: vi.fn((path) => `asset://${path}`),
+vi.mock("./features/collections", () => ({
+  getCollections: vi.fn(() => Promise.resolve([])),
+  initializeIdentityCache: vi.fn(() => Promise.resolve()),
 }));
 
-vi.mock("./lib/tauri", () => ({
+vi.mock("./features/settings", () => ({
   loadSettings: vi.fn(() => Promise.resolve({
     theme: "dark",
     fontScale: 1.0,
     customFonts: [],
   })),
   getFontsDir: vi.fn(() => Promise.resolve("/mock/fonts")),
-  getCollections: vi.fn(() => Promise.resolve([])),
+}));
+
+vi.mock("./features/archive", () => ({
+  checkZipConflicts: vi.fn(() => Promise.resolve([])),
+}));
+
+vi.mock("./platform/assets", () => ({
+  convertFileSrc: vi.fn((path: string) => `asset://${path}`),
 }));
 
 // Mock matchMedia

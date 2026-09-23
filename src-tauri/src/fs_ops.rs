@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -23,8 +23,7 @@ pub fn read_children(path: &Path) -> Result<Vec<FsEntry>, String> {
         return Err(format!("Path is not a directory: {:?}", path));
     }
 
-    let entries = fs::read_dir(path)
-        .map_err(|e| format!("Failed to read directory: {}", e))?;
+    let entries = fs::read_dir(path).map_err(|e| format!("Failed to read directory: {}", e))?;
 
     let mut fs_entries = Vec::new();
     for entry in entries {
@@ -35,7 +34,7 @@ pub fn read_children(path: &Path) -> Result<Vec<FsEntry>, String> {
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_string();
-        
+
         if name.is_empty() {
             continue;
         }

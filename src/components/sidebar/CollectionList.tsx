@@ -1,8 +1,9 @@
 import { For, Show, onMount } from "solid-js";
 import { collectionsStore } from "../../stores/collections";
 import { CollectionItem } from "./CollectionItem";
+import type { OperationLeaseRegistry } from "../../workflows/operationLease";
 
-export function CollectionList() {
+export function CollectionList(props: { requestSwitch: (collectionId: string) => Promise<boolean>; operationLeaseRegistry?: OperationLeaseRegistry }) {
   onMount(() => {
     collectionsStore.loadCollections();
   });
@@ -23,7 +24,7 @@ export function CollectionList() {
         }
       >
         <For each={collectionsStore.state.collections}>
-          {(col) => <CollectionItem collection={col} />}
+          {(col) => <CollectionItem collection={col} requestSwitch={props.requestSwitch} operationLeaseRegistry={props.operationLeaseRegistry} />}
         </For>
       </Show>
     </div>

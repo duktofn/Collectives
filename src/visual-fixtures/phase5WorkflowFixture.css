@@ -1,0 +1,15 @@
+:root { --p5-canvas: #151719; --p5-surface: #24292f; --p5-sidebar: #202428; --p5-border: #3d454d; --p5-text: #edf0f2; --p5-muted: #aab3bb; --p5-accent: #e48b61; }
+[data-theme="light"], [data-theme="system"][data-system-match-media="light"] { --p5-canvas: #f5f3ee; --p5-surface: #fffdfa; --p5-sidebar: #e9e6df; --p5-border: #d2cec5; --p5-text: #222; --p5-muted: #6b6a66; --p5-accent: #bf5b35; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 800px; min-height: 600px; font: 14px/1.45 system-ui, sans-serif; background: var(--p5-canvas); color: var(--p5-text); }
+.phase5-fixture { display: flex; width: 100vw; height: 100vh; overflow: hidden; background: var(--p5-canvas); color: var(--p5-text); }
+.phase5-sidebar { display: flex; width: 260px; flex-direction: column; gap: 12px; padding: 20px 16px; background: var(--p5-sidebar); border-right: 1px solid var(--p5-border); }
+.phase5-sidebar span { color: var(--p5-muted); font-size: 12px; }.phase5-sidebar button, .phase5-controls button { padding: 8px 10px; border: 1px solid var(--p5-border); border-radius: 6px; background: var(--p5-surface); color: var(--p5-text); }
+.phase5-sidebar footer { display: flex; gap: 8px; margin-top: auto; }.phase5-ghost { opacity: .55; }
+.phase5-main { display: flex; min-width: 0; min-height: 0; flex: 1; flex-direction: column; }
+.phase5-main header { display: flex; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--p5-border); background: var(--p5-surface); }.phase5-main header button { padding: 8px 12px; }
+.phase5-status { padding: 10px 20px; border-bottom: 1px solid var(--p5-border); color: var(--p5-muted); }.phase5-folderref-broken, .phase5-error { color: var(--p5-accent); }
+.phase5-body { display: flex; min-height: 0; flex: 1; overflow: hidden; }.phase5-editor, .phase5-empty { margin: auto; padding: 32px; }.phase5-empty { text-align: center; }.phase5-empty button, .phase5-primary { margin: 6px; padding: 10px 14px; }.phase5-primary { background: var(--p5-accent); color: white; border: 0; border-radius: 6px; }
+.phase5-notice { padding: 12px 20px; border-top: 1px solid var(--p5-accent); color: var(--p5-accent); }.phase5-notice button { margin-left: 12px; }
+.phase5-modal-backdrop { position: absolute; inset: 0; display: grid; place-items: center; background: #0008; }.phase5-modal { width: min(560px, calc(100% - 48px)); padding: 24px; border: 1px solid var(--p5-border); border-radius: 12px; background: var(--p5-surface); box-shadow: 0 20px 60px #0008; }.phase5-modal button { margin-right: 8px; padding: 8px 12px; }
+.phase5-controls { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 20px; border-top: 1px solid var(--p5-border); }.phase5-controls .selected { border-color: var(--p5-accent); }

@@ -2,12 +2,18 @@ import { createSignal, Show, For, onMount, onCleanup } from "solid-js";
 import { Entry, FsEntry } from "../../types";
 import { collectionsStore } from "../../stores/collections";
 import { uiStore } from "../../stores/ui";
+import { editorStore } from "../../stores/editor";
 import { Icon } from "../common/Icon";
 import { ContextMenu, ContextMenuItem } from "../common/ContextMenu";
 import { Dialog } from "../common/Dialog";
-import { message } from "@tauri-apps/plugin-dialog";
-import { readFolderChildren, pickDirectory, watchFolder, unwatchFolder } from "../../lib/tauri";
-import { listen } from "@tauri-apps/api/event";
+import { message, pickDirectory } from "../../platform";
+import { readFolderChildren, watchFolder, unwatchFolder } from "../../features/filesystem";
+import { listenEvent } from "../../shared/ipc/events";
+import { createFolderRefFeedSubscription } from "../../features/filesystem/folderRefFeed";
+import { cancelFolderRefReadiness, retryFolderRefChildFromEvent } from "../../features/filesystem/folderRefReadiness";
+import { FolderRefChildRow } from "./FolderRefChildRow";
+import { treeItemIdentity } from "./treeAccessibility";
+import { MoveTargetRadioGroup } from "../common/MoveTargetRadioGroup";
 import "./Tree.css";
 
 interface FolderRefNodeProps {
@@ -15,10 +21,12 @@ interface FolderRefNodeProps {
   depth: number;
   parentPath: number[];
   index: number;
+  parentTreeId?: string;
+  requestFolderRefSelect: (intent: import("../../features/filesystem/folderRefReadiness").FolderRefIntentInput) => Promise<boolean>;
 }
-
 export function FolderRefNode(props: FolderRefNodeProps) {
   const entry = () => props.entry;
+  const treeId = () => treeItemIdentity(["entry", entry().id]);
   const [contextMenuPos, setContextMenuPos] = createSignal({ x: 0, y: 0 });
   const [isContextMenuOpen, setIsContextMenuOpen] = createSignal(false);
   const [isMoveOpen, setIsMoveOpen] = createSignal(false);
@@ -85,34 +93,44 @@ export function FolderRefNode(props: FolderRefNodeProps) {
       reloadChildren();
     }
 
-    const unlistenPromise = listen<{ path: string }>("folder-changed", (event) => {
+    const unlistenPromise = listenEvent("folder-changed", (event) => {
       if (event.payload.path === entry().path && isExpanded() && !isBroken()) {
         reloadChildren();
       }
     });
+    const feedSubscription = createFolderRefFeedSubscription(reloadChildren);
+    const unlistenV2Promise = listenEvent("filesystem-changes-v2", (event) => {
+      for (const change of event.payload.changes) feedSubscription.handle(change, entry().path, entry().id, isExpanded(), isBroken());
+      retryFolderRefChildFromEvent(event.payload, entry().path, entry().id);
+    });
 
     onCleanup(() => {
       unlistenPromise.then((unlisten) => unlisten());
+      unlistenV2Promise.then((unlisten) => unlisten());
+      feedSubscription.dispose();
       if (isExpanded() && !isBroken()) {
         unwatchFolder(entry().path).catch((err) => {
           console.error("Failed to unwatch folder on cleanup", entry().path, err);
         });
       }
+      cancelFolderRefReadiness(entry().id);
     });
   });
 
   const handleContextMenu = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    (e.currentTarget as HTMLElement).focus();
     setContextMenuPos({ x: e.clientX, y: e.clientY });
     setIsContextMenuOpen(true);
   };
 
   const handleRemove = async () => {
     try {
+      if (uiStore.isSelected(entry().id) && !(await editorStore.closeFile())) return;
       await collectionsStore.removeEntry(entry().id);
       if (uiStore.isSelected(entry().id)) {
-        uiStore.selectEntry(null);
+        await editorStore.selectEntry(null);
       }
     } catch (err) {
       await message(err instanceof Error ? err.message : String(err), {
@@ -216,6 +234,15 @@ export function FolderRefNode(props: FolderRefNodeProps) {
         class="tree-node"
         classList={{ broken: isBroken() }}
         style={{ "padding-left": `${props.depth * 16 + 8}px` }}
+        role="treeitem"
+        tabIndex={-1}
+        aria-level={props.depth + 1}
+        aria-selected="false"
+        aria-expanded={isExpanded() ? "true" : "false"}
+        aria-busy={loading() ? "true" : undefined}
+        data-tree-item-id={treeId()}
+        data-tree-parent-id={props.parentTreeId}
+        data-tree-label={getFolderName(entry().path)}
         onClick={toggleExpand}
         onContextMenu={handleContextMenu}
         title={entry().path}
@@ -241,11 +268,21 @@ export function FolderRefNode(props: FolderRefNodeProps) {
       </div>
 
       <Show when={isExpanded() && !isBroken() && children().length > 0}>
-        <For each={children()}>
-          {(child) => (
-            <FsNode item={child} depth={props.depth + 1} />
-          )}
-        </For>
+        <div role="group">
+          <For each={children()}>
+            {(child) => (
+              <FolderRefChildRow
+                item={child}
+                depth={props.depth + 1}
+                parentTreeId={treeId()}
+                collectionId={collectionsStore.state.activeCollectionId ?? ""}
+                folderRefEntryId={entry().id}
+                rootPath={entry().path}
+                requestSelect={props.requestFolderRefSelect}
+              />
+            )}
+          </For>
+        </div>
       </Show>
 
       <ContextMenu
@@ -266,113 +303,14 @@ export function FolderRefNode(props: FolderRefNodeProps) {
         <p style={{ "font-size": "13px", "margin-bottom": "8px" }}>
           Select target destination for <strong>{getFolderName(entry().path)}</strong>:
         </p>
-        <div class="parent-select-list">
-          <For each={getGroups()}>
-            {(group) => (
-              <div
-                class="parent-select-item"
-                classList={{ selected: selectedParentId() === group.id }}
-                onClick={() => setSelectedParentId(group.id)}
-              >
-                {group.name}
-              </div>
-            )}
-          </For>
-        </div>
+        <MoveTargetRadioGroup
+          name={`folder-ref-move-${entry().id}`}
+          options={getGroups()}
+          selectedId={selectedParentId()}
+          onChange={setSelectedParentId}
+          onConfirm={() => { void handleMoveConfirm(); }}
+        />
       </Dialog>
-    </div>
-  );
-}
-
-// Internal recursive FsNode component for displaying files and directories on disk
-interface FsNodeProps {
-  item: FsEntry;
-  depth: number;
-}
-
-function FsNode(props: FsNodeProps) {
-  const [children, setChildren] = createSignal<FsEntry[]>([]);
-  const [isExpanded, setIsExpanded] = createSignal(false);
-  const [loading, setLoading] = createSignal(false);
-  const [broken, setBroken] = createSignal(false);
-
-  const getDisplayName = () => {
-    if (!props.item.isDir && props.item.name.endsWith(".md")) {
-      return props.item.name.slice(0, -3);
-    }
-    return props.item.name;
-  };
-
-  const isSelected = () => uiStore.isSelected(props.item.path);
-
-  const handleClick = async (e: MouseEvent) => {
-    e.stopPropagation();
-    if (props.item.isDir) {
-      if (broken()) return;
-      const nextExpanded = !isExpanded();
-      setIsExpanded(nextExpanded);
-      
-      if (nextExpanded) {
-        setLoading(true);
-        try {
-          const contents = await readFolderChildren(props.item.path);
-          setChildren(contents);
-          setBroken(false);
-        } catch (err) {
-          console.error("Failed to read subdirectory children", err);
-          setBroken(true);
-        } finally {
-          setLoading(false);
-        }
-      }
-    } else {
-      uiStore.selectEntry(props.item.path);
-    }
-  };
-
-  return (
-    <div class="tree-node-wrapper">
-      <div
-        class="tree-node"
-        classList={{
-          selected: !props.item.isDir && isSelected(),
-          broken: broken(),
-        }}
-        style={{ "padding-left": `${props.depth * 16 + 8}px` }}
-        onClick={handleClick}
-        title={props.item.path}
-      >
-        <div class="tree-node-icon">
-          <Show when={broken()} fallback={<Icon name={props.item.isDir ? "folder" : "file"} size={14} />}>
-            <Icon name="warning" size={14} />
-          </Show>
-        </div>
-        
-        <span class="tree-node-name">{getDisplayName()}</span>
-        <Show when={loading()}>
-          <div class="tree-node-loading-spinner" />
-        </Show>
-
-        <Show when={props.item.isDir}>
-          <div
-            class="tree-node-arrow"
-            style={{
-              transform: isExpanded() ? "rotate(90deg)" : "none",
-              opacity: broken() ? 0.3 : 1
-            }}
-          >
-            <Icon name="chevron-right" size={12} />
-          </div>
-        </Show>
-      </div>
-
-      <Show when={props.item.isDir && isExpanded() && !broken() && children().length > 0}>
-        <For each={children()}>
-          {(child) => (
-            <FsNode item={child} depth={props.depth + 1} />
-          )}
-        </For>
-      </Show>
     </div>
   );
 }

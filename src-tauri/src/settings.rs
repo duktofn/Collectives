@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use tauri::Manager;
 
@@ -20,28 +20,30 @@ pub struct Settings {
     pub font_body: Option<String>,
     pub font_mono: Option<String>,
     pub font_scale: f32,
-    
+
     // Heading sizes (multipliers or absolute values, Option allows defaulting)
     pub size_h1: Option<f32>,
     pub size_h2: Option<f32>,
     pub size_h3: Option<f32>,
     pub size_h4: Option<f32>,
-    
+
     // Heading colors
     pub color_h1: Option<String>,
+    #[serde(alias = "color_body")]
+    pub color_body: Option<String>,
     pub color_h2: Option<String>,
     pub color_h3: Option<String>,
     pub color_h4: Option<String>,
-    
+
     // Custom elements colors
     pub color_code_bg: Option<String>,
     pub color_code_text: Option<String>,
     pub color_link: Option<String>,
     pub color_link_hover: Option<String>,
-    
+
     // Line spacing
     pub line_height: Option<f32>,
-    
+
     // Imported custom fonts registry
     pub custom_fonts: Option<Vec<CustomFont>>,
 }
@@ -58,6 +60,7 @@ impl Default for Settings {
             size_h3: None,
             size_h4: None,
             color_h1: None,
+            color_body: None,
             color_h2: None,
             color_h3: None,
             color_h4: None,
@@ -87,8 +90,7 @@ pub fn save_settings_to_path(settings_file: &Path, settings: &Settings) -> Resul
     }
     let data = serde_json::to_string_pretty(settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-    fs::write(settings_file, data)
-        .map_err(|e| format!("Failed to write settings file: {}", e))?;
+    fs::write(settings_file, data).map_err(|e| format!("Failed to write settings file: {}", e))?;
     Ok(())
 }
 
@@ -145,4 +147,3 @@ mod tests {
         assert_eq!(loaded.font_scale, 1.2);
     }
 }
-

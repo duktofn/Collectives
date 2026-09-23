@@ -1,7 +1,7 @@
+use file_id::{get_file_id, FileId};
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::path::{Path, PathBuf};
-use file_id::{FileId, get_file_id};
+use std::sync::Mutex;
 use tauri::{AppHandle, State};
 
 pub struct FileIdentityCache {
@@ -27,6 +27,12 @@ impl FileIdentityCache {
 
     pub fn clear(&self) {
         self.cache.lock().unwrap().clear();
+    }
+}
+
+impl Default for FileIdentityCache {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -59,14 +65,21 @@ pub fn scan_dir_for_id_recursive(dir: &Path, target_id: FileId, depth: usize) ->
     None
 }
 
-#[tauri::command]
 pub fn initialize_identity_cache(
     app: AppHandle,
     cache_state: State<'_, FileIdentityCache>,
     collection_id: String,
 ) -> Result<(), String> {
+    initialize_identity_cache_with_cache(&app, &cache_state, &collection_id)
+}
+
+pub fn initialize_identity_cache_with_cache(
+    app: &AppHandle,
+    cache_state: &FileIdentityCache,
+    collection_id: &str,
+) -> Result<(), String> {
     cache_state.clear();
-    let collection = crate::collection::load_collection(&app, &collection_id)?;
+    let collection = crate::collection::load_collection(app, collection_id)?;
 
     fn cache_entries(entries: &[crate::collection::model::Entry], cache: &FileIdentityCache) {
         for entry in entries {
@@ -84,11 +97,10 @@ pub fn initialize_identity_cache(
         }
     }
 
-    cache_entries(&collection.entries, &cache_state);
+    cache_entries(&collection.entries, cache_state);
     Ok(())
 }
 
-#[tauri::command]
 pub fn detect_moved_entry(
     app: AppHandle,
     cache_state: State<'_, FileIdentityCache>,
@@ -96,11 +108,21 @@ pub fn detect_moved_entry(
     entry_id: String,
     old_path: String,
 ) -> Result<Option<String>, String> {
-    let Some(target_id) = cache_state.get(&entry_id) else {
+    detect_moved_entry_with_cache(&app, &cache_state, &collection_id, &entry_id, &old_path)
+}
+
+pub fn detect_moved_entry_with_cache(
+    app: &AppHandle,
+    cache_state: &FileIdentityCache,
+    collection_id: &str,
+    entry_id: &str,
+    old_path: &str,
+) -> Result<Option<String>, String> {
+    let Some(target_id) = cache_state.get(entry_id) else {
         return Ok(None);
     };
 
-    let collection = crate::collection::load_collection(&app, &collection_id)?;
+    let collection = crate::collection::load_collection(app, collection_id)?;
     let mut candidate_folders = std::collections::HashSet::new();
 
     if let Some(parent) = Path::new(&old_path).parent() {
@@ -109,7 +131,10 @@ pub fn detect_moved_entry(
         }
     }
 
-    fn collect_candidates(entries: &[crate::collection::model::Entry], folders: &mut std::collections::HashSet<PathBuf>) {
+    fn collect_candidates(
+        entries: &[crate::collection::model::Entry],
+        folders: &mut std::collections::HashSet<PathBuf>,
+    ) {
         for entry in entries {
             match entry {
                 crate::collection::model::Entry::File { path, .. } => {
@@ -134,7 +159,9 @@ pub fn detect_moved_entry(
 
     for folder in candidate_folders {
         if let Some(found_path) = scan_dir_for_id_recursive(&folder, target_id, 3) {
-            return Ok(Some(crate::fs_ops::normalize_path(&found_path.to_string_lossy())));
+            return Ok(Some(crate::fs_ops::normalize_path(
+                &found_path.to_string_lossy(),
+            )));
         }
     }
 
@@ -157,7 +184,9 @@ mod tests {
         let fid = get_file_id(&file_path).unwrap();
 
         let found = scan_dir_for_id_recursive(dir_path, fid, 2).unwrap();
-        assert_eq!(found.canonicalize().unwrap(), file_path.canonicalize().unwrap());
+        assert_eq!(
+            found.canonicalize().unwrap(),
+            file_path.canonicalize().unwrap()
+        );
     }
 }
-

@@ -1,0 +1,7 @@
+# Phase 2 boundaries report
+
+Phase 2 establishes the `ipc.v1` contract with 37 generated command records, 4 typed event records, the SafetyError/legacy rejection union, and separate dialog/window/assets platform gateways. The generated Rust registry is consumed directly by `tauri::generate_handler!`; `verify-handler-registry.mjs` checks exact manifest parity and negative missing/extra manifests.
+
+Production frontend code now uses feature public indexes and shared/platform gateways. `src/lib/tauri.ts` is re-export-only. The TypeScript compiler AST checker reports zero production exemptions and one explicit Phase 0 benchmark mock exemption. Backend IPC command modules are thin command-layer adapters; DTO/event payloads preserve camelCase wire keys. `AppServices` is composed once in `lib.rs` and managed as Tauri state, with typed `Arc<dyn ...>` ports for collections, archive, documents, settings, links and filesystem. Application services accept the managed composition, repositories own infrastructure calls, per-operation SQLite connections are enforced, and fake-repository/Send+Sync/parallel/temp-root Phase 1 recovery tests are covered by `phase2_services`.
+
+Fresh evidence is under `artifacts/phase2/phase2-20260822T125500Z-boundaries/`. The first reconciliation using the Phase 1 policy is intentionally preserved as a failed diagnostic; `reconciliation-final3.json` passes using the Phase 2 policy. No Cargo.toml content or dependency state was changed, and no Phase 0/1/2 artifact was deleted or moved.

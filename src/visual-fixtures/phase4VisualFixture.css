@@ -1,0 +1,27 @@
+:root { font-family: system-ui, "Segoe UI", sans-serif; color-scheme: dark; --fixture-canvas: #151719; --fixture-sidebar: #202428; --fixture-surface: #24292f; --fixture-border: #3d454d; --fixture-text: #edf0f2; --fixture-muted: #aab3bb; --fixture-accent: #e48b61; }
+[data-theme="light"] { color-scheme: light; --fixture-canvas: #f5f3ee; --fixture-sidebar: #e9e6df; --fixture-surface: #fffdfa; --fixture-border: #d2cec5; --fixture-text: #222222; --fixture-muted: #6b6a66; --fixture-accent: #bf5b35; }
+[data-theme="system"][data-system-match-media="light"] { color-scheme: light; --fixture-canvas: #f5f3ee; --fixture-sidebar: #e9e6df; --fixture-surface: #fffdfa; --fixture-border: #d2cec5; --fixture-text: #222222; --fixture-muted: #6b6a66; --fixture-accent: #bf5b35; }
+[data-theme="system"][data-system-match-media="dark"] { color-scheme: dark; --fixture-canvas: #151719; --fixture-sidebar: #202428; --fixture-surface: #24292f; --fixture-border: #3d454d; --fixture-text: #edf0f2; --fixture-muted: #aab3bb; --fixture-accent: #e48b61; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 800px; min-height: 600px; background: var(--fixture-canvas); color: var(--fixture-text); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+button { border: 1px solid var(--fixture-border); border-radius: 6px; background: transparent; color: inherit; padding: 7px 10px; cursor: pointer; }
+button:focus-visible { outline: 3px solid var(--fixture-accent); outline-offset: 2px; }
+.phase4-fixture { display: flex; min-height: 100vh; overflow: hidden; background: var(--fixture-canvas); color: var(--fixture-text); }
+.fixture-sidebar { display: flex; width: 280px; min-width: 180px; flex-direction: column; gap: 12px; padding: 16px; background: var(--fixture-sidebar); border-right: 1px solid var(--fixture-border); }
+.fixture-brand { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 16px; }
+.fixture-collection { padding: 10px; background: color-mix(in srgb, var(--fixture-accent) 14%, transparent); border-radius: 6px; font-weight: 650; }
+.fixture-tree-entry { display: block; width: 100%; margin: 3px 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.fixture-sidebar-footer { display: flex; gap: 8px; margin-top: auto; }
+.fixture-main { display: flex; position: relative; min-width: 0; flex: 1; flex-direction: column; background: var(--fixture-canvas); }
+.fixture-header { display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--fixture-border); }
+.fixture-header strong, .fixture-header small { display: block; overflow: hidden; max-width: min(680px, 60vw); text-overflow: ellipsis; white-space: nowrap; }
+.fixture-header small { color: var(--fixture-muted); }
+.fixture-actions { display: flex; gap: 8px; }
+.fixture-status { display: flex; min-height: 40px; align-items: center; gap: 8px; padding: 0 20px; border-bottom: 1px solid var(--fixture-border); color: var(--fixture-muted); }
+.fixture-dot { width: 8px; height: 8px; border-radius: 50%; background: #6cc58b; }.fixture-saving { background: #e5b653; }.fixture-error { background: #e56a67; }.fixture-loading { background: #68a7db; }
+.fixture-body { display: flex; min-height: 0; flex: 1; overflow: auto; }
+.fixture-editor { width: min(840px, 100%); padding: 42px; font: 15px/1.8 ui-monospace, Consolas, monospace; }.fixture-editor-line { margin-bottom: 12px; }
+.fixture-empty { margin: auto; max-width: 500px; padding: 36px; text-align: center; }.fixture-empty-icon { color: var(--fixture-accent); font-size: 48px; }.fixture-empty h1 { margin: 8px 0; }.fixture-empty p { color: var(--fixture-muted); }.fixture-empty button { margin: 4px; }.fixture-primary { background: var(--fixture-accent); border-color: var(--fixture-accent); color: #fff; }
+.fixture-state-controls { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 20px; border-top: 1px solid var(--fixture-border); }.fixture-state-controls .selected { border-color: var(--fixture-accent); color: var(--fixture-accent); }
+.fixture-modal-backdrop { position: absolute; inset: 0; display: grid; place-items: center; background: #0008; }.fixture-modal { width: min(560px, calc(100% - 48px)); padding: 24px; background: var(--fixture-surface); border: 1px solid var(--fixture-border); border-radius: 12px; box-shadow: 0 20px 60px #0008; }.fixture-modal-theme { align-self: stretch; justify-self: end; width: min(420px, 80%); border-radius: 12px 0 0 12px; }.fixture-modal-content { min-height: 120px; margin: 16px 0; padding: 16px; border: 1px solid var(--fixture-border); border-radius: 6px; overflow: auto; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

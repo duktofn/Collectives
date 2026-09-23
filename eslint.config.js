@@ -4,7 +4,7 @@ import solidPlugin from 'eslint-plugin-solid';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'src-tauri/**'],
+    ignores: ['dist/**', 'src-tauri/**', 'artifacts/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

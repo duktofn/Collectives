@@ -1,0 +1,7 @@
+.valid-fixture {
+  color: var(--ds-text-primary);
+  background: var(--ds-surface);
+  padding: var(--ds-space-3);
+  border-radius: var(--ds-radius-md);
+  box-shadow: var(--ds-shadow-sm);
+}

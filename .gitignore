@@ -1,3 +1,12 @@
 node_modules
 dist
 .agents
+artifacts/phase0/
+artifacts/phase1/
+artifacts/phase2/
+artifacts/phase3/
+artifacts/phase4/
+artifacts/phase5/
+artifacts/phase6/
+artifacts/feature42/
+test-results/

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   frontend:
@@ -14,16 +14,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version-file: .nvmrc
+          cache: npm
       - name: Install dependencies
-        run: npm install
-      - name: Type Check
-        run: npm run typecheck
-      - name: Lint
-        run: npm run lint
-      - name: Run tests
-        run: npm run test -- --run
+        run: npm ci
+      - name: Canonical frontend quality gates
+        run: node scripts/phase0/verify-quality.mjs frontend
 
   backend:
     strategy:
@@ -32,9 +28,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install Node dependencies
+        run: npm ci
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.0
           components: clippy, rustfmt
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
@@ -45,12 +49,44 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-      - name: Rust format check
-        run: cargo fmt --all -- --check
-        working-directory: src-tauri
-      - name: Backend Lint (Clippy)
-        run: cargo clippy -- -D warnings
-        working-directory: src-tauri
-      - name: Backend Test
-        run: cargo test
-        working-directory: src-tauri
+      - name: Canonical backend quality gates
+        run: node scripts/phase0/verify-quality.mjs backend
+
+  phase0-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.0
+          components: clippy, rustfmt
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Generate and compare smoke fixtures
+        run: |
+          FIXTURE_PARENT="$RUNNER_TEMP/collectives-phase0-smoke"
+          mkdir -p "$FIXTURE_PARENT"
+          node scripts/phase0/generate-fixtures.mjs --out "$FIXTURE_PARENT/a" --profile smoke --seed phase0-v1
+          node scripts/phase0/generate-fixtures.mjs --out "$FIXTURE_PARENT/b" --profile smoke --seed phase0-v1
+          node scripts/phase0/verify-fixtures.mjs --left "$FIXTURE_PARENT/a" --right "$FIXTURE_PARENT/b" --manifest test-fixtures/phase0/manifest.json
+      - name: Run smoke harness and validate schema
+        run: |
+          node scripts/phase0/run-benchmarks.mjs --fixture-root "$RUNNER_TEMP/collectives-phase0-smoke/a" --artifact-root artifacts/phase0 --native-cold-samples 1 --native-warm-samples 1 --workload-samples 1 --skip-native
+          node scripts/phase0/verify-artifacts.mjs --root artifacts/phase0 --allow-incomplete
+      - name: Upload Phase 0 smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase0-smoke-evidence
+          path: artifacts/phase0
+          retention-days: 90

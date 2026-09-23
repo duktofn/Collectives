@@ -1,5 +1,6 @@
 [package]
 name = "tauri-app"
+default-run = "tauri-app"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
@@ -36,4 +37,3 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 
 [dev-dependencies]
 tempfile = "3.10"
-

@@ -33,7 +33,9 @@ class CodeBlockWidget extends WidgetType {
     public codeText: string,
     public language: string,
     public from: number,
-    public to: number
+    public to: number,
+    public innerFrom: number,
+    public innerTo: number
   ) {
     super();
   }
@@ -43,7 +45,9 @@ class CodeBlockWidget extends WidgetType {
       this.codeText === other.codeText &&
       this.language === other.language &&
       this.from === other.from &&
-      this.to === other.to
+      this.to === other.to &&
+      this.innerFrom === other.innerFrom &&
+      this.innerTo === other.innerTo
     );
   }
 
@@ -83,10 +87,52 @@ class CodeBlockWidget extends WidgetType {
     return true;
   }
 
-  toDOM(_view: EditorView) {
+  toDOM(view: EditorView) {
     const container = document.createElement("div");
     container.className = "cm-codeblock-widget-container";
+    container.setAttribute("data-source-from", String(this.from));
+    container.setAttribute("data-source-to", String(this.to));
+    container.setAttribute("role", "region");
+    container.setAttribute("aria-label", this.language ? `${this.language} fenced code` : "Fenced code");
     container.style.position = "relative";
+
+    let dragAnchor: number | null = null;
+    const positionAtEvent = (event: MouseEvent): number | null => {
+      const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      if (position === null) return null;
+      return Math.min(this.innerTo, Math.max(this.innerFrom, position));
+    };
+    const updateSelection = (event: MouseEvent) => {
+      const position = positionAtEvent(event);
+      if (position === null) return;
+      view.dispatch({
+        selection: dragAnchor === null
+          ? { anchor: position }
+          : { anchor: dragAnchor, head: position },
+      });
+    };
+    const stopDrag = () => {
+      dragAnchor = null;
+      document.removeEventListener("mousemove", moveDrag);
+      document.removeEventListener("mouseup", stopDrag);
+    };
+    const moveDrag = (event: MouseEvent) => {
+      if (dragAnchor !== null && event.buttons !== 0) updateSelection(event);
+    };
+    const startDrag = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const position = positionAtEvent(event);
+      if (position === null) return;
+      dragAnchor = position;
+      view.focus();
+      updateSelection(event);
+      document.addEventListener("mousemove", moveDrag);
+      document.addEventListener("mouseup", stopDrag);
+    };
+    container.addEventListener("mousedown", startDrag);
+    container.addEventListener("mouseleave", stopDrag);
 
     const pre = document.createElement("pre");
     pre.className = "cm-codeblock-widget-pre";
@@ -124,12 +170,28 @@ function buildCodeBlockDecorations(state: EditorState): DecorationSet {
 
       const isCursorInCodeBlock =
         selection.head >= node.from && selection.head <= node.to;
-      if (isCursorInCodeBlock) return false;
 
       const startLine = state.doc.lineAt(node.from);
       const endLine = state.doc.lineAt(node.to);
       const lineStart = startLine.number;
       const lineEnd = endLine.number;
+
+      if (isCursorInCodeBlock) {
+        for (let lineNumber = lineStart; lineNumber <= lineEnd; lineNumber++) {
+          const line = state.doc.line(lineNumber);
+          builder.add(
+            line.from,
+            line.from,
+            Decoration.line({
+              class:
+                "cm-codeblock-line" +
+                (lineNumber === lineStart ? " cm-codeblock-line-first" : "") +
+                (lineNumber === lineEnd ? " cm-codeblock-line-last" : ""),
+            })
+          );
+        }
+        return false;
+      }
 
       let codeText = "";
       if (lineEnd > lineStart + 1) {
@@ -141,11 +203,14 @@ function buildCodeBlockDecorations(state: EditorState): DecorationSet {
       const langMatch = startLine.text.match(/^```(\w*)/);
       const language = langMatch?.[1] || "";
 
+      const innerFrom = lineEnd > lineStart + 1 ? state.doc.line(lineStart + 1).from : startLine.to;
+      const innerTo = lineEnd > lineStart + 1 ? state.doc.line(lineEnd - 1).to : startLine.to;
+      if (innerTo <= innerFrom) return false;
       builder.add(
-        node.from,
-        node.to,
+        innerFrom,
+        innerTo,
         Decoration.replace({
-          widget: new CodeBlockWidget(codeText, language, node.from, node.to),
+          widget: new CodeBlockWidget(codeText, language, node.from, node.to, innerFrom, innerTo),
           block: true,
         })
       );
@@ -171,7 +236,4 @@ const codeBlockWidgetField = StateField.define<DecorationSet>({
 
 export const codeBlockWidgetExtension: Extension = [
   codeBlockWidgetField,
-  EditorView.atomicRanges.of((view) => {
-    return view.state.field(codeBlockWidgetField, false) ?? Decoration.none;
-  }),
 ];

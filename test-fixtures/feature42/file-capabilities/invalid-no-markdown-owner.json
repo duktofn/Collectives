@@ -1,0 +1,1 @@
+{"version":"file-capabilities.v1","schemaVersion":1,"capabilities":[{"kind":"text-source","extensions":["txt","json"]},{"kind":"text-source","extensions":["md"]}],"directories":{"visible":true}}

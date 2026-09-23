@@ -77,9 +77,13 @@ export interface ResolveCandidate {
 }
 
 export interface ZipConflict {
+  conflictId: string;
   entryId: string;
   displayName: string;
   targetPath: string;
+  originMembers: string[];
+  allowedResolutions: ZipResolution[];
+  kind: string;
 }
 
 export type ZipResolution = "overwrite" | "rename" | "skip";

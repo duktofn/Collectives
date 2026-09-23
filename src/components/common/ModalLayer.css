@@ -1,0 +1,17 @@
+.modal-layer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ds-z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ds-space-4);
+  background: color-mix(in srgb, var(--ds-color-black) 48%, transparent);
+}
+
+.modal-layer-content {
+  min-width: 0;
+  max-width: min(100%, var(--ds-modal-max-width));
+  max-height: calc(100% - (var(--ds-space-4) * 2));
+  outline: none;
+}

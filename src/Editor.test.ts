@@ -1,4 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, cleanup } from "@solidjs/testing-library";
+import { Editor } from "./components/editor/Editor";
 import { EditorState } from "@codemirror/state";
 import { getExtensionsForMode } from "./lib/cm-extensions/markdown-mode";
 import { getFootnoteDefinitions } from "./lib/cm-extensions/annotation";
@@ -6,13 +8,14 @@ import { editorStore } from "./stores/editor";
 import * as yaml from "js-yaml";
 
 // Mock Tauri APIs
-vi.mock("./lib/tauri", () => {
+vi.mock("./features/editor", () => {
   return {
     readFile: vi.fn((path: string) => {
       if (path === "valid.md") return Promise.resolve("Hello **world**\n[^note]: Hello Annotation");
       return Promise.reject("File not found");
     }),
     writeFile: vi.fn(() => Promise.resolve()),
+    asSafetyError: vi.fn(() => null),
   };
 });
 
@@ -121,5 +124,39 @@ describe("Editor Store State Management", () => {
     await editorStore.saveFile();
     expect(editorStore.state.isDirty).toBe(false);
     expect(editorStore.state.openFileContent).toBe("modified");
+  });
+});
+
+describe("Editor autosave reactivity", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    globalThis.ResizeObserver = class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    } as unknown as typeof ResizeObserver;
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    editorStore.closeFile();
+  });
+
+  it("restarts the debounce when content changes while already dirty", async () => {
+    await editorStore.openFile("valid.md");
+    const saveFile = vi.spyOn(editorStore, "saveFile");
+    render(Editor);
+    await Promise.resolve();
+
+    editorStore.updateContent("first change");
+    vi.advanceTimersByTime(1999);
+    editorStore.updateContent("second change");
+    vi.advanceTimersByTime(1);
+    expect(saveFile).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1999);
+    expect(saveFile).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,6 +1,6 @@
 import { EditorView } from "@codemirror/view";
 import { WikilinkToken, WikilinkFragment, ResolveCandidate } from "../../types";
-import { resolveWikilink } from "../tauri";
+import { resolveWikilink } from "../../features/links";
 
 export async function resolveAndNavigate(
   token: WikilinkToken,

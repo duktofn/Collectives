@@ -1,0 +1,10 @@
+{
+  "fixtureVersion": 1,
+  "name": "safety-error-object",
+  "value": {
+    "code": "external_change_conflict",
+    "message": "File changed outside the editor; draft was retained",
+    "details": {"path": "C:/notes/example.md"}
+  },
+  "legacyValues": ["legacy rejection string", {"message":"legacy object without code"}]
+}

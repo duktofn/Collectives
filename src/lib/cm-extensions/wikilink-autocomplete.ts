@@ -1,6 +1,6 @@
 import { autocompletion, CompletionContext, Completion } from "@codemirror/autocomplete";
 import { collectionsStore } from "../../stores/collections";
-import { searchLinkIndex } from "../tauri";
+import { searchLinkIndex } from "../../features/links";
 import { Extension } from "@codemirror/state";
 
 async function wikilinkCompletionSource(context: CompletionContext) {

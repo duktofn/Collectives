@@ -1,11 +1,20 @@
 import { createStore } from "solid-js/store";
 import { createMemo } from "solid-js";
 import { Collection, BrokenEntry, Entry } from "../types";
-import * as api from "../lib/tauri";
-import { listen } from "@tauri-apps/api/event";
+import * as collectionsApi from "../features/collections";
+import * as archiveApi from "../features/archive";
+import * as filesystemApi from "../features/filesystem";
+import { listenEvent } from "../shared/ipc/events";
 import { editorStore } from "./editor";
 import { uiStore } from "./ui";
 import { clearWikilinkCache } from "../lib/cm-extensions/wikilink-decoration";
+import { applyCollectionDelta, applyFilesystemFeed, deriveMetadataDeltas, installMetadataSnapshot, materializeCollection, replaceMetadataSnapshot, type MetadataCacheState } from "../features/collections/metadataCache";
+
+const normalizedCaches = new Map<string, MetadataCacheState>();
+const reconciliationInFlight = new Map<string, Promise<void>>();
+
+export function resetNormalizedCachesForTests(): void { normalizedCaches.clear(); }
+export function getNormalizedCacheForTests(collectionId: string): MetadataCacheState | undefined { return normalizedCaches.get(collectionId); }
 
 interface CollectionsState {
   collections: Collection[];
@@ -36,16 +45,98 @@ const activeCollection = createMemo(() => {
   return state.collections.find((c) => c.id === id) || null;
 });
 
+function watchSpecsForCollection(collection: Collection): Array<{ path: string; entryId: string; recursive: boolean }> {
+  const specs: Array<{ path: string; entryId: string; recursive: boolean }> = [];
+  const visit = (entries: Entry[]) => entries.forEach((entry) => {
+    if (entry.type === "file") specs.push({ path: entry.path, entryId: entry.id, recursive: false });
+    else if (entry.type === "folder-ref" && uiStore.isExpanded(entry.id)) specs.push({ path: entry.path, entryId: entry.id, recursive: true });
+    else if (entry.type === "group") visit(entry.children);
+  });
+  visit(collection.entries);
+  return specs;
+}
+
+async function reconcileCollectionSnapshot(collectionId: string): Promise<void> {
+  const existing = reconciliationInFlight.get(collectionId);
+  if (existing) return existing;
+  const promise = (async () => {
+    const currentCollection = state.collections.find((item) => item.id === collectionId);
+    if (!currentCollection) return;
+    const previous = normalizedCaches.get(collectionId);
+    const snapshot = await collectionsApi.reconcileCollectionSnapshot(collectionId, watchSpecsForCollection(currentCollection));
+    const installed = installMetadataSnapshot(snapshot.collection, snapshot.revision, snapshot.cursor, previous?.fallbackCount ?? 0);
+    normalizedCaches.set(collectionId, installed);
+    setState("collections", (items) => items.map((item) => item.id === collectionId ? snapshot.collection : item));
+    clearWikilinkCache();
+    if (previous) await editorStore.applyMetadataContinuity(deriveMetadataDeltas(previous, installed));
+  })().finally(() => { reconciliationInFlight.delete(collectionId); });
+  reconciliationInFlight.set(collectionId, promise);
+  return promise;
+}
+
+export async function handleCollectionDeltaV2(payload: { collectionId: string; revision: number; mutationId: string; changes: unknown; origin: string }): Promise<{ accepted: boolean; needsSnapshot: boolean }> {
+  if (reconciliationInFlight.has(payload.collectionId)) { await reconcileCollectionSnapshot(payload.collectionId); return { accepted: false, needsSnapshot: false }; }
+  const collection = state.collections.find((item) => item.id === payload.collectionId);
+  if (!collection) return { accepted: false, needsSnapshot: false };
+  const current = normalizedCaches.get(collection.id) ?? replaceMetadataSnapshot(collection, payload.revision - 1);
+  if (current.activeRevision >= payload.revision) return { accepted: false, needsSnapshot: false };
+  const applied = applyCollectionDelta(current, payload);
+  normalizedCaches.set(collection.id, applied.state);
+  if (!applied.accepted) {
+    await reconcileCollectionSnapshot(payload.collectionId);
+    return { accepted: false, needsSnapshot: true };
+  }
+  const projected = materializeCollection(applied.state, collection);
+  setState("collections", (items) => items.map((item) => item.id === projected.id ? projected : item));
+  clearWikilinkCache();
+  await editorStore.applyMetadataContinuity(Array.isArray(payload.changes) ? payload.changes : []);
+  if (state.activeCollectionId === payload.collectionId) await collectionsStore.watchActiveCollection();
+  return { accepted: true, needsSnapshot: false };
+}
+
+export async function handleFilesystemChangesV2(payload: { collectionId: string; streamId: string; subscriptionEpoch: string; sequence: number; overflow: boolean; changes: unknown[] }): Promise<{ accepted: boolean; needsSnapshot: boolean }> {
+  if (reconciliationInFlight.has(payload.collectionId)) { await reconcileCollectionSnapshot(payload.collectionId); return { accepted: false, needsSnapshot: false }; }
+  const collection = state.collections.find((item) => item.id === payload.collectionId);
+  if (!collection) return { accepted: false, needsSnapshot: false };
+  const current = normalizedCaches.get(collection.id) ?? replaceMetadataSnapshot(collection, 0);
+  const applied = applyFilesystemFeed(current, payload);
+  normalizedCaches.set(collection.id, applied.state);
+  if (!applied.accepted) {
+    if (!applied.needsSnapshot) return { accepted: false, needsSnapshot: false };
+    await reconcileCollectionSnapshot(payload.collectionId);
+    return { accepted: false, needsSnapshot: true };
+  }
+  for (const change of payload.changes) {
+    if (!change || typeof change !== "object") continue;
+    const value = change as { kind?: string; path?: string; changedFilePath?: string };
+    const changedPath = value.changedFilePath ?? value.path;
+    if (changedPath && !editorStore.applyFilesystemConflict(changedPath)) continue;
+    if (value.kind === "modified" && value.path === editorStore.state.openFilePath && !editorStore.state.isDirty) await editorStore.openFile(value.path, editorStore.state.isReadOnly);
+  }
+  return { accepted: true, needsSnapshot: false };
+}
+
 export const collectionsStore = {
   state,
   activeCollection,
+
+  getFolderRefWatchCursor(collectionId: string) {
+    const cache = normalizedCaches.get(collectionId);
+    if (!cache || !cache.filesystemCursorTrusted || !cache.filesystemStreamId || !cache.filesystemSubscriptionEpoch) return null;
+    return {
+      streamId: cache.filesystemStreamId,
+      subscriptionEpoch: cache.filesystemSubscriptionEpoch,
+      sequence: cache.filesystemSequence,
+    };
+  },
   
   async loadCollections() {
     setState("loading", true);
     setState("error", null);
     try {
-      const cols = await api.getCollections();
+      const cols = await collectionsApi.getCollections();
       setState("collections", cols);
+      for (const collection of cols) normalizedCaches.set(collection.id, replaceMetadataSnapshot(collection, normalizedCaches.get(collection.id)?.activeRevision ?? 0));
     } catch (err: unknown) {
       setState("error", String(err) || "Failed to load collections");
     } finally {
@@ -54,13 +145,19 @@ export const collectionsStore = {
   },
   
   async openCollection(id: string) {
+    if (editorStore.state.openFilePath) {
+      const closed = await editorStore.closeFile();
+      if (!closed) {
+        throw new Error(editorStore.state.error || "Save failed; collection switch blocked");
+      }
+    }
     setState("activeCollectionId", id);
     localStorage.setItem("lastActiveCollectionId", id);
     clearWikilinkCache();
-    uiStore.selectEntry(null);
+    await editorStore.selectEntry(null);
     uiStore.reset();
     try {
-      await api.initializeIdentityCache(id);
+      await collectionsApi.initializeIdentityCache(id);
       await this.watchActiveCollection();
     } catch (err) {
       console.error("Failed to initialize watcher or identity cache", err);
@@ -78,7 +175,7 @@ export const collectionsStore = {
         throw new Error(`Collection name '${name}' already exists`);
       }
       
-      const newCol = await api.createCollection(name);
+      const newCol = await collectionsApi.createCollection(name);
       setState("collections", (cols) => [...cols, newCol]);
       await this.openCollection(newCol.id);
       setState("brokenEntries", []);
@@ -104,7 +201,7 @@ export const collectionsStore = {
       if (!col) throw new Error("Collection not found");
       
       const updated = { ...col, name: newName };
-      await api.updateCollection(updated);
+      await collectionsApi.updateCollection(updated);
       
       setState("collections", (c) => c.id === id, "name", newName);
     } catch (err: unknown) {
@@ -117,7 +214,7 @@ export const collectionsStore = {
   async deleteCollection(id: string) {
     setState("error", null);
     try {
-      await api.deleteCollection(id);
+      await collectionsApi.deleteCollection(id);
       setState("collections", (cols) => cols.filter((c) => c.id !== id));
       if (state.activeCollectionId === id) {
         setState("activeCollectionId", null);
@@ -135,7 +232,7 @@ export const collectionsStore = {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      await api.addFileEntries(activeId, paths);
+      await collectionsApi.addFileEntries(activeId, paths);
       await this.reloadActiveCollection();
       await this.validateActiveCollection();
       await this.watchActiveCollection();
@@ -148,7 +245,7 @@ export const collectionsStore = {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      await api.addFolderRef(activeId, path);
+      await collectionsApi.addFolderRef(activeId, path);
       await this.reloadActiveCollection();
       await this.validateActiveCollection();
       await this.watchActiveCollection();
@@ -161,7 +258,7 @@ export const collectionsStore = {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      await api.createGroup(activeId, name, parentPath);
+      await collectionsApi.createGroup(activeId, name, parentPath);
       await this.reloadActiveCollection();
       await this.watchActiveCollection();
     } catch (err: unknown) {
@@ -175,7 +272,7 @@ export const collectionsStore = {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      await api.renameGroup(activeId, groupId, newName);
+      await collectionsApi.renameGroup(activeId, groupId, newName);
       await this.reloadActiveCollection();
       await this.watchActiveCollection();
     } catch (err: unknown) {
@@ -189,7 +286,7 @@ export const collectionsStore = {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      await api.removeEntry(activeId, entryId);
+      await collectionsApi.removeEntry(activeId, entryId);
       await this.reloadActiveCollection();
       await this.validateActiveCollection();
       await this.watchActiveCollection();
@@ -199,12 +296,27 @@ export const collectionsStore = {
       throw new Error(msg);
     }
   },
+
+  async deleteGroupAndPromote(groupId: string) {
+    const activeId = state.activeCollectionId;
+    if (!activeId) return;
+    try {
+      await collectionsApi.deleteGroupAndPromote(activeId, groupId);
+      await this.reloadActiveCollection();
+      await this.validateActiveCollection();
+      await this.watchActiveCollection();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setState("error", msg || "Failed to delete group");
+      throw err;
+    }
+  },
   
   async moveEntry(entryId: string, newParentPath: number[], newIndex: number) {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      await api.moveEntry(activeId, entryId, newParentPath, newIndex);
+      await collectionsApi.moveEntry(activeId, entryId, newParentPath, newIndex);
       await this.reloadActiveCollection();
       await this.watchActiveCollection();
     } catch (err: unknown) {
@@ -217,6 +329,8 @@ export const collectionsStore = {
   async relinkEntry(entryId: string, newPath: string) {
     const activeCol = this.activeCollection();
     if (!activeCol) return;
+    const activeId = state.activeCollectionId;
+    if (!activeId) return;
     try {
       const updatedCol = JSON.parse(JSON.stringify(activeCol)) as Collection;
       const recurse = (entries: Entry[]): boolean => {
@@ -235,7 +349,7 @@ export const collectionsStore = {
       };
 
       if (recurse(updatedCol.entries)) {
-        await api.updateCollection(updatedCol);
+        await collectionsApi.updateCollection(updatedCol);
         await this.reloadActiveCollection();
         await this.validateActiveCollection();
         await this.watchActiveCollection();
@@ -248,31 +362,12 @@ export const collectionsStore = {
   async watchActiveCollection() {
     const activeCol = this.activeCollection();
     if (!activeCol) return;
+    const activeId = state.activeCollectionId;
+    if (!activeId) return;
     try {
-      await api.clearWatches();
-      
-      const recurse = async (entries: Entry[]) => {
-        for (const entry of entries) {
-          if (entry.type === "file") {
-            try {
-              await api.watchEntry(entry.path, entry.id);
-            } catch (e) {
-              console.error("Failed to watch entry", entry.path, e);
-            }
-          } else if (entry.type === "folder-ref") {
-            if (uiStore.isExpanded(entry.id)) {
-              try {
-                await api.watchFolder(entry.path, entry.id);
-              } catch (e) {
-                console.error("Failed to watch folder-ref", entry.path, e);
-              }
-            }
-          } else if (entry.type === "group") {
-            await recurse(entry.children);
-          }
-        }
-      };
-      await recurse(activeCol.entries);
+      const cursor = await filesystemApi.syncCollectionWatches(activeId, watchSpecsForCollection(activeCol));
+      const cache = normalizedCaches.get(activeId);
+      if (cache) normalizedCaches.set(activeId, { ...cache, filesystemStreamId: cursor.streamId, filesystemSubscriptionEpoch: cursor.subscriptionEpoch, filesystemSequence: cursor.sequence, filesystemCursorTrusted: true });
     } catch (err) {
       console.error("Failed to set up active collection watches", err);
     }
@@ -286,13 +381,13 @@ export const collectionsStore = {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      const broken = await api.validateEntries(activeId);
+      const broken = await collectionsApi.validateEntries(activeId);
       setState("brokenEntries", broken);
 
       // Run move detection for broken entries
       for (const brokenEntry of broken) {
         if (state.movePrompt?.entryId !== brokenEntry.id) {
-          const detectedPath = await api.detectMovedEntry(activeId, brokenEntry.id, brokenEntry.path);
+      const detectedPath = await collectionsApi.detectMovedEntry(activeId, brokenEntry.id, brokenEntry.path);
           if (detectedPath) {
             setState("movePrompt", {
               entryId: brokenEntry.id,
@@ -313,11 +408,23 @@ export const collectionsStore = {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      const cols = await api.getCollections();
+      const cols = await collectionsApi.getCollections();
       setState("collections", cols);
+      for (const collection of cols) normalizedCaches.set(collection.id, replaceMetadataSnapshot(collection, normalizedCaches.get(collection.id)?.activeRevision ?? 0));
       clearWikilinkCache();
     } catch (err) {
       console.error("Failed to reload collection", err);
+    }
+  },
+
+  async reloadCollectionSnapshot(collectionId: string, revision?: number) {
+    try {
+      const cols = await collectionsApi.getCollections();
+      setState("collections", cols);
+      for (const collection of cols) normalizedCaches.set(collection.id, replaceMetadataSnapshot(collection, collection.id === collectionId && revision !== undefined ? revision : normalizedCaches.get(collection.id)?.activeRevision ?? 0));
+      clearWikilinkCache();
+    } catch (err) {
+      console.error("Failed to reload collection snapshot", err);
     }
   },
 
@@ -330,7 +437,7 @@ export const collectionsStore = {
       if (exists) {
         throw new Error(`Collection name '${name}' already exists`);
       }
-      const newCol = await api.importFolder(path, name);
+      const newCol = await archiveApi.importFolder(path, name);
       setState("collections", (cols) => [...cols, newCol]);
       await this.openCollection(newCol.id);
       setState("brokenEntries", []);
@@ -345,7 +452,7 @@ export const collectionsStore = {
   async importZip(zipPath: string, destFolder: string, resolutions: Record<string, string>) {
     setState("error", null);
     try {
-      const newCol = await api.importZip(zipPath, destFolder, resolutions);
+      const newCol = await archiveApi.importZip(zipPath, destFolder, resolutions);
       setState("collections", (cols) => [...cols, newCol]);
       await this.openCollection(newCol.id);
       setState("brokenEntries", []);
@@ -360,7 +467,7 @@ export const collectionsStore = {
   async exportCollectionToFolder(collectionId: string, destPath: string) {
     setState("error", null);
     try {
-      await api.exportCollectionToFolder(collectionId, destPath);
+      await archiveApi.exportCollectionToFolder(collectionId, destPath);
     } catch (err: unknown) {
       const msg = (err as Error).message || "Failed to export to folder";
       setState("error", msg);
@@ -371,7 +478,7 @@ export const collectionsStore = {
   async exportCollectionToZip(collectionId: string, destZipPath: string) {
     setState("error", null);
     try {
-      await api.exportCollectionToZip(collectionId, destZipPath);
+      await archiveApi.exportCollectionToZip(collectionId, destZipPath);
     } catch (err: unknown) {
       const msg = (err as Error).message || "Failed to export to zip";
       setState("error", msg);
@@ -384,10 +491,11 @@ export const collectionsStore = {
       return () => {};
     }
     
-    const unlisten1 = await listen<{ entryId: string; path: string }>("file-modified", async (event) => {
+    const unlisten1 = await listenEvent("file-modified", async (event) => {
       const payload = event.payload;
       const openPath = editorStore.state.openFilePath;
       const isDirty = editorStore.state.isDirty;
+      if (!editorStore.applyFilesystemConflict(payload.path)) return;
       if (openPath && openPath === payload.path && !isDirty) {
         const prevMode = editorStore.state.mode;
         await editorStore.openFile(payload.path, editorStore.state.isReadOnly);
@@ -397,7 +505,7 @@ export const collectionsStore = {
       }
     });
 
-    const unlisten2 = await listen<{ entryId: string; path: string }>("entry-deleted", (event) => {
+    const unlisten2 = await listenEvent("entry-deleted", (event) => {
       const payload = event.payload;
       const exists = state.brokenEntries.some((b) => b.id === payload.entryId);
       if (!exists) {
@@ -410,15 +518,16 @@ export const collectionsStore = {
       }
     });
 
-    const unlisten3 = await listen<{ entryId: string; oldPath: string; newPath: string }>("entry-renamed", async (event) => {
+    const unlisten3 = await listenEvent("entry-renamed", async (event) => {
       const payload = event.payload;
-      await collectionsStore.relinkEntry(payload.entryId, payload.newPath);
+      await editorStore.applyMetadataContinuity([{ entryId: payload.entryId, kind: "updated", entry: { path: payload.newPath } }]);
     });
 
-    const unlistenFolderChanged = await listen<{ entryId: string; path: string; changedFilePath: string }>("folder-changed", async (event) => {
+    const unlistenFolderChanged = await listenEvent("folder-changed", async (event) => {
       const payload = event.payload;
       const openPath = editorStore.state.openFilePath;
       const isDirty = editorStore.state.isDirty;
+      if (!editorStore.applyFilesystemConflict(payload.changedFilePath)) return;
       if (openPath && openPath === payload.changedFilePath && !isDirty) {
         const prevMode = editorStore.state.mode;
         await editorStore.openFile(payload.changedFilePath, editorStore.state.isReadOnly);
@@ -428,11 +537,17 @@ export const collectionsStore = {
       }
     });
 
+    const unlistenDelta = await listenEvent("collection-delta-v2", async (event) => { await handleCollectionDeltaV2(event.payload); });
+
+    const unlistenFilesystemV2 = await listenEvent("filesystem-changes-v2", async (event) => { await handleFilesystemChangesV2(event.payload); });
+
     return () => {
       unlisten1();
       unlisten2();
       unlisten3();
       unlistenFolderChanged();
+      unlistenDelta();
+      unlistenFilesystemV2();
     };
   }
 };

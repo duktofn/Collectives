@@ -1,0 +1,43 @@
+{
+  "manifest_version": 1,
+  "generator": "phase0-v1",
+  "fixed_seed_required": true,
+  "profiles": {
+    "smoke": {
+      "collection_entries": 100,
+      "io_bytes": 10240,
+      "index_entries": 10000,
+      "watcher_events": 100,
+      "max_depth": 3,
+      "markdown_density": 0.8,
+      "link_density": 0.15,
+      "generated_cap_bytes": 67108864,
+      "free_space_preflight_bytes": 536870912,
+      "trusted_zip": true
+    },
+    "standard": {
+      "collection_entries": 1000,
+      "io_bytes": 1048576,
+      "index_entries": 25000,
+      "watcher_events": 1000,
+      "max_depth": 5,
+      "markdown_density": 0.8,
+      "link_density": 0.2,
+      "generated_cap_bytes": 268435456,
+      "free_space_preflight_bytes": 2147483648,
+      "trusted_zip": true
+    },
+    "large": {
+      "collection_entries": 10000,
+      "io_bytes": 10485760,
+      "index_entries": 50000,
+      "watcher_events": 10000,
+      "max_depth": 8,
+      "markdown_density": 0.8,
+      "link_density": 0.25,
+      "generated_cap_bytes": 805306368,
+      "free_space_preflight_bytes": 4294967296,
+      "trusted_zip": true
+    }
+  }
+}

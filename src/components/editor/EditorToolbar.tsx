@@ -17,7 +17,7 @@ export function EditorToolbar() {
 
   return (
     <div class="editor-toolbar">
-      <div class="editor-title-container" style={{ "margin-left": !uiStore.state.isSidebarOpen ? "36px" : "0px", "transition": "margin-left var(--transition-normal)" }}>
+      <div class={`editor-title-container ${!uiStore.state.isSidebarOpen ? "sidebar-collapsed" : ""}`}>
         <Icon name="file" class="editor-file-icon" size={16} />
         <div class="editor-file-details">
           <span class="editor-file-name" title={getRelativePath()}>
@@ -52,7 +52,7 @@ export function EditorToolbar() {
         </Show>
 
         {/* Mode switcher segmented control */}
-        <div class="editor-mode-selector">
+        <Show when={editorStore.state.fileKind === "text-source"} fallback={<div class="editor-mode-selector">
           <button
             class="mode-btn"
             classList={{ active: editorStore.state.mode === "view" }}
@@ -79,7 +79,11 @@ export function EditorToolbar() {
               Source
             </button>
           </Show>
-        </div>
+        </div>}>
+          <div class="editor-mode-selector text-source-mode-selector">
+            <button class="mode-btn active" disabled title="Text-source files use source mode only">Source</button>
+          </div>
+        </Show>
 
 
       </div>

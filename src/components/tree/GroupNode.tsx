@@ -2,12 +2,13 @@ import { createSignal, Show, For } from "solid-js";
 import { Entry } from "../../types";
 import { collectionsStore } from "../../stores/collections";
 import { uiStore } from "../../stores/ui";
-import * as api from "../../lib/tauri";
 import { Icon } from "../common/Icon";
 import { ContextMenu, ContextMenuItem } from "../common/ContextMenu";
 import { Dialog } from "../common/Dialog";
 import { TreeNode } from "./TreeNode";
-import { message } from "@tauri-apps/plugin-dialog";
+import { message } from "../../platform";
+import { treeItemIdentity } from "./treeAccessibility";
+import { MoveTargetRadioGroup } from "../common/MoveTargetRadioGroup";
 import "./Tree.css";
 
 interface GroupNodeProps {
@@ -15,11 +16,15 @@ interface GroupNodeProps {
   depth: number;
   parentPath: number[];
   index: number;
+  parentTreeId?: string;
+  requestSelect: (entryId: string | null) => Promise<boolean>;
+  requestFolderRefSelect: (intent: import("../../features/filesystem/folderRefReadiness").FolderRefIntentInput) => Promise<boolean>;
 }
 
 export function GroupNode(props: GroupNodeProps) {
   const entry = () => props.entry;
   const myPath = () => [...props.parentPath, props.index];
+  const treeId = () => treeItemIdentity(["entry", entry().id]);
 
   const [contextMenuPos, setContextMenuPos] = createSignal({ x: 0, y: 0 });
   const [isContextMenuOpen, setIsContextMenuOpen] = createSignal(false);
@@ -43,6 +48,7 @@ export function GroupNode(props: GroupNodeProps) {
   const handleContextMenu = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    (e.currentTarget as HTMLElement).focus();
     setContextMenuPos({ x: e.clientX, y: e.clientY });
     setIsContextMenuOpen(true);
   };
@@ -75,20 +81,7 @@ export function GroupNode(props: GroupNodeProps) {
 
   const handleDeleteGroup = async () => {
     try {
-      // Promote all children to our parent path
-      const childrenToMove = [...entry().children];
-      const activeId = collectionsStore.state.activeCollectionId;
-      if (activeId) {
-        for (const child of childrenToMove) {
-          try {
-            await api.moveEntry(activeId, child.id, props.parentPath, 0);
-          } catch (err) {
-            console.error(`Failed to move child ${child.id} during group deletion:`, err);
-          }
-        }
-      }
-      // Delete this group
-      await collectionsStore.removeEntry(entry().id);
+      await collectionsStore.deleteGroupAndPromote(entry().id);
       setIsDeleteOpen(false);
     } catch (err) {
       await message(err instanceof Error ? err.message : String(err), {
@@ -182,6 +175,14 @@ export function GroupNode(props: GroupNodeProps) {
       <div
         class="tree-node"
         style={{ "padding-left": `${props.depth * 16 + 8}px` }}
+        role="treeitem"
+        tabIndex={-1}
+        aria-level={props.depth + 1}
+        aria-selected="false"
+        aria-expanded={isExpanded() ? "true" : "false"}
+        data-tree-item-id={treeId()}
+        data-tree-parent-id={props.parentTreeId}
+        data-tree-label={entry().name}
         onClick={toggleExpand}
         onContextMenu={handleContextMenu}
       >
@@ -200,16 +201,21 @@ export function GroupNode(props: GroupNodeProps) {
       </div>
 
       <Show when={isExpanded() && entry().children.length > 0}>
-        <For each={entry().children}>
-          {(child, idx) => (
-            <TreeNode
-              entry={child}
-              depth={props.depth + 1}
-              parentPath={myPath()}
-              index={idx()}
-            />
-          )}
-        </For>
+        <div role="group">
+          <For each={entry().children}>
+            {(child, idx) => (
+              <TreeNode
+                entry={child}
+                depth={props.depth + 1}
+                parentPath={myPath()}
+                index={idx()}
+                parentTreeId={treeId()}
+                requestSelect={props.requestSelect}
+                requestFolderRefSelect={props.requestFolderRefSelect}
+              />
+            )}
+          </For>
+        </div>
       </Show>
 
       <ContextMenu
@@ -260,19 +266,13 @@ export function GroupNode(props: GroupNodeProps) {
         <p style={{ "font-size": "13px", "margin-bottom": "8px" }}>
           Select target destination for group <strong>{entry().name}</strong>:
         </p>
-        <div class="parent-select-list">
-          <For each={getGroups()}>
-            {(group) => (
-              <div
-                class="parent-select-item"
-                classList={{ selected: selectedParentId() === group.id }}
-                onClick={() => setSelectedParentId(group.id)}
-              >
-                {group.name}
-              </div>
-            )}
-          </For>
-        </div>
+        <MoveTargetRadioGroup
+          name={`group-move-${entry().id}`}
+          options={getGroups()}
+          selectedId={selectedParentId()}
+          onChange={setSelectedParentId}
+          onConfirm={() => { void handleMoveConfirm(); }}
+        />
       </Dialog>
     </div>
   );

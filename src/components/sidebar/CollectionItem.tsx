@@ -4,11 +4,19 @@ import { collectionsStore } from "../../stores/collections";
 import { Icon } from "../common/Icon";
 import { ContextMenu, ContextMenuItem } from "../common/ContextMenu";
 import { Dialog } from "../common/Dialog";
-import { message } from "@tauri-apps/plugin-dialog";
-import * as api from "../../lib/tauri";
+import { message, pickDirectory, saveZipDialog } from "../../platform";
+import type { OperationLeaseRegistry } from "../../workflows/operationLease";
+import { runArchiveOperation } from "../../workflows/ArchiveWorkflow";
 
 interface CollectionItemProps {
   collection: Collection;
+  requestSwitch: (collectionId: string) => Promise<boolean>;
+  operationLeaseRegistry?: OperationLeaseRegistry;
+}
+
+export function deriveCollectionExportTarget(parent: string, name: string): string {
+  const sanitized = name.replace(/[<>:"/\\|?*]/g, "_").trim().replace(/[. ]+$/g, "") || "Collection";
+  return `${parent.replace(/[\\/]+$/, "")}/${sanitized}`;
 }
 
 export function CollectionItem(props: CollectionItemProps) {
@@ -22,6 +30,7 @@ export function CollectionItem(props: CollectionItemProps) {
 
   const handleContextMenu = (e: MouseEvent) => {
     e.preventDefault();
+    (e.currentTarget as HTMLElement).focus();
     setContextMenuPos({ x: e.clientX, y: e.clientY });
     setIsContextMenuOpen(true);
   };
@@ -54,9 +63,11 @@ export function CollectionItem(props: CollectionItemProps) {
 
   const handleExportToFolder = async () => {
     try {
-      const destPath = await api.pickDirectory(`Export "${props.collection.name}" to Folder`);
+      const destPath = await pickDirectory(`Export "${props.collection.name}" to Folder`);
       if (destPath) {
-        await collectionsStore.exportCollectionToFolder(props.collection.id, destPath);
+        const operation = () => collectionsStore.exportCollectionToFolder(props.collection.id, deriveCollectionExportTarget(destPath, props.collection.name));
+        if (props.operationLeaseRegistry) await runArchiveOperation(props.operationLeaseRegistry, "Export collection folder", operation);
+        else await operation();
       }
     } catch (err) {
       console.error("Failed to export folder", err);
@@ -65,9 +76,11 @@ export function CollectionItem(props: CollectionItemProps) {
 
   const handleExportToZip = async () => {
     try {
-      const destZipPath = await api.saveZipDialog(`Export "${props.collection.name}" as ZIP`);
+      const destZipPath = await saveZipDialog(`Export "${props.collection.name}" as ZIP`);
       if (destZipPath) {
-        await collectionsStore.exportCollectionToZip(props.collection.id, destZipPath);
+        const operation = () => collectionsStore.exportCollectionToZip(props.collection.id, destZipPath);
+        if (props.operationLeaseRegistry) await runArchiveOperation(props.operationLeaseRegistry, "Export collection ZIP", operation);
+        else await operation();
       }
     } catch (err) {
       console.error("Failed to export zip", err);
@@ -107,7 +120,17 @@ export function CollectionItem(props: CollectionItemProps) {
       <div
         class="collection-item"
         classList={{ active: isActive() }}
-        onClick={() => collectionsStore.openCollection(props.collection.id)}
+        role="button"
+        tabIndex={0}
+        aria-label={`Collection ${props.collection.name}`}
+        aria-pressed={isActive() ? "true" : "false"}
+        onClick={() => { void props.requestSwitch(props.collection.id); }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            void props.requestSwitch(props.collection.id);
+          }
+        }}
         onContextMenu={handleContextMenu}
       >
         <div class="collection-item-left">

@@ -8,10 +8,6 @@ import {
   ViewUpdate,
 } from "@codemirror/view";
 import { EmptyWidget } from "./empty-widget";
-import {
-  isChartFencedCode,
-  isCursorInFencedCode,
-} from "./code-block-widget";
 
 interface DecSpec {
   from: number;
@@ -23,7 +19,6 @@ class RenderPlugin {
   decorations: DecorationSet;
   atomic: DecorationSet;
   private lastLineFrom = -1;
-  private lastInCodeBlock = false;
 
   constructor(view: EditorView) {
     const { decorations, atomic } = this.buildDecorations(view);
@@ -31,23 +26,17 @@ class RenderPlugin {
     this.atomic = atomic;
     const head = view.state.selection.main.head;
     this.lastLineFrom = view.state.doc.lineAt(head).from;
-    this.lastInCodeBlock = isCursorInFencedCode(view.state, head);
   }
 
   private selectionAffectsDecorations(update: ViewUpdate): boolean {
     const head = update.state.selection.main.head;
     const lineFrom = update.state.doc.lineAt(head).from;
-    const inCodeBlock = isCursorInFencedCode(update.state, head);
-    const changed =
-      lineFrom !== this.lastLineFrom || inCodeBlock !== this.lastInCodeBlock;
+    const changed = lineFrom !== this.lastLineFrom;
     this.lastLineFrom = lineFrom;
-    this.lastInCodeBlock = inCodeBlock;
     return changed;
   }
 
   update(update: ViewUpdate) {
-    const prevInCodeBlock = this.lastInCodeBlock;
-
     const shouldRebuild =
       update.docChanged ||
       update.viewportChanged ||
@@ -58,12 +47,6 @@ class RenderPlugin {
       const { decorations, atomic } = this.buildDecorations(update.view);
       this.decorations = decorations;
       this.atomic = atomic;
-
-      const head = update.state.selection.main.head;
-      const inCodeBlock = isCursorInFencedCode(update.state, head);
-      if (inCodeBlock !== prevInCodeBlock) {
-        update.view.requestMeasure();
-      }
     }
   }
 
@@ -314,40 +297,6 @@ class RenderPlugin {
                 value: val,
               });
             }
-          }
-
-          // FencedCode — preview widget when cursor outside; source view when inside
-          if (name === "FencedCode") {
-            if (isChartFencedCode(view.state, nodeFrom)) {
-              return false;
-            }
-
-            const startLine = view.state.doc.lineAt(nodeFrom);
-            const endLine = view.state.doc.lineAt(nodeTo);
-            const lineStart = startLine.number;
-            const lineEnd = endLine.number;
-
-            const isCursorInCodeBlock =
-              selection.head >= nodeFrom && selection.head <= nodeTo;
-
-            if (!isCursorInCodeBlock) {
-              return false;
-            }
-
-            for (let i = lineStart; i <= lineEnd; i++) {
-              const line = view.state.doc.line(i);
-              decs.push({
-                from: line.from,
-                to: line.from,
-                value: Decoration.line({
-                  class:
-                    "cm-codeblock-line" +
-                    (i === lineStart ? " cm-codeblock-line-first" : "") +
-                    (i === lineEnd ? " cm-codeblock-line-last" : ""),
-                }),
-              });
-            }
-            return false;
           }
 
           // Blockquotes

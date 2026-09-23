@@ -1,0 +1,67 @@
+name: Phase 0 Performance Evidence
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 2 * * 1'
+
+jobs:
+  performance:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.0
+          components: clippy, rustfmt
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xvfb
+      - name: Build native app outside metric window
+        run: npm run tauri -- build --debug
+      - name: Generate selected coverage fixture pairs
+        shell: bash
+        run: |
+          for PROFILE in smoke standard large; do
+            FIXTURE_PARENT="$RUNNER_TEMP/collectives-phase0-$PROFILE"
+            mkdir -p "$FIXTURE_PARENT"
+            node scripts/phase0/generate-fixtures.mjs --out "$FIXTURE_PARENT/a" --profile "$PROFILE" --seed phase0-v1
+            node scripts/phase0/generate-fixtures.mjs --out "$FIXTURE_PARENT/b" --profile "$PROFILE" --seed phase0-v1
+            node scripts/phase0/verify-fixtures.mjs --left "$FIXTURE_PARENT/a" --right "$FIXTURE_PARENT/b" --manifest test-fixtures/phase0/manifest.json
+          done
+      - name: Run standard complete matrix
+        shell: bash
+        run: |
+          node scripts/phase0/run-benchmarks.mjs --fixture-root "$RUNNER_TEMP/collectives-phase0-standard/a" --artifact-root artifacts/phase0 --native-cold-samples 5 --native-warm-samples 10 --workload-samples 5 --run-id-file "$RUNNER_TEMP/phase0-standard.run-id"
+      - name: Run smoke exact 10KB and index 10K coverage
+        shell: bash
+        run: |
+          node scripts/phase0/run-benchmarks.mjs --fixture-root "$RUNNER_TEMP/collectives-phase0-smoke/a" --artifact-root artifacts/phase0 --workload-samples 5 --backend-only --backend-workloads sqlite-link-index-rebuild-search,temporary-file-read-write --run-id-file "$RUNNER_TEMP/phase0-smoke.run-id"
+      - name: Run large exact 10K/50K and 10MB coverage
+        shell: bash
+        run: |
+          node scripts/phase0/run-benchmarks.mjs --fixture-root "$RUNNER_TEMP/collectives-phase0-large/a" --artifact-root artifacts/phase0 --workload-samples 5 --backend-only --backend-workloads collection-json-load-mutation,sqlite-link-index-rebuild-search,temporary-file-read-write --run-id-file "$RUNNER_TEMP/phase0-large.run-id"
+      - name: Validate complete selected coverage set
+        shell: bash
+        run: |
+          node scripts/phase0/verify-artifacts.mjs --root artifacts/phase0 --run-id "$(cat "$RUNNER_TEMP/phase0-standard.run-id")" --coverage-run-id "$(cat "$RUNNER_TEMP/phase0-smoke.run-id")" --coverage-run-id "$(cat "$RUNNER_TEMP/phase0-large.run-id")" --require-release
+      - name: Upload immutable Phase 0 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase0-performance-evidence
+          path: artifacts/phase0
+          retention-days: 90

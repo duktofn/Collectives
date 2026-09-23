@@ -9,7 +9,7 @@ import {
 import { REPRO_DOCS } from "./heightmap-test-fixtures";
 import { isChartFencedCode, isCursorInFencedCode } from "./code-block-widget";
 
-vi.mock("../tauri", () => ({
+vi.mock("../../features/links", () => ({
   resolveWikilink: vi.fn(() => Promise.resolve(null)),
   searchLinkIndex: vi.fn(() => Promise.resolve([])),
 }));

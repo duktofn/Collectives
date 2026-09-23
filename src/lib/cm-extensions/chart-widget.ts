@@ -75,6 +75,13 @@ class ChartWidget extends WidgetType {
     textarea.value = this.specYaml;
     editorWrapper.appendChild(textarea);
 
+    const editButton = document.createElement("button");
+    editButton.className = "btn btn-secondary cm-chart-edit-source-btn";
+    editButton.type = "button";
+    editButton.textContent = "Edit chart source";
+    editButton.setAttribute("aria-label", "Edit chart source");
+    container.appendChild(editButton);
+
     const saveBtn = document.createElement("button");
     saveBtn.className = "btn btn-primary btn-sm cm-chart-save-btn";
     saveBtn.textContent = "Apply";
@@ -154,6 +161,7 @@ class ChartWidget extends WidgetType {
       };
 
       chartWrapper.addEventListener("click", toggleEditor);
+      editButton.addEventListener("click", toggleEditor);
 
       saveBtn.addEventListener("click", () => {
         const currentView = EditorView.findFromDOM(container) || view;

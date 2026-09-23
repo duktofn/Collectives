@@ -52,11 +52,19 @@
   border-radius: var(--radius-sm);
   transition: background-color var(--transition-fast), color var(--transition-fast);
   max-width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
 }
 
 .sidebar-title-selector:hover {
   background-color: var(--bg-hover);
   color: var(--color-text-primary);
+}
+
+.sidebar-title-selector:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }
 
 .active-col-name {
