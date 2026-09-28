@@ -7,13 +7,10 @@ import {
 import { RangeSetBuilder, StateField, EditorState, Extension } from "@codemirror/state";
 
 import * as yaml from "js-yaml";
-import { Chart, registerables } from "chart.js";
-
-// Register Chart.js components
-Chart.register(...registerables);
+import type { Chart as ChartInstance } from "chart.js";
 
 class ChartWidget extends WidgetType {
-  private chartInstance: Chart | null = null;
+  private chartInstance: ChartInstance | null = null;
   private container: HTMLElement | null = null;
   // Cache YAML validity once at construction to avoid re-parsing in estimatedHeight getter,
   // which CM6 calls frequently during height-map rebuilds.
@@ -108,42 +105,30 @@ class ChartWidget extends WidgetType {
       chartWrapper.style.height = "250px";
       chartWrapper.style.width = "100%";
 
-      // Destroy old instance if any
-      if (this.chartInstance) {
-        this.chartInstance.destroy();
-      }
-
-      // Create new instance
-      this.chartInstance = new Chart(canvas, {
-        type: chartType,
-        data: chartData,
-        options: {
-          ...chartOptions,
-          animation: {
-            ...(typeof chartOptions.animation === "object" ? chartOptions.animation : {}),
-            onComplete: () => {
-              view.requestMeasure();
+      // Keep Chart.js out of startup and load it only when a chart widget enters
+      // the rendered viewport.
+      void import("chart.js/auto").then(({ default: Chart }) => {
+        if (!canvas.isConnected || this.container !== container) return;
+        if (this.chartInstance) this.chartInstance.destroy();
+        this.chartInstance = new Chart(canvas, {
+          type: chartType,
+          data: chartData,
+          options: {
+            ...chartOptions,
+            animation: {
+              ...(typeof chartOptions.animation === "object" ? chartOptions.animation : {}),
+              onComplete: () => view.requestMeasure(),
             },
           },
-        },
+        });
+        requestAnimationFrame(() => {
+          if (canvas.isConnected) view.requestMeasure();
+        });
+      }).catch((err: unknown) => {
+        showChartError(err);
       });
-      requestAnimationFrame(() => view.requestMeasure());
     } catch (err: unknown) {
-      // If error, show error details instead
-      chartWrapper.style.display = "none";
-      const errorDiv = document.createElement("div");
-      errorDiv.className = "cm-chart-error";
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      
-      const strong = document.createElement("strong");
-      strong.textContent = "Chart Config Error:";
-      const pre = document.createElement("pre");
-      pre.textContent = errorMsg;
-      errorDiv.appendChild(strong);
-      errorDiv.appendChild(pre);
-
-      container.appendChild(errorDiv);
-      requestAnimationFrame(() => view.requestMeasure());
+      showChartError(err);
     }
 
     if (isEditable) {
@@ -171,6 +156,24 @@ class ChartWidget extends WidgetType {
     }
 
     return container;
+
+    function showChartError(error: unknown) {
+      if (!container.isConnected) return;
+      chartWrapper.style.display = "none";
+      const errorDiv = document.createElement("div");
+      errorDiv.className = "cm-chart-error";
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const strong = document.createElement("strong");
+      strong.textContent = "Chart Config Error:";
+      const pre = document.createElement("pre");
+      pre.textContent = errorMsg;
+      errorDiv.appendChild(strong);
+      errorDiv.appendChild(pre);
+      container.appendChild(errorDiv);
+      requestAnimationFrame(() => {
+        if (container.isConnected) view.requestMeasure();
+      });
+    }
   }
 
   destroy() {

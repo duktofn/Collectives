@@ -40,7 +40,7 @@ describe("Phase 1 committed selection", () => {
     const api = await import("../features/editor");
     vi.clearAllMocks();
     vi.mocked(api.readFile).mockImplementation(async (path: string) => ({ content: `content:${path}`, versionToken: `token:${path}` }));
-    vi.mocked(api.writeFile).mockImplementation(async () => undefined);
+    vi.mocked(api.writeFile).mockImplementation(async () => ({ versionToken: "token:a.md" }));
   });
 
   it("does not commit B when flushing dirty A fails", async () => {
@@ -89,14 +89,14 @@ describe("Phase 1 committed selection", () => {
     await editorStore.openFile("a.md");
     await editorStore.selectEntry("a.md");
     editorStore.updateContent("draft A");
-    let resolveWrite: (() => void) | undefined;
-    vi.mocked(api.writeFile).mockImplementationOnce(() => new Promise<void>((resolve) => {
+    let resolveWrite: ((receipt: { versionToken: string }) => void) | undefined;
+    vi.mocked(api.writeFile).mockImplementationOnce(() => new Promise<{ versionToken: string }>((resolve) => {
       resolveWrite = resolve;
     }));
     const first = editorStore.selectEntry("b.md");
     expect(editorStore.state.pendingSelection).toBe("b.md");
     const second = editorStore.selectEntry("c.md");
-    resolveWrite?.();
+    resolveWrite?.({ versionToken: "token:a.md" });
     expect(await first).toBe(false);
     expect(await second).toBe(true);
     expect(uiStore.state.selectedEntryId).toBe("c.md");
@@ -107,14 +107,14 @@ describe("Phase 1 committed selection", () => {
     const api = await import("../features/editor");
     await editorStore.openFile("a.md");
     editorStore.updateContent("draft A");
-    let resolveWrite: (() => void) | undefined;
-    vi.mocked(api.writeFile).mockImplementationOnce(() => new Promise<void>((resolve) => {
+    let resolveWrite: ((receipt: { versionToken: string }) => void) | undefined;
+    vi.mocked(api.writeFile).mockImplementationOnce(() => new Promise<{ versionToken: string }>((resolve) => {
       resolveWrite = resolve;
     }));
     const writesBefore = vi.mocked(api.writeFile).mock.calls.length;
     const first = editorStore.closeFile();
     const second = editorStore.closeFile();
-    resolveWrite?.();
+    resolveWrite?.({ versionToken: "token:a.md" });
     expect(await first).toBe(true);
     expect(await second).toBe(true);
     expect(editorStore.state.openFilePath).toBe(null);
@@ -126,17 +126,17 @@ describe("Phase 1 committed selection", () => {
     await editorStore.openFile("a.md");
     await editorStore.selectEntry("a.md");
     editorStore.updateContent("revision A");
-    let resolveA: (() => void) | undefined;
+    let resolveA: ((receipt: { versionToken: string }) => void) | undefined;
     vi.mocked(api.writeFile).mockReset();
-    vi.mocked(api.writeFile).mockImplementationOnce(() => new Promise<void>((resolve) => {
+    vi.mocked(api.writeFile).mockImplementationOnce(() => new Promise<{ versionToken: string }>((resolve) => {
       resolveA = resolve;
-    })).mockImplementation(async () => undefined);
+    })).mockImplementation(async () => ({ versionToken: "token:a.md" }));
     const saveA = editorStore.saveFile();
     await Promise.resolve();
     editorStore.updateContent("revision B");
     const saveB = editorStore.saveFile();
     expect(vi.mocked(api.writeFile).mock.calls[0]?.[1]).toBe("revision A");
-    resolveA?.();
+    resolveA?.({ versionToken: "token:a.md" });
     await Promise.all([saveA, saveB]);
     expect(vi.mocked(api.writeFile).mock.calls.map((call) => call[1])).toEqual(["revision A", "revision B"]);
     expect(editorStore.state.openFileContent).toBe("revision B");
@@ -150,10 +150,10 @@ describe("Phase 1 committed selection", () => {
     editorStore.updateContent("revision A");
     let rejectA: ((reason: unknown) => void) | undefined;
     vi.mocked(api.writeFile).mockReset();
-    vi.mocked(api.writeFile).mockImplementationOnce(() => new Promise<void>((_resolve, reject) => {
+    vi.mocked(api.writeFile).mockImplementationOnce(() => new Promise<{ versionToken: string }>((_resolve, reject) => {
       rejectA = reject;
     }))
-      .mockImplementation(async () => undefined);
+      .mockImplementation(async () => ({ versionToken: "token:a.md" }));
     const saveA = editorStore.saveFile();
     await Promise.resolve();
     editorStore.updateContent("revision B");
@@ -174,16 +174,16 @@ describe("Phase 1 committed selection", () => {
     await editorStore.openFile("a.md");
     await editorStore.selectEntry("a.md");
     editorStore.updateContent("revision A");
-    let resolveA: (() => void) | undefined;
+    let resolveA: ((receipt: { versionToken: string }) => void) | undefined;
     vi.mocked(api.writeFile).mockReset();
-    vi.mocked(api.writeFile).mockImplementationOnce(() => new Promise<void>((resolve) => {
+    vi.mocked(api.writeFile).mockImplementationOnce(() => new Promise<{ versionToken: string }>((resolve) => {
       resolveA = resolve;
-    })).mockImplementation(async () => undefined);
+    })).mockImplementation(async () => ({ versionToken: "token:a.md" }));
     const saveA = editorStore.saveFile();
     await Promise.resolve();
     editorStore.updateContent("revision B");
     const close = editorStore.closeFile();
-    resolveA?.();
+    resolveA?.({ versionToken: "token:a.md" });
     await saveA;
     await close;
     expect(vi.mocked(api.writeFile).mock.calls.map((call) => call[1])).toEqual(["revision A", "revision B"]);
@@ -195,16 +195,16 @@ describe("Phase 1 committed selection", () => {
     await editorStore.openFile("a.md");
     await editorStore.selectEntry("a.md");
     editorStore.updateContent("revision A");
-    let resolveA: (() => void) | undefined;
+    let resolveA: ((receipt: { versionToken: string }) => void) | undefined;
     vi.mocked(api.writeFile).mockReset();
-    vi.mocked(api.writeFile).mockImplementationOnce(() => new Promise<void>((resolve) => {
+    vi.mocked(api.writeFile).mockImplementationOnce(() => new Promise<{ versionToken: string }>((resolve) => {
       resolveA = resolve;
-    })).mockImplementation(async () => undefined);
+    })).mockImplementation(async () => ({ versionToken: "token:a.md" }));
     const saveA = editorStore.saveFile();
     await Promise.resolve();
     editorStore.updateContent("revision B");
     const switchToB = editorStore.openFile("b.md");
-    resolveA?.();
+    resolveA?.({ versionToken: "token:a.md" });
     await saveA;
     await switchToB;
     expect(vi.mocked(api.writeFile).mock.calls.map((call) => call[1])).toEqual(["revision A", "revision B"]);

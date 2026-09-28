@@ -243,7 +243,7 @@ impl DocumentRepository for DocumentFileRepository {
         path: &str,
         content: &str,
         expected_token: Option<String>,
-    ) -> Result<(), SafetyError> {
+    ) -> Result<crate::repositories::documents::DocumentWriteReceipt, SafetyError> {
         crate::repositories::documents::write_file(
             path.to_string(),
             content.to_string(),

@@ -413,7 +413,7 @@ pub fn write_file(
     path: String,
     content: String,
     expected_token: Option<String>,
-) -> Result<(), SafetyError> {
+) -> Result<crate::repositories::documents::DocumentWriteReceipt, SafetyError> {
     services.documents.write(&path, &content, expected_token)
 }
 

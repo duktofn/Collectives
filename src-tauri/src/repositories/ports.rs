@@ -4,7 +4,7 @@ use crate::fs_layer::file_identity::FileIdentityCache;
 use crate::fs_layer::watcher::WatchState;
 use crate::fs_ops::FsEntry;
 use crate::metadata::{MigrationStatus, MutationRequest, MutationResult};
-use crate::repositories::documents::DocumentSnapshot;
+use crate::repositories::documents::{DocumentSnapshot, DocumentWriteReceipt};
 use crate::safety_error::SafetyError;
 use crate::settings::{CustomFont, Settings};
 use std::path::Path;
@@ -88,7 +88,7 @@ pub trait DocumentRepository: Send + Sync {
         path: &str,
         content: &str,
         expected_token: Option<String>,
-    ) -> Result<(), SafetyError>;
+    ) -> Result<DocumentWriteReceipt, SafetyError>;
 }
 
 pub trait SettingsRepository: Send + Sync {

@@ -2,7 +2,7 @@ import { createStore } from "solid-js/store";
 import * as api from "../features/editor";
 import { EditorMode, WikilinkFragment } from "../types";
 import { uiStore } from "./ui";
-import { applyFilesystemConflict, applyMetadataContinuity, type MetadataEntryDelta } from "../features/editor/metadataContinuity";
+import { applyMetadataContinuity, type MetadataEntryDelta } from "../features/editor/metadataContinuity";
 import { classifyFilePath, type FileKind } from "../shared/fileCapabilities.generated";
 
 function formatEditorError(error: unknown): string {
@@ -19,6 +19,7 @@ interface EditorState {
   isSaving: boolean;
   isReadOnly: boolean;
   error: string | null;
+  conflictKind: "file" | "metadata" | null;
   pendingNavigation: WikilinkFragment | null;
   pendingSelection: string | null;
   versionToken: string;
@@ -45,6 +46,7 @@ const [state, setState] = createStore<EditorState>({
   isSaving: false,
   isReadOnly: false,
   error: null,
+  conflictKind: null,
   pendingNavigation: null,
   versionToken: "",
   generation: 0,
@@ -57,6 +59,7 @@ const [state, setState] = createStore<EditorState>({
 let saveDrainPromise: Promise<void> | null = null;
 let saveQueue: SaveSnapshot[] = [];
 let activeSaveSnapshot: SaveSnapshot | null = null;
+let filesystemConflictEpoch = 0;
 let selectionRequest = 0;
 let openRequest = 0;
 
@@ -92,28 +95,56 @@ async function drainSaveQueue(): Promise<void> {
       ? { ...snapshot, expectedToken: lastPersistedToken }
       : { ...snapshot };
     try {
-      await api.writeFile(writeSnapshot.path, writeSnapshot.content, writeSnapshot.expectedToken);
-      const rawSnapshot = await api.readFile(writeSnapshot.path);
-      const persisted = typeof rawSnapshot === "string"
-        ? { content: rawSnapshot, versionToken: "" }
-        : rawSnapshot;
-      lastPersistedToken = persisted.versionToken;
+      const conflictEpochAtStart = filesystemConflictEpoch;
+      const receipt = await api.writeFile(writeSnapshot.path, writeSnapshot.content, writeSnapshot.expectedToken);
+      // Keep older/mocked adapters safe: retaining the prior token causes a later
+      // CAS conflict rather than silently accepting an unverified disk version.
+      const persistedVersionToken = receipt?.versionToken ?? writeSnapshot.expectedToken ?? state.versionToken;
+      lastPersistedToken = persistedVersionToken;
+      if (
+        filesystemConflictEpoch !== conflictEpochAtStart &&
+        writeSnapshot.generation === state.generation &&
+        writeSnapshot.path === state.openFilePath
+      ) {
+        const rawCurrent = await api.readFile(writeSnapshot.path);
+        const currentDisk = typeof rawCurrent === "string"
+          ? { content: rawCurrent, versionToken: "" }
+          : rawCurrent;
+        if (currentDisk.versionToken !== persistedVersionToken) {
+          setState({
+            openFileContent: currentDisk.content,
+            isDirty: state.currentContent !== currentDisk.content,
+            versionToken: currentDisk.versionToken || persistedVersionToken,
+            error: "external_change_conflict: the file changed while the save was completing; the draft was retained",
+            conflictKind: "file",
+          });
+          throw { code: "external_change_conflict", message: "File changed while save was completing" };
+        }
+        if (state.conflictKind === "file") {
+          setState({ error: null, conflictKind: null });
+        }
+      }
       if (
         writeSnapshot.generation === state.generation
         && writeSnapshot.path === state.openFilePath
         && writeSnapshot.revision === state.revision
         && state.currentContent === writeSnapshot.content
       ) {
+        const retainedConflict = state.conflictKind === "metadata" ? "metadata" : null;
         setState({
           openFileContent: writeSnapshot.content,
           isDirty: false,
-          versionToken: persisted.versionToken,
+          versionToken: persistedVersionToken,
+          conflictKind: retainedConflict,
         });
       } else if (
         writeSnapshot.generation === state.generation
         && writeSnapshot.path === state.openFilePath
       ) {
-        setState("versionToken", persisted.versionToken);
+        setState({
+          versionToken: persistedVersionToken,
+          conflictKind: state.conflictKind === "metadata" ? "metadata" : null,
+        });
       }
     } catch (err: unknown) {
       const latest = currentSaveSnapshot();
@@ -121,6 +152,7 @@ async function drainSaveQueue(): Promise<void> {
         saveQueue.unshift(latest);
       }
       setState("error", formatEditorError(err));
+      if (api.asSafetyError(err)?.code === "external_change_conflict") setState("conflictKind", "file");
       throw err;
     } finally {
       activeSaveSnapshot = null;
@@ -139,7 +171,8 @@ export const editorStore = {
     });
     const next = applyMetadataContinuity({ selectedEntryId: uiStore.state.selectedEntryId, openPath: state.openFilePath, dirty: state.isDirty, externalConflict: false }, deltas);
     if (next.externalConflict) {
-      setState("error", "external_change_conflict: metadata changed while a local draft is open; use Reload and discard local draft or retry");
+      setState("error", "metadata_conflict: collection metadata changed while a local draft is open; reload before switching entries");
+      setState("conflictKind", "metadata");
       return false;
     }
     if (next.openPath !== state.openFilePath && next.openPath && !state.isDirty) setState("openFilePath", next.openPath);
@@ -147,10 +180,37 @@ export const editorStore = {
     return true;
   },
 
-  applyFilesystemConflict(path: string): boolean {
-    const next = applyFilesystemConflict({ selectedEntryId: uiStore.state.selectedEntryId, openPath: state.openFilePath, dirty: state.isDirty, externalConflict: false }, path);
-    if (next.externalConflict) {
-      setState("error", "external_change_conflict: file changed outside the app; use Reload and discard local draft or retry");
+  async handleFilesystemChange(path: string): Promise<boolean> {
+    if (path !== state.openFilePath) return true;
+    const generation = state.generation;
+    let rawSnapshot: Awaited<ReturnType<typeof api.readFile>>;
+    try {
+      rawSnapshot = await api.readFile(path);
+    } catch (error) {
+      if (generation !== state.generation || path !== state.openFilePath) return false;
+      if (state.isDirty || state.isSaving) {
+        if (state.isSaving) filesystemConflictEpoch += 1;
+        setState("error", "external_change_conflict: file changed outside the app; the current version could not be read, so the draft was retained");
+        setState("conflictKind", "file");
+      } else {
+        setState("error", formatEditorError(error));
+      }
+      return false;
+    }
+    if (generation !== state.generation || path !== state.openFilePath) return false;
+    const snapshot = typeof rawSnapshot === "string"
+      ? { content: rawSnapshot, versionToken: "" }
+      : rawSnapshot;
+    const activeWriteMatches = activeSaveSnapshot?.path === path
+      && activeSaveSnapshot.generation === generation
+      && activeSaveSnapshot.content === snapshot.content;
+    if (activeWriteMatches) return false;
+    if (snapshot.versionToken && snapshot.versionToken === state.versionToken) return false;
+    if (!snapshot.versionToken && snapshot.content === state.openFileContent && !state.isDirty) return false;
+    if (state.isDirty || state.isSaving) {
+      if (state.isSaving) filesystemConflictEpoch += 1;
+      setState("error", "external_change_conflict: file changed outside the app; use Reload and discard local draft or overwrite the version currently on disk");
+      setState("conflictKind", "file");
       return false;
     }
     return true;
@@ -170,6 +230,7 @@ export const editorStore = {
     const generation = state.generation + 1;
     setState("generation", generation);
     setState("error", null);
+    setState("conflictKind", null);
     try {
       const rawSnapshot = await api.readFile(path);
       const snapshot = typeof rawSnapshot === "string" ? { content: rawSnapshot, versionToken: "", fileKind: classifyFilePath(path) } : rawSnapshot;
@@ -184,6 +245,7 @@ export const editorStore = {
         versionToken: snapshot.versionToken,
         revision: 0,
         fileKind: snapshot.fileKind ?? classifyFilePath(path),
+        conflictKind: null,
       });
     } catch (err: unknown) {
       setState("error", formatEditorError(err));
@@ -194,11 +256,13 @@ export const editorStore = {
   async saveFile() {
     const snapshot = currentSaveSnapshot();
     if (!snapshot) return;
+    if (state.conflictKind) throw new Error(state.error || "Resolve the current conflict before saving");
     enqueueSnapshot(snapshot);
     if (saveDrainPromise) return saveDrainPromise;
 
     setState("isSaving", true);
     setState("error", null);
+    setState("conflictKind", null);
     const drain = drainSaveQueue();
     saveDrainPromise = drain;
     try {
@@ -229,6 +293,7 @@ export const editorStore = {
       isReadOnly: false,
       isSaving: false,
       error: null,
+      conflictKind: null,
       pendingNavigation: null,
       pendingSelection: null,
       versionToken: "",
@@ -256,6 +321,7 @@ export const editorStore = {
       mode: readOnly ? "view" : (snapshot.fileKind ?? classifyFilePath(path)) === "text-source" ? "edit-source" : state.lastMarkdownMode,
       isSaving: false,
       error: null,
+      conflictKind: null,
       pendingNavigation: null,
       pendingSelection: null,
       versionToken: snapshot.versionToken,
@@ -298,6 +364,7 @@ export const editorStore = {
       mode: "edit-render",
       isSaving: false,
       error: null,
+      conflictKind: null,
       pendingNavigation: null,
       pendingSelection: null,
       versionToken: "",
@@ -332,6 +399,7 @@ export const editorStore = {
         versionToken: snapshot.versionToken,
         isDirty: false,
         error: null,
+        conflictKind: null,
         generation: generation + 1,
         revision: 0,
       });
@@ -339,6 +407,33 @@ export const editorStore = {
     } catch (error) {
       if (isCurrent()) setState("error", formatEditorError(error));
       return false;
+    }
+  },
+
+  async overwriteExternalVersion(): Promise<boolean> {
+    const path = state.openFilePath;
+    if (!path || !state.isDirty || state.isReadOnly || state.isSaving || state.conflictKind !== "file") return false;
+    const generation = state.generation;
+    const revision = state.revision;
+    setState("isSaving", true);
+    try {
+      const raw = await api.readFile(path);
+      if (path !== state.openFilePath || generation !== state.generation || revision !== state.revision) return false;
+      const snapshot = typeof raw === "string" ? { content: raw, versionToken: "" } : raw;
+      if (!snapshot.versionToken) {
+        setState("error", "external_change_conflict: the current disk version has no version token; the draft was retained");
+        return false;
+      }
+      saveQueue = saveQueue.filter((queued) => queued.path !== path || queued.generation !== generation);
+      setState({ versionToken: snapshot.versionToken, error: null, conflictKind: null });
+      await this.saveFile();
+      return !state.isDirty && state.error === null;
+    } catch (error) {
+      setState("error", formatEditorError(error));
+      if (api.asSafetyError(error)?.code === "external_change_conflict") setState("conflictKind", "file");
+      return false;
+    } finally {
+      if (!saveDrainPromise) setState("isSaving", false);
     }
   },
 

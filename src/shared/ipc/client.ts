@@ -11,6 +11,9 @@ export interface FileSnapshot {
   lineEnding?: LineEnding;
   byteSize?: number;
 }
+export interface WriteReceipt {
+  versionToken: string;
+}
 export type MetadataMutationOperation =
   | { kind: "addEntry"; parentPath: number[]; entry: Entry }
   | { kind: "removeEntry"; entryId: string }
@@ -46,7 +49,7 @@ export interface CommandMap {
   validate_entries: { args: { collectionId: string }; result: BrokenEntry[] };
   read_file: { args: { path: string }; result: FileSnapshot | string };
   read_folderref_snapshot: { args: { rootPath: string; childPath: string }; result: FileSnapshot };
-  write_file: { args: { path: string; content: string; expectedToken?: string }; result: void };
+  write_file: { args: { path: string; content: string; expectedToken?: string }; result: WriteReceipt };
   resolve_wikilink: { args: { collectionId: string; noteName: string }; result: ResolveCandidate | null };
   search_link_index: { args: { collectionId: string; query: string; limit?: number }; result: ResolveCandidate[] };
   import_folder: { args: { path: string; name: string }; result: Collection };

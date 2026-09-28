@@ -1,113 +1,108 @@
 import hljs from "highlight.js/lib/core";
+import type { LanguageFn } from "highlight.js";
 
-// Import commonly used languages
-import javascript from "highlight.js/lib/languages/javascript";
-import typescript from "highlight.js/lib/languages/typescript";
-import python from "highlight.js/lib/languages/python";
-import rust from "highlight.js/lib/languages/rust";
-import css from "highlight.js/lib/languages/css";
-import xml from "highlight.js/lib/languages/xml";
-import json from "highlight.js/lib/languages/json";
-import bash from "highlight.js/lib/languages/bash";
-import sql from "highlight.js/lib/languages/sql";
-import java from "highlight.js/lib/languages/java";
-import cpp from "highlight.js/lib/languages/cpp";
-import csharp from "highlight.js/lib/languages/csharp";
-import go from "highlight.js/lib/languages/go";
-import php from "highlight.js/lib/languages/php";
-import ruby from "highlight.js/lib/languages/ruby";
-import swift from "highlight.js/lib/languages/swift";
-import kotlin from "highlight.js/lib/languages/kotlin";
-import yaml from "highlight.js/lib/languages/yaml";
-import markdown from "highlight.js/lib/languages/markdown";
-import lua from "highlight.js/lib/languages/lua";
-import dart from "highlight.js/lib/languages/dart";
-import shell from "highlight.js/lib/languages/shell";
-import diff from "highlight.js/lib/languages/diff";
-import plaintext from "highlight.js/lib/languages/plaintext";
-import ini from "highlight.js/lib/languages/ini";
-import scss from "highlight.js/lib/languages/scss";
+const languageLoaders: Record<string, () => Promise<LanguageFn>> = {
+  javascript: () => import("highlight.js/lib/languages/javascript").then((module) => module.default),
+  typescript: () => import("highlight.js/lib/languages/typescript").then((module) => module.default),
+  python: () => import("highlight.js/lib/languages/python").then((module) => module.default),
+  rust: () => import("highlight.js/lib/languages/rust").then((module) => module.default),
+  css: () => import("highlight.js/lib/languages/css").then((module) => module.default),
+  xml: () => import("highlight.js/lib/languages/xml").then((module) => module.default),
+  json: () => import("highlight.js/lib/languages/json").then((module) => module.default),
+  bash: () => import("highlight.js/lib/languages/bash").then((module) => module.default),
+  sql: () => import("highlight.js/lib/languages/sql").then((module) => module.default),
+  java: () => import("highlight.js/lib/languages/java").then((module) => module.default),
+  cpp: () => import("highlight.js/lib/languages/cpp").then((module) => module.default),
+  csharp: () => import("highlight.js/lib/languages/csharp").then((module) => module.default),
+  go: () => import("highlight.js/lib/languages/go").then((module) => module.default),
+  php: () => import("highlight.js/lib/languages/php").then((module) => module.default),
+  ruby: () => import("highlight.js/lib/languages/ruby").then((module) => module.default),
+  swift: () => import("highlight.js/lib/languages/swift").then((module) => module.default),
+  kotlin: () => import("highlight.js/lib/languages/kotlin").then((module) => module.default),
+  yaml: () => import("highlight.js/lib/languages/yaml").then((module) => module.default),
+  markdown: () => import("highlight.js/lib/languages/markdown").then((module) => module.default),
+  lua: () => import("highlight.js/lib/languages/lua").then((module) => module.default),
+  dart: () => import("highlight.js/lib/languages/dart").then((module) => module.default),
+  diff: () => import("highlight.js/lib/languages/diff").then((module) => module.default),
+  plaintext: () => import("highlight.js/lib/languages/plaintext").then((module) => module.default),
+  ini: () => import("highlight.js/lib/languages/ini").then((module) => module.default),
+  scss: () => import("highlight.js/lib/languages/scss").then((module) => module.default),
+};
 
-// Register languages
-hljs.registerLanguage("javascript", javascript);
-hljs.registerLanguage("js", javascript);
-hljs.registerLanguage("jsx", javascript);
-hljs.registerLanguage("typescript", typescript);
-hljs.registerLanguage("ts", typescript);
-hljs.registerLanguage("tsx", typescript);
-hljs.registerLanguage("python", python);
-hljs.registerLanguage("py", python);
-hljs.registerLanguage("rust", rust);
-hljs.registerLanguage("rs", rust);
-hljs.registerLanguage("css", css);
-hljs.registerLanguage("html", xml);
-hljs.registerLanguage("xml", xml);
-hljs.registerLanguage("json", json);
-hljs.registerLanguage("bash", bash);
-hljs.registerLanguage("sh", bash);
-hljs.registerLanguage("zsh", bash);
-hljs.registerLanguage("sql", sql);
-hljs.registerLanguage("java", java);
-hljs.registerLanguage("cpp", cpp);
-hljs.registerLanguage("c", cpp);
-hljs.registerLanguage("csharp", csharp);
-hljs.registerLanguage("cs", csharp);
-hljs.registerLanguage("go", go);
-hljs.registerLanguage("golang", go);
-hljs.registerLanguage("php", php);
-hljs.registerLanguage("ruby", ruby);
-hljs.registerLanguage("rb", ruby);
-hljs.registerLanguage("swift", swift);
-hljs.registerLanguage("kotlin", kotlin);
-hljs.registerLanguage("kt", kotlin);
-hljs.registerLanguage("yaml", yaml);
-hljs.registerLanguage("yml", yaml);
-hljs.registerLanguage("markdown", markdown);
-hljs.registerLanguage("md", markdown);
-hljs.registerLanguage("lua", lua);
-hljs.registerLanguage("dart", dart);
-hljs.registerLanguage("shell", shell);
-hljs.registerLanguage("diff", diff);
-hljs.registerLanguage("plaintext", plaintext);
-hljs.registerLanguage("text", plaintext);
-hljs.registerLanguage("txt", plaintext);
-hljs.registerLanguage("ini", ini);
-hljs.registerLanguage("toml", ini);
-hljs.registerLanguage("scss", scss);
-hljs.registerLanguage("sass", scss);
+const aliases: Record<string, string> = {
+  js: "javascript", jsx: "javascript",
+  ts: "typescript", tsx: "typescript",
+  py: "python",
+  rs: "rust",
+  html: "xml",
+  sh: "bash", zsh: "bash", shell: "bash",
+  c: "cpp",
+  cs: "csharp",
+  golang: "go",
+  rb: "ruby",
+  kt: "kotlin",
+  yml: "yaml",
+  md: "markdown",
+  text: "plaintext", txt: "plaintext",
+  toml: "ini",
+  sass: "scss",
+};
+
+const loadPromises = new Map<string, Promise<void>>();
+const aliasesByLanguage = new Map<string, string[]>();
+for (const [alias, language] of Object.entries(aliases)) {
+  const names = aliasesByLanguage.get(language) ?? [];
+  names.push(alias);
+  aliasesByLanguage.set(language, names);
+}
+
+async function ensureLanguage(language: string): Promise<string | null> {
+  const requested = language.toLowerCase().trim();
+  const canonical = aliases[requested] ?? requested;
+  const loader = languageLoaders[canonical];
+  if (!loader) return null;
+  if (!hljs.getLanguage(requested)) {
+    let pending = loadPromises.get(canonical);
+    if (!pending) {
+      pending = loader().then((languageDefinition) => {
+        hljs.registerLanguage(canonical, languageDefinition);
+        for (const alias of aliasesByLanguage.get(canonical) ?? []) {
+          hljs.registerLanguage(alias, languageDefinition);
+        }
+      }).finally(() => loadPromises.delete(canonical));
+      loadPromises.set(canonical, pending);
+    }
+    await pending;
+  }
+  return hljs.getLanguage(requested) ? requested : canonical;
+}
 
 /**
- * Highlights code using highlight.js.
- * Returns highlighted HTML string if language is recognized,
- * otherwise returns escaped plain text.
+ * Returns highlighted HTML when a grammar is already loaded, otherwise safe
+ * escaped text. Widgets call the async variant so language code stays out of
+ * the startup bundle and parsing does not block editor construction.
  */
 export function highlightCode(code: string, language: string): string {
   if (!code) return "";
-
   const lang = language.toLowerCase().trim();
-
-  if (lang && hljs.getLanguage(lang)) {
-    try {
-      const result = hljs.highlight(code, { language: lang, ignoreIllegals: true });
-      return result.value;
-    } catch {
-      // Fallback to auto-detect
-    }
+  if (!lang || !hljs.getLanguage(lang)) return escapeHtml(code);
+  try {
+    return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
+  } catch {
+    return escapeHtml(code);
   }
+}
 
-  // Auto-detect for unlabeled blocks
-  if (!lang) {
-    try {
-      const result = hljs.highlightAuto(code);
-      if (result.relevance > 5) {
-        return result.value;
-      }
-    } catch {
-      // Fallback to plain escaped text
-    }
+export async function highlightCodeAsync(code: string, language: string): Promise<string> {
+  if (!code) return "";
+  // Very large snippets remain readable without making a grammar parse a long task.
+  if (code.length > 120_000) return escapeHtml(code);
+  try {
+    const resolvedLanguage = await ensureLanguage(language);
+    return resolvedLanguage ? highlightCode(code, resolvedLanguage) : escapeHtml(code);
+  } catch {
+    return escapeHtml(code);
   }
-
-  return escapeHtml(code);
 }
 
 function escapeHtml(str: string): string {

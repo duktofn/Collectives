@@ -110,8 +110,8 @@ export async function handleFilesystemChangesV2(payload: { collectionId: string;
     if (!change || typeof change !== "object") continue;
     const value = change as { kind?: string; path?: string; changedFilePath?: string };
     const changedPath = value.changedFilePath ?? value.path;
-    if (changedPath && !editorStore.applyFilesystemConflict(changedPath)) continue;
-    if (value.kind === "modified" && value.path === editorStore.state.openFilePath && !editorStore.state.isDirty) await editorStore.openFile(value.path, editorStore.state.isReadOnly);
+    if (changedPath && !await editorStore.handleFilesystemChange(changedPath)) continue;
+    if (value.kind === "modified" && changedPath === editorStore.state.openFilePath && !editorStore.state.isDirty) await editorStore.openFile(changedPath, editorStore.state.isReadOnly);
   }
   return { accepted: true, needsSnapshot: false };
 }
@@ -491,20 +491,6 @@ export const collectionsStore = {
       return () => {};
     }
     
-    const unlisten1 = await listenEvent("file-modified", async (event) => {
-      const payload = event.payload;
-      const openPath = editorStore.state.openFilePath;
-      const isDirty = editorStore.state.isDirty;
-      if (!editorStore.applyFilesystemConflict(payload.path)) return;
-      if (openPath && openPath === payload.path && !isDirty) {
-        const prevMode = editorStore.state.mode;
-        await editorStore.openFile(payload.path, editorStore.state.isReadOnly);
-        if (prevMode !== "view" && !editorStore.state.isReadOnly) {
-          editorStore.setMode(prevMode);
-        }
-      }
-    });
-
     const unlisten2 = await listenEvent("entry-deleted", (event) => {
       const payload = event.payload;
       const exists = state.brokenEntries.some((b) => b.id === payload.entryId);
@@ -523,29 +509,13 @@ export const collectionsStore = {
       await editorStore.applyMetadataContinuity([{ entryId: payload.entryId, kind: "updated", entry: { path: payload.newPath } }]);
     });
 
-    const unlistenFolderChanged = await listenEvent("folder-changed", async (event) => {
-      const payload = event.payload;
-      const openPath = editorStore.state.openFilePath;
-      const isDirty = editorStore.state.isDirty;
-      if (!editorStore.applyFilesystemConflict(payload.changedFilePath)) return;
-      if (openPath && openPath === payload.changedFilePath && !isDirty) {
-        const prevMode = editorStore.state.mode;
-        await editorStore.openFile(payload.changedFilePath, editorStore.state.isReadOnly);
-        if (prevMode !== "view" && !editorStore.state.isReadOnly) {
-          editorStore.setMode(prevMode);
-        }
-      }
-    });
-
     const unlistenDelta = await listenEvent("collection-delta-v2", async (event) => { await handleCollectionDeltaV2(event.payload); });
 
     const unlistenFilesystemV2 = await listenEvent("filesystem-changes-v2", async (event) => { await handleFilesystemChangesV2(event.payload); });
 
     return () => {
-      unlisten1();
       unlisten2();
       unlisten3();
-      unlistenFolderChanged();
       unlistenDelta();
       unlistenFilesystemV2();
     };

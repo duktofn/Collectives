@@ -1,4 +1,4 @@
-import { onMount, onCleanup, createEffect, on, createUniqueId } from "solid-js";
+import { onMount, onCleanup, createEffect, on, createUniqueId, Show } from "solid-js";
 import { EditorView } from "@codemirror/view";
 import { Compartment, EditorState } from "@codemirror/state";
 import { editorStore } from "../../stores/editor";
@@ -30,6 +30,12 @@ export function Editor() {
     return "Markdown edit mode";
   };
 
+  const requestSave = () => {
+    void editorStore.saveFile().catch(() => {
+      // The store keeps the draft and exposes the failure in its error banner.
+    });
+  };
+
   const contentAttributes = () => EditorView.contentAttributes.of({
     "aria-label": `${fileName()} — ${modeDescription()}`,
     "aria-readonly": editorStore.state.isReadOnly ? "true" : "false",
@@ -56,7 +62,7 @@ export function Editor() {
           keydown(event) {
             if ((event.ctrlKey || event.metaKey) && event.key === "s") {
               event.preventDefault();
-              editorStore.saveFile();
+              requestSave();
               return true;
             }
             return false;
@@ -164,7 +170,7 @@ export function Editor() {
           clearTimeout(forceSaveTimeout);
           forceSaveTimeout = null;
         }
-        editorStore.saveFile();
+        requestSave();
       }, 2000); // 2 seconds delay
 
       if (!forceSaveTimeout) {
@@ -174,7 +180,7 @@ export function Editor() {
             autoSaveTimeout = null;
           }
           forceSaveTimeout = null;
-          editorStore.saveFile();
+          requestSave();
         }, 15000); // 15 seconds force save limit
       }
     } else {
@@ -199,9 +205,16 @@ export function Editor() {
       {editorStore.state.error && (
         <div class="editor-error-banner">
           <span>Error: {editorStore.state.error}</span>
-          <button class="btn-close" onClick={async () => { try { await editorStore.saveFile(); } catch { /* retain draft and error */ } }}>
-            Retry save
-          </button>
+          <Show when={editorStore.state.conflictKind === null}>
+            <button class="btn-close" onClick={requestSave}>
+              Retry save
+            </button>
+          </Show>
+          <Show when={editorStore.state.conflictKind === "file" && editorStore.state.isDirty}>
+            <button class="btn-close" disabled={editorStore.state.isSaving} onClick={async () => { await editorStore.overwriteExternalVersion(); }}>
+              Overwrite disk version
+            </button>
+          </Show>
           <button class="btn-close" onClick={async () => { await editorStore.reloadAndDiscard(); }}>
             Reload and discard local draft
           </button>

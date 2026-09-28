@@ -26,6 +26,6 @@ pub fn write_file(
     path: String,
     content: String,
     expected_token: Option<String>,
-) -> Result<(), SafetyError> {
+) -> Result<crate::repositories::documents::DocumentWriteReceipt, SafetyError> {
     crate::application::services::write_file(&state, path, content, expected_token)
 }

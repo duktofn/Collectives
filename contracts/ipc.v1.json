@@ -19,7 +19,7 @@
     {"name":"add_folder_ref","handler":"ipc::commands::collections::add_folder_ref","args":[{"name":"collectionId","type":"string"},{"name":"path","type":"string"}],"result":"Entry"},
     {"name":"validate_entries","handler":"ipc::commands::collections::validate_entries","args":[{"name":"collectionId","type":"string"}],"result":"BrokenEntry[]"},
     {"name":"read_file","handler":"ipc::commands::documents::read_file","args":[{"name":"path","type":"string"}],"result":"FileSnapshot"},
-    {"name":"write_file","handler":"ipc::commands::documents::write_file","args":[{"name":"path","type":"string"},{"name":"content","type":"string"},{"name":"expectedToken","type":"string | undefined"}],"result":"void"},
+    {"name":"write_file","handler":"ipc::commands::documents::write_file","args":[{"name":"path","type":"string"},{"name":"content","type":"string"},{"name":"expectedToken","type":"string | undefined"}],"result":"WriteReceipt"},
     {"name":"resolve_wikilink","handler":"ipc::commands::links::resolve_wikilink","args":[{"name":"collectionId","type":"string"},{"name":"noteName","type":"string"}],"result":"ResolveCandidate | null"},
     {"name":"search_link_index","handler":"ipc::commands::links::search_link_index","args":[{"name":"collectionId","type":"string"},{"name":"query","type":"string"},{"name":"limit","type":"number | undefined"}],"result":"ResolveCandidate[]"},
     {"name":"import_folder","handler":"ipc::commands::archive::import_folder","args":[{"name":"path","type":"string"},{"name":"name","type":"string"}],"result":"Collection"},

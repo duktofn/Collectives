@@ -56,25 +56,20 @@ class RenderPlugin {
     const tree = syntaxTree(view.state);
     const selection = view.state.selection.main;
 
-    // Track which Link nodes contain the cursor
-    const activeLinkNodes: { from: number; to: number }[] = [];
-
-    // First pass: find active link nodes
-    tree.iterate({
-      enter(node) {
-        if (node.name === "Link") {
-          if (selection.head >= node.from && selection.head <= node.to) {
-            activeLinkNodes.push({ from: node.from, to: node.to });
-          }
-        }
-      },
-    });
-
-    const isCursorInLink = (from: number, to: number) => {
-      return activeLinkNodes.some(
-        (link) => from >= link.from && to <= link.to
-      );
-    };
+    // Resolve only the node under the cursor instead of scanning every link
+    // in the document on each line-level selection update.
+    let activeLink: ReturnType<typeof tree.resolveInner> | null = tree.resolveInner(selection.head, -1);
+    while (activeLink && activeLink.name !== "Link") activeLink = activeLink.parent;
+    if (!activeLink || activeLink.name !== "Link") {
+      activeLink = tree.resolveInner(selection.head, 1);
+      while (activeLink && activeLink.name !== "Link") activeLink = activeLink.parent;
+    }
+    const activeLinkRange = activeLink?.name === "Link"
+      ? { from: activeLink.from, to: activeLink.to }
+      : null;
+    const isCursorInLink = (from: number, to: number) => Boolean(
+      activeLinkRange && from >= activeLinkRange.from && to <= activeLinkRange.to,
+    );
 
     for (const { from, to } of view.visibleRanges) {
       tree.iterate({

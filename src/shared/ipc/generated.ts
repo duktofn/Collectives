@@ -249,7 +249,7 @@ export const IPC_COMMANDS = [
         "type": "string | undefined"
       }
     ],
-    "result": "void"
+    "result": "WriteReceipt"
   },
   {
     "name": "resolve_wikilink",

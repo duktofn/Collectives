@@ -285,7 +285,7 @@ pub fn write_file(
     path: String,
     content: String,
     expected_token: Option<String>,
-) -> Result<(), SafetyError> {
+) -> Result<DocumentWriteReceipt, SafetyError> {
     let path = std::path::Path::new(&path);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
@@ -315,9 +315,13 @@ pub fn write_file(
         }
     }
     if original.as_ref().map(|snapshot| snapshot.content.as_str()) == Some(content.as_str()) {
-        return Ok(());
+        let version_token = blake3::hash(original_bytes.as_deref().unwrap_or_default())
+            .to_hex()
+            .to_string();
+        return Ok(DocumentWriteReceipt { version_token });
     }
     let bytes_to_write = encode_document(&content, original.as_ref(), original_bytes.as_deref());
+    let version_token = blake3::hash(&bytes_to_write).to_hex().to_string();
     let id = uuid::Uuid::new_v4().to_string();
     let tmp_filename = format!(
         "{}.tmp-{}",
@@ -359,7 +363,7 @@ pub fn write_file(
                 )
             })?;
     }
-    Ok(())
+    Ok(DocumentWriteReceipt { version_token })
 }
 
 #[cfg(windows)]
@@ -458,6 +462,12 @@ pub struct DocumentSnapshot {
     pub had_utf8_bom: Option<bool>,
     pub line_ending: Option<String>,
     pub byte_size: Option<u64>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentWriteReceipt {
+    pub version_token: String,
 }
 
 pub type FileSnapshot = DocumentSnapshot;
