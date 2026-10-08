@@ -37,5 +37,6 @@ describe("AppShell presentation boundaries", () => {
       />
     ));
     expect(container.querySelectorAll("button[aria-label='Expand sidebar']")).toHaveLength(1);
+    expect(container.querySelector("button[aria-label='Expand sidebar']")?.closest("header")).not.toBeNull();
   });
 });

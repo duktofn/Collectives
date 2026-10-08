@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, Show, For, onMount } from "solid-js";
+import { createSignal, onCleanup, Show, For, onMount, createEffect, on } from "solid-js";
 import { collectionsStore } from "../../stores/collections";
 import { uiStore } from "../../stores/ui";
 import { Icon } from "../common/Icon";
@@ -6,9 +6,13 @@ import { TreeNode } from "../tree/TreeNode";
 import { Dialog } from "../common/Dialog";
 import { pickFiles, pickDirectory } from "../../platform";
 import { installTreeKeyboardModel } from "../tree/treeAccessibility";
+import { asSafetyError, formatIpcError } from "../../shared/ipc/errors";
 import "./Sidebar.css";
 
 interface SidebarProps {
+  onNewNoteClick: () => void;
+  onQuickOpen?: () => void;
+  onContentSearch?: () => void;
   onNewCollectionClick: () => void;
   onImportFolderClick: () => void;
   onImportZipClick: () => void;
@@ -16,6 +20,9 @@ interface SidebarProps {
   requestSelect: (entryId: string | null) => Promise<boolean>;
   requestFolderRefSelect: (intent: import("../../features/filesystem/folderRefReadiness").FolderRefIntentInput) => Promise<boolean>;
   requestSwitch: (collectionId: string) => Promise<boolean>;
+  onReviewMovePrompt: () => void;
+  recoveryDraftCount: number;
+  onReviewRecovery: () => void;
   operationLeaseRegistry?: import("../../workflows/operationLease").OperationLeaseRegistry;
 }
 
@@ -24,9 +31,46 @@ export function Sidebar(props: SidebarProps) {
   const [isResizing, setIsResizing] = createSignal(false);
   const [isNewGroupOpen, setIsNewGroupOpen] = createSignal(false);
   const [newGroupError, setNewGroupError] = createSignal("");
+  const [renameId, setRenameId] = createSignal<string | null>(null);
+  const [renameValue, setRenameValue] = createSignal("");
+  const [renameError, setRenameError] = createSignal("");
+  const [renamePending, setRenamePending] = createSignal(false);
+  let renameInput: HTMLInputElement | undefined;
+  const startRenameCollection = () => {
+    const collection = collectionsStore.activeCollection();
+    if (!collection) return;
+    setRenameId(collection.id);
+    setRenameValue(collection.name);
+    setRenameError("");
+    queueMicrotask(() => { renameInput?.focus(); renameInput?.select(); });
+  };
+  const cancelRenameCollection = () => {
+    if (renamePending()) return;
+    setRenameId(null);
+    setRenameError("");
+    collectionPickerRef?.focus();
+  };
+  const saveCollectionName = async (event: SubmitEvent) => {
+    event.preventDefault();
+    const id = renameId();
+    const name = renameValue().trim();
+    if (!id || renamePending()) return;
+    if (!name) { setRenameError("Enter a collection name."); renameInput?.focus(); return; }
+    setRenamePending(true);
+    setRenameError("");
+    try {
+      await collectionsStore.renameCollection(id, name);
+      setRenameId(null);
+      collectionPickerRef?.focus();
+    } catch (error) {
+      setRenameError(formatIpcError(error));
+    } finally { setRenamePending(false); }
+  };
+  const [actionError, setActionError] = createSignal<{ title: string; message: string; details: string } | null>(null);
   let dropdownRef: HTMLDivElement | undefined;
   let collectionPickerRef: HTMLButtonElement | undefined;
   let treeRoot: HTMLDivElement | undefined;
+  let sidebarRef: HTMLElement | undefined;
   let disposeTreeKeyboardModel: (() => void) | undefined;
 
   // Set the CSS variable on mount based on store state
@@ -86,7 +130,7 @@ export function Sidebar(props: SidebarProps) {
   };
 
   const handleDocumentClick = (e: MouseEvent) => {
-    if (dropdownRef && !dropdownRef.contains(e.target as Node)) {
+    if (dropdownRef && !e.composedPath().includes(dropdownRef)) {
       setIsDropdownOpen(false);
     }
   };
@@ -102,7 +146,7 @@ export function Sidebar(props: SidebarProps) {
   };
 
   const handleMouseMove = (e: MouseEvent) => {
-    let newWidth = e.clientX;
+    let newWidth = e.clientX - (sidebarRef?.getBoundingClientRect().left ?? 0);
     if (newWidth < 180) newWidth = 180;
     if (newWidth > 480) newWidth = 480;
     document.documentElement.style.setProperty("--sidebar-width", `${newWidth}px`);
@@ -110,7 +154,7 @@ export function Sidebar(props: SidebarProps) {
 
   const handleMouseUp = (e: MouseEvent) => {
     setIsResizing(false);
-    let newWidth = e.clientX;
+    let newWidth = e.clientX - (sidebarRef?.getBoundingClientRect().left ?? 0);
     if (newWidth < 180) newWidth = 180;
     if (newWidth > 480) newWidth = 480;
     uiStore.setSidebarWidth(newWidth);
@@ -127,6 +171,7 @@ export function Sidebar(props: SidebarProps) {
 
   // Active Collection action triggers
   const handleAddFiles = async () => {
+    setActionError(null);
     try {
       const selected = await pickFiles("Select Markdown Notes");
       if (selected && selected.length > 0) {
@@ -134,10 +179,12 @@ export function Sidebar(props: SidebarProps) {
       }
     } catch (err) {
       console.error("Failed to pick files", err);
+      setActionError({ title: "Could not add files", message: asSafetyError(err)?.message || "Check that the files are available, then try again.", details: formatIpcError(err) });
     }
   };
 
   const handleAddFolderRef = async () => {
+    setActionError(null);
     try {
       const selected = await pickDirectory("Select Folder to Reference");
       if (selected) {
@@ -145,6 +192,7 @@ export function Sidebar(props: SidebarProps) {
       }
     } catch (err) {
       console.error("Failed to pick directory", err);
+      setActionError({ title: "Could not add folder", message: asSafetyError(err)?.message || "Check that the folder is available, then try again.", details: formatIpcError(err) });
     }
   };
 
@@ -164,14 +212,90 @@ export function Sidebar(props: SidebarProps) {
 
   const activeCol = () => collectionsStore.activeCollection();
 
+  createEffect(on(isDropdownOpen, (open) => {
+    if (!open && !renamePending()) { setRenameId(null); setRenameError(""); }
+  }));
+
+  const collectionSwitcher = () => (
+    <div class="sidebar-actions-container sidebar-top-picker" ref={dropdownRef}>
+      <button
+        ref={collectionPickerRef}
+        type="button"
+        class="vault-info sidebar-title-selector"
+        onClick={(event) => {
+          event.stopPropagation();
+          setIsDropdownOpen(!isDropdownOpen());
+        }}
+        title="Switch or manage collections"
+        aria-label="Choose collection"
+        aria-haspopup="listbox"
+        aria-expanded={isDropdownOpen() ? "true" : "false"}
+        aria-controls="collection-picker-listbox"
+        onKeyDown={handleCollectionPickerKeyDown}
+      >
+        <Icon name="folder" size={14} class="vault-icon" />
+        <span class="collection-picker-copy"><small>Collection</small><span class="active-col-name">{activeCol()?.name || "Choose a collection"}</span></span>
+        <Icon name="chevron-down" size={12} style={{ opacity: 0.6 }} />
+      </button>
+      <Show when={isDropdownOpen()}>
+        <div class="sidebar-dropdown">
+          <span class="dropdown-header">Collections</span>
+          <div id="collection-picker-listbox" role="listbox" aria-label="Collections">
+            <For each={collectionsStore.state.collections}>
+              {(collection, index) => (
+                <button
+                  class="dropdown-item"
+                  classList={{ active: activeCol()?.id === collection.id }}
+                  type="button"
+                  role="option"
+                  aria-selected={activeCol()?.id === collection.id ? "true" : "false"}
+                  onKeyDown={(event) => handleCollectionOptionKeyDown(event, index())}
+                  onClick={() => {
+                    void props.requestSwitch(collection.id);
+                    setIsDropdownOpen(false);
+                  }}
+                >
+                  <Icon name="folder" size={14} />
+                  <span class="dropdown-item-text">{collection.name}</span>
+                </button>
+              )}
+            </For>
+          </div>
+          <div class="dropdown-divider" />
+          <Show when={activeCol()}>
+            <Show when={renameId()} fallback={<button class="dropdown-item" type="button" onClick={event => { event.stopPropagation(); startRenameCollection(); }}><Icon name="edit" size={14} /><span>Rename collection</span></button>}>
+              <form class="collection-rename-form" onSubmit={saveCollectionName} aria-label="Rename collection" aria-busy={renamePending()}>
+                <label for="collection-rename-input">Collection name</label>
+                <input ref={renameInput} id="collection-rename-input" value={renameValue()} disabled={renamePending()} onInput={event => setRenameValue(event.currentTarget.value)} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelRenameCollection(); } }} />
+                <Show when={renameError()}><p role="alert">{renameError()}</p></Show>
+                <div><button class="btn btn-text" type="button" disabled={renamePending()} onClick={cancelRenameCollection}>Cancel</button><button class="btn btn-primary" type="submit" disabled={renamePending()}>{renamePending() ? "Saving…" : "Save name"}</button></div>
+              </form>
+            </Show>
+            <div class="dropdown-divider" />
+          </Show>
+          <button class="dropdown-item" type="button" aria-label="New Collection" onClick={() => { props.onNewCollectionClick(); setIsDropdownOpen(false); }}>
+            <Icon name="plus" size={14} /><span>New Collection</span>
+          </button>
+          <button class="dropdown-item" type="button" aria-label="Import Local Folder" onClick={() => { props.onImportFolderClick(); setIsDropdownOpen(false); }}>
+            <Icon name="folder-plus" size={14} /><span>Import Local Folder</span>
+          </button>
+          <button class="dropdown-item" type="button" aria-label="Import ZIP Archive" onClick={() => { props.onImportZipClick(); setIsDropdownOpen(false); }}>
+            <Icon name="file" size={14} /><span>Import ZIP Archive</span>
+          </button>
+        </div>
+      </Show>
+    </div>
+  );
+
   return (
     <aside
+      ref={sidebarRef}
       aria-label="Collection navigation"
       class={`sidebar ${!uiStore.state.isSidebarOpen ? "collapsed" : ""} ${isResizing() ? "resizing" : ""}`}
     >
       {/* Header with App Brand and toggle button */}
       <div class="sidebar-header">
-        <span class="app-brand">Collectives</span>
+        <span class="app-brand"><span class="app-brand-mark" aria-hidden="true"><Icon name="virtual-folder" size={17} /></span>Collectives</span>
         <button
           class="btn btn-text btn-icon sidebar-toggle-btn"
           onClick={() => uiStore.toggleSidebar()}
@@ -181,6 +305,33 @@ export function Sidebar(props: SidebarProps) {
           <Icon name="menu" size={16} />
         </button>
       </div>
+
+      <Show when={props.recoveryDraftCount > 0}>
+        <div class="sidebar-move-reminder" role="status">
+          <span>{props.recoveryDraftCount} recovered draft{props.recoveryDraftCount === 1 ? "" : "s"} need review.</span>
+          <button class="btn btn-text" onClick={() => props.onReviewRecovery()}>Review</button>
+        </div>
+      </Show>
+
+      {collectionSwitcher()}
+
+      <Show when={activeCol()}>
+        <div class="sidebar-primary-actions">
+          <Show when={props.onQuickOpen}>
+            <button type="button" class="sidebar-search" onClick={() => props.onQuickOpen?.()} aria-label="Quick Open">
+              <Icon name="search" size={16} /><span>Find a note…</span><kbd>Ctrl P</kbd>
+            </button>
+          </Show>
+          <button class="btn btn-primary sidebar-new-note" onClick={() => props.onNewNoteClick()}>
+            <Icon name="plus" size={16} /><span>New note</span><kbd>Ctrl N</kbd>
+          </button>
+          <Show when={props.onContentSearch}>
+            <button type="button" class="sidebar-content-search" onClick={() => props.onContentSearch?.()} aria-label="Search note contents">
+              <Icon name="search" size={14} /><span>Search in notes</span><span class="sidebar-search-shortcut">Ctrl Shift F</span>
+            </button>
+          </Show>
+        </div>
+      </Show>
 
       {/* Main content area */}
       <div class="sidebar-content">
@@ -199,9 +350,26 @@ export function Sidebar(props: SidebarProps) {
         >
           {(col) => (
             <div class="tree-content-container">
+              <Show when={collectionsStore.state.movePrompt && collectionsStore.state.movePromptDeferred}>
+                <div class="sidebar-move-reminder" role="status">
+                  <span>Moved file needs attention.</span>
+                  <button class="btn btn-text" onClick={() => props.onReviewMovePrompt()}>Review</button>
+                </div>
+              </Show>
+              <Show when={actionError()}>
+                {(error) => (
+                  <div class="sidebar-action-error" role="alert">
+                    <strong>{error().title}</strong>
+                    <span>{error().message}</span>
+                    <details><summary>Technical details</summary><code>{error().details}</code></details>
+                    <button class="btn btn-text" onClick={() => setActionError(null)}>Dismiss</button>
+                  </div>
+                )}
+              </Show>
+
               {/* Active Collection Toolbar */}
               <div class="active-col-actions">
-                <span class="active-col-section-title">Notes</span>
+                <span class="active-col-section-title">Files</span>
                 <div class="active-col-buttons">
                   <button
                     class="btn btn-text btn-icon"
@@ -274,115 +442,39 @@ export function Sidebar(props: SidebarProps) {
         </Show>
       </div>
 
-      {/* Footer with Collection Selector and Settings */}
+      {/* Footer actions */}
       <div class="sidebar-footer">
-        <div class="sidebar-actions-container" ref={dropdownRef} style={{ position: "relative", display: "flex", "align-items": "center", "min-width": 0 }}>
-          <button
-            ref={collectionPickerRef}
-            type="button"
-            class="vault-info sidebar-title-selector"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsDropdownOpen(!isDropdownOpen());
-            }}
-            title="Switch or manage collections"
-            aria-label="Choose collection"
-            aria-haspopup="listbox"
-            aria-expanded={isDropdownOpen() ? "true" : "false"}
-            aria-controls="collection-picker-listbox"
-            onKeyDown={handleCollectionPickerKeyDown}
-            style={{ cursor: "pointer", display: "flex", "align-items": "center", gap: "8px" }}
-          >
-            <Icon name="folder" size={14} class="vault-icon" />
-            <span class="active-col-name" style={{ "max-width": "110px", "white-space": "nowrap", "overflow": "hidden", "text-overflow": "ellipsis" }}>
-              {activeCol()?.name || "Select Collection..."}
-            </span>
-            <Icon name="chevron-down" size={12} style={{ opacity: 0.6 }} />
-          </button>
-
-          {/* Dropdown list */}
-          <Show when={isDropdownOpen()}>
-            <div class="sidebar-dropdown">
-              <span class="dropdown-header">Collections</span>
-              <div id="collection-picker-listbox" role="listbox" aria-label="Collections">
-              <For each={collectionsStore.state.collections}>
-                {(col, index) => (
-                  <button
-                    class="dropdown-item"
-                    classList={{ active: activeCol()?.id === col.id }}
-                    type="button"
-                    role="option"
-                    aria-selected={activeCol()?.id === col.id ? "true" : "false"}
-                    onKeyDown={(event) => handleCollectionOptionKeyDown(event, index())}
-                    onClick={() => {
-                      void props.requestSwitch(col.id);
-                      setIsDropdownOpen(false);
-                    }}
-                  >
-                    <Icon name="folder" size={14} />
-                    <span class="dropdown-item-text">{col.name}</span>
-                  </button>
-                )}
-              </For>
-              </div>
-
-              <div class="dropdown-divider" />
-
-              {/* Create / Import buttons */}
-              <button
-                class="dropdown-item"
-                type="button"
-                aria-label="New Collection"
-                onClick={() => {
-                  props.onNewCollectionClick();
-                  setIsDropdownOpen(false);
-                }}
-              >
-                <Icon name="plus" size={14} />
-                <span>New Collection</span>
-              </button>
-              <button
-                class="dropdown-item"
-                type="button"
-                aria-label="Import Local Folder"
-                onClick={() => {
-                  props.onImportFolderClick();
-                  setIsDropdownOpen(false);
-                }}
-              >
-                <Icon name="folder-plus" size={14} />
-                <span>Import Local Folder</span>
-              </button>
-              <button
-                class="dropdown-item"
-                type="button"
-                aria-label="Import ZIP Archive"
-                onClick={() => {
-                  props.onImportZipClick();
-                  setIsDropdownOpen(false);
-                }}
-              >
-                <Icon name="file" size={14} />
-                <span>Import ZIP Archive</span>
-              </button>
-            </div>
-          </Show>
-        </div>
         <button
-          class="btn btn-text btn-icon"
+          class="btn btn-text"
           type="button"
           onClick={() => props.onSettingsClick()}
           aria-label="Settings"
           title="Settings"
         >
-          <Icon name="settings" size={18} />
+          <Icon name="settings" size={16} /><span>Settings</span>
         </button>
+        <span class="sidebar-local-label"><span aria-hidden="true" />Local workspace</span>
       </div>
 
       {/* Resize handle */}
       <div
         class={`sidebar-resizer ${isResizing() ? "resizing" : ""}`}
         onMouseDown={handleMouseDown}
+        role="separator"
+        aria-label="Resize sidebar"
+        aria-orientation="vertical"
+        aria-valuemin={180}
+        aria-valuemax={480}
+        aria-valuenow={uiStore.state.sidebarWidth}
+        tabIndex={uiStore.state.isSidebarOpen ? 0 : -1}
+        onKeyDown={(event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const width = event.key === "Home" ? 180 : event.key === "End" ? 480 : uiStore.state.sidebarWidth + (event.key === "ArrowLeft" ? -16 : 16);
+          const next = Math.max(180, Math.min(480, width));
+          uiStore.setSidebarWidth(next);
+          document.documentElement.style.setProperty("--sidebar-width", `${next}px`);
+        }}
       />
 
       <Dialog

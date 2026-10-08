@@ -5,7 +5,7 @@ import { asLegacyInvokeError, asSafetyError } from "./errors";
 describe("Phase 2 IPC contract", () => {
   it("matches the generated command/event cardinality", () => {
     expect(IPC_VERSION).toBe("ipc.v1");
-    expect(IPC_COMMANDS).toHaveLength(37);
+    expect(IPC_COMMANDS).toHaveLength(39);
     expect(IPC_EVENTS).toHaveLength(4);
   });
 

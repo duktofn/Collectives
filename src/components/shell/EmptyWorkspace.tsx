@@ -10,11 +10,12 @@ export function EmptyWorkspace(props: EmptyWorkspaceProps) {
   return (
     <section class="empty-workspace" aria-labelledby="empty-workspace-title">
       <div class="empty-workspace-icon" aria-hidden="true">
-        <Icon name="folder" size={46} />
+        <Icon name="virtual-folder" size={32} />
       </div>
-      <h1 id="empty-workspace-title">Welcome to Collections</h1>
+      <span class="workspace-eyebrow">A place for your ideas</span>
+      <h1 id="empty-workspace-title">Welcome to Collectives</h1>
       <p>
-        Create a fresh workspace or bring in an existing Markdown folder. Your notes stay local and editable on disk.
+        Start a collection for your notes, or bring in the Markdown files you already use.
       </p>
       <div class="empty-workspace-actions">
         <button class="btn btn-primary ds-button" data-variant="primary" onClick={props.onNewCollection}>
@@ -30,6 +31,7 @@ export function EmptyWorkspace(props: EmptyWorkspaceProps) {
           Import ZIP
         </button>
       </div>
+      <span class="empty-workspace-footnote">Your notes stay in local files that you own.</span>
     </section>
   );
 }

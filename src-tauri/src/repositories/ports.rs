@@ -89,6 +89,7 @@ pub trait DocumentRepository: Send + Sync {
         content: &str,
         expected_token: Option<String>,
     ) -> Result<DocumentWriteReceipt, SafetyError>;
+    fn create_new(&self, path: &str, content: &str) -> Result<DocumentWriteReceipt, SafetyError>;
 }
 
 pub trait SettingsRepository: Send + Sync {
@@ -101,10 +102,18 @@ pub trait SettingsRepository: Send + Sync {
         weight: &str,
         style: &str,
     ) -> Result<CustomFont, String>;
+    fn import_font_base64(
+        &self,
+        preferred_file_name: &str,
+        family: &str,
+        weight: &str,
+        style: &str,
+        data_base64: &str,
+    ) -> Result<CustomFont, String>;
     fn delete_font(&self, file_name: &str) -> Result<(), String>;
     fn fonts_dir(&self) -> Result<String, String>;
     fn export_theme(&self, settings: &Settings, destination: &str) -> Result<(), String>;
-    fn import_theme(&self, path: &str) -> Result<Settings, String>;
+    fn import_theme(&self, path: &str) -> Result<crate::theme_io::ImportedTheme, String>;
 }
 
 pub trait FilesystemRepository: Send + Sync {

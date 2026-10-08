@@ -1,5 +1,7 @@
 import { Compartment, Extension, EditorState } from "@codemirror/state";
+import { autocompletion } from "@codemirror/autocomplete";
 import { markdown } from "@codemirror/lang-markdown";
+import { tableMarkdownExtension } from "./table-markdown-extension";
 import { languages } from "@codemirror/language-data";
 import { indentOnInput } from "@codemirror/language";
 import { EditorView, drawSelection, keymap } from "@codemirror/view";
@@ -10,15 +12,19 @@ import { tableWidgetExtension } from "./table-widget";
 import { chartWidgetExtension } from "./chart-widget";
 import { annotationExtension } from "./annotation";
 import { wikilinkDecorationExtension } from "./wikilink-decoration";
-import { wikilinkAutocomplete } from "./wikilink-autocomplete";
+import { wikilinkCompletionSource } from "./wikilink-autocomplete";
 import { blockRefExtension, blockRefDecorationExtension } from "./block-ref";
 import { editorModeFacet } from "./facet";
 import { delimiterPairExtension } from "./delimiter-pairs";
 import { formattingKeymapExtension } from "./formatting-keymap";
+import { slashTemplateCompletionSource } from "./slash-template-autocomplete";
 import type { FileKind } from "../../shared/fileCapabilities.generated";
 
+const sourceMarkdownAutocomplete = autocompletion({ override: [slashTemplateCompletionSource], activateOnTyping: true });
+const renderMarkdownAutocomplete = autocompletion({ override: [wikilinkCompletionSource, slashTemplateCompletionSource], activateOnTyping: true });
+
 export const baseEditorExtensions: Extension[] = [
-  markdown({ codeLanguages: languages }),
+  markdown({ codeLanguages: languages, extensions: [tableMarkdownExtension] }),
   history(),
   drawSelection(),
   indentOnInput(),
@@ -54,6 +60,7 @@ export function getExtensionsForMode(mode: "view" | "edit-source" | "edit-render
         editorModeFacet.of(mode),
         EditorView.editable.of(true),
         EditorState.readOnly.of(false),
+        sourceMarkdownAutocomplete,
       ];
     case "edit-render":
       return [
@@ -66,7 +73,7 @@ export function getExtensionsForMode(mode: "view" | "edit-source" | "edit-render
         chartWidgetExtension,
         annotationExtension,
         wikilinkDecorationExtension,
-        wikilinkAutocomplete,
+        renderMarkdownAutocomplete,
         blockRefExtension,
       ];
     case "view":

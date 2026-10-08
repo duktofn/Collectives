@@ -5,6 +5,7 @@ import {
   WidgetType,
 } from "@codemirror/view";
 import { RangeSetBuilder, StateField, EditorState, Extension } from "@codemirror/state";
+import { syntaxTree } from "@codemirror/language";
 
 import * as yaml from "js-yaml";
 import type { Chart as ChartInstance } from "chart.js";
@@ -226,52 +227,27 @@ class ChartWidget extends WidgetType {
 function buildChartDecorations(state: EditorState): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const doc = state.doc;
-
-  let i = 1;
-  while (i <= doc.lines) {
-    const line = doc.line(i);
-    const text = line.text.trim();
-
-    if (text.startsWith("```chart")) {
-      const startPos = line.from;
-      let endPos = line.to;
-      let lastLineNum = i;
-      const specLines: string[] = [];
-
-      let foundClosing = false;
-      while (lastLineNum < doc.lines) {
-        const nextLine = doc.line(lastLineNum + 1);
-        const nextText = nextLine.text.trim();
-        if (nextText === "```") {
-          endPos = nextLine.to;
-          lastLineNum++;
-          foundClosing = true;
-          break;
-        } else {
-          specLines.push(nextLine.text);
-          endPos = nextLine.to;
-          lastLineNum++;
-        }
-      }
-
-      if (foundClosing) {
-        const specYaml = specLines.join("\n");
-        builder.add(
-          startPos,
-          endPos,
-          Decoration.replace({
-            widget: new ChartWidget(specYaml, startPos, endPos),
-            block: true,
-          })
-        );
-        i = lastLineNum + 1;
-      } else {
-        i++;
-      }
-      continue;
-    }
-    i++;
-  }
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name !== "FencedCode") return;
+      const opening = doc.lineAt(node.from);
+      if (!opening.text.trim().startsWith("```chart")) return false;
+      const closing = doc.lineAt(node.to);
+      if (closing.number <= opening.number || closing.text.trim() !== "```") return false;
+      const bodyFrom = doc.line(opening.number + 1).from;
+      const body = bodyFrom >= closing.from ? "" : doc.sliceString(bodyFrom, closing.from);
+      const specYaml = body.endsWith("\n") ? body.slice(0, -1) : body;
+      builder.add(
+        opening.from,
+        closing.to,
+        Decoration.replace({
+          widget: new ChartWidget(specYaml, opening.from, closing.to),
+          block: true,
+        }),
+      );
+      return false;
+    },
+  });
   return builder.finish();
 }
 

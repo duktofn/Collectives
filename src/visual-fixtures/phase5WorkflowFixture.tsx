@@ -22,7 +22,7 @@ export function Phase5WorkflowFixture() {
         <div class={`phase5-status phase5-${state[0]()}`} role="status">{state[0]() === "folderref-checking" ? "Checking file readiness…" : state[0]() === "folderref-broken" ? "stale_read: File is not ready yet" : state[0]() === "archive-pending" ? "Import ZIP pending…" : state[0]() === "settings-pending" ? "Import theme pending…" : state[0]() === "error" ? "Save needs attention" : "Saved"}</div>
         <section class="phase5-body">
           <Show when={state[0]() === "empty"} fallback={<div class="phase5-editor"><h1>new-note.md</h1><p>Synthetic workflow fixture; no user paths.</p><code># FolderRef readiness</code></div>}>
-            <div class="phase5-empty"><h1>Welcome to Collections</h1><p>Start a local Markdown workspace.</p><button class="phase5-primary">New Collection</button><button>Import Folder</button><button>Import ZIP</button></div>
+            <div class="phase5-empty"><h1>Welcome to Collectives</h1><p>Start a local Markdown workspace.</p><button class="phase5-primary">New Collection</button><button>Import Folder</button><button>Import ZIP</button></div>
           </Show>
         </section>
         <Show when={state[0]() === "folderref-broken"}><div class="phase5-notice" role="alert">stale_read: FolderRef child is not ready yet <button>Retry</button></div></Show>

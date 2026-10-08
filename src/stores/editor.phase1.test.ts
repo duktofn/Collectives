@@ -5,6 +5,7 @@ import { uiStore } from "./ui";
 vi.mock("../features/editor", () => ({
   readFile: vi.fn(async (path: string) => ({ content: `content:${path}`, versionToken: `token:${path}` })),
   writeFile: vi.fn(async () => undefined),
+  createFile: vi.fn(async () => ({ versionToken: "copy-token" })),
   asSafetyError: vi.fn(() => null),
 }));
 
@@ -41,6 +42,7 @@ describe("Phase 1 committed selection", () => {
     vi.clearAllMocks();
     vi.mocked(api.readFile).mockImplementation(async (path: string) => ({ content: `content:${path}`, versionToken: `token:${path}` }));
     vi.mocked(api.writeFile).mockImplementation(async () => ({ versionToken: "token:a.md" }));
+    vi.mocked(api.createFile).mockImplementation(async () => ({ versionToken: "copy-token" }));
   });
 
   it("does not commit B when flushing dirty A fails", async () => {
@@ -209,5 +211,76 @@ describe("Phase 1 committed selection", () => {
     await switchToB;
     expect(vi.mocked(api.writeFile).mock.calls.map((call) => call[1])).toEqual(["revision A", "revision B"]);
     expect(editorStore.state.openFilePath).toBe("b.md");
+  });
+
+  it("saves a copy of the draft without writing or changing the original session", async () => {
+    const api = await import("../features/editor");
+    await editorStore.openFile("a.md");
+    editorStore.updateContent("local draft that must survive");
+
+    expect(await editorStore.saveDraftCopy("copy.md")).toBe(true);
+    expect(api.createFile).toHaveBeenCalledWith("copy.md", "local draft that must survive");
+    expect(api.writeFile).not.toHaveBeenCalled();
+    expect(editorStore.state.openFilePath).toBe("a.md");
+    expect(editorStore.state.openFileContent).toBe("content:a.md");
+    expect(editorStore.state.currentContent).toBe("local draft that must survive");
+    expect(editorStore.state.isDirty).toBe(true);
+  });
+
+  it("does not overwrite disk changes that arrived after comparison", async () => {
+    const api = await import("../features/editor");
+    await editorStore.openFile("a.md");
+    editorStore.updateContent("local draft");
+    vi.mocked(api.readFile).mockResolvedValueOnce({ content: "disk v1", versionToken: "disk-v1" });
+    expect(await editorStore.handleFilesystemChange("a.md")).toBe(false);
+
+    vi.mocked(api.readFile).mockResolvedValueOnce({ content: "disk v2", versionToken: "disk-v2" });
+    expect(await editorStore.overwriteExternalVersion("disk-v1")).toBe(false);
+    expect(api.writeFile).not.toHaveBeenCalled();
+    expect(editorStore.state.currentContent).toBe("local draft");
+    expect(editorStore.state.conflictKind).toBe("file");
+  });
+
+  it("restores a recovered draft as a conflict if its original file is missing", async () => {
+    const api = await import("../features/editor");
+    vi.mocked(api.readFile).mockRejectedValueOnce({ code: "stale_read", message: "missing" });
+    const draft = {
+      id: "collection\u0000entry\u0000a.md",
+      collectionId: "collection",
+      entryId: "entry",
+      path: "a.md",
+      baseVersionToken: "old-token",
+      content: "recovered local text",
+      revision: 3,
+      sessionId: "recovery-session",
+      updatedAt: Date.now(),
+    };
+
+    expect(await editorStore.restoreRecoveredDraft(draft)).toBe(true);
+    expect(editorStore.state.openFilePath).toBe("a.md");
+    expect(editorStore.state.currentContent).toBe("recovered local text");
+    expect(editorStore.state.isDirty).toBe(true);
+    expect(editorStore.state.conflictKind).toBe("file");
+    expect(editorStore.state.error).toContain("recovered_file_missing");
+  });
+
+  it("does not serialize the editor document for every content update", async () => {
+    const api = await import("../features/editor");
+    await editorStore.openFile("a.md");
+    let liveText = "live editor text";
+    const reader = vi.fn(() => liveText);
+    const unregister = editorStore.registerCurrentContentReader(reader);
+    liveText = "revision one";
+    editorStore.markContentChanged();
+    liveText = "revision two";
+    editorStore.markContentChanged();
+    liveText = "final revision";
+    editorStore.markContentChanged();
+    expect(reader).not.toHaveBeenCalled();
+
+    await editorStore.saveFile();
+    expect(api.writeFile).toHaveBeenCalledWith("a.md", "final revision", "token:a.md");
+    expect(reader.mock.calls.length).toBeLessThanOrEqual(2);
+    unregister();
   });
 });

@@ -32,6 +32,10 @@ export async function saveThemeDialog(title: string): Promise<string | null> {
   return save({ title, defaultPath: "theme.json", filters: [{ name: "Theme Files", extensions: ["json"] }] });
 }
 
+export async function saveDocumentDialog(title: string, defaultPath: string): Promise<string | null> {
+  return save({ title, defaultPath, filters: [{ name: "Supported text files", extensions: [...FILE_PICKER_EXTENSIONS] }] });
+}
+
 export async function pickFontFile(title: string): Promise<string | null> {
   const selected = await open({ multiple: false, title, filters: [{ name: "Font Files", extensions: ["ttf", "otf", "woff", "woff2"] }] });
   return typeof selected === "string" ? selected : null;

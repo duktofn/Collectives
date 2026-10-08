@@ -250,6 +250,14 @@ impl DocumentRepository for DocumentFileRepository {
             expected_token,
         )
     }
+
+    fn create_new(
+        &self,
+        path: &str,
+        content: &str,
+    ) -> Result<crate::repositories::documents::DocumentWriteReceipt, SafetyError> {
+        crate::repositories::documents::create_file(path.to_string(), content.to_string())
+    }
 }
 
 #[derive(Clone)]
@@ -286,6 +294,23 @@ impl SettingsRepository for AppSettingsRepository {
         let dir = self.app_data()?;
         crate::font_manager::import_font(&dir, Path::new(source), family, weight, style)
     }
+    fn import_font_base64(
+        &self,
+        preferred_file_name: &str,
+        family: &str,
+        weight: &str,
+        style: &str,
+        data_base64: &str,
+    ) -> Result<CustomFont, String> {
+        crate::font_manager::import_font_base64(
+            &self.app_data()?,
+            preferred_file_name,
+            family,
+            weight,
+            style,
+            data_base64,
+        )
+    }
     fn delete_font(&self, file_name: &str) -> Result<(), String> {
         crate::font_manager::delete_font(&self.app_data()?, file_name)
     }
@@ -297,7 +322,7 @@ impl SettingsRepository for AppSettingsRepository {
     fn export_theme(&self, settings: &Settings, destination: &str) -> Result<(), String> {
         crate::theme_io::export_theme(&self.app_data()?, settings, Path::new(destination))
     }
-    fn import_theme(&self, path: &str) -> Result<Settings, String> {
+    fn import_theme(&self, path: &str) -> Result<crate::theme_io::ImportedTheme, String> {
         crate::theme_io::import_theme(&self.app_data()?, Path::new(path))
     }
 }

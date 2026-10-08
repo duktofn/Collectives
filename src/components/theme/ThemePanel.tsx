@@ -1,5 +1,5 @@
 import { createSignal, Show, For, createUniqueId, onMount, onCleanup } from "solid-js";
-import { Settings, CustomFont } from "../../types";
+import { Settings, CustomFont, ImportedThemeFont } from "../../types";
 import { Icon } from "../common/Icon";
 import { ModalLayer } from "../common/ModalLayer";
 import { FileVisibilityPreference } from "./FileVisibilityPreference";
@@ -7,18 +7,74 @@ import type { OperationLeaseRegistry } from "../../workflows/operationLease";
 import * as settingsApi from "../../features/settings";
 import { applyThemeSettings, registerCustomFonts, getDefaultThemeValues } from "../../lib/themeEngine";
 import { ask, message, pickFontFile, saveThemeDialog, pickThemeFile } from "../../platform";
+import { uiStore } from "../../stores/ui";
 import "./ThemePanel.css";
 
 interface ThemePanelProps {
   isOpen: boolean;
+  isClosing?: boolean;
   onClose: () => void;
   settings: Settings;
   onSettingsChange: (newSettings: Settings) => void;
   operationLeaseRegistry?: OperationLeaseRegistry;
 }
 
+function validateSettings(settings: Settings): string | null {
+  if (!["dark", "light", "system"].includes(settings.theme)) return "Choose a supported theme mode.";
+  const numericValues = [
+    ["Font scale", settings.fontScale],
+    ["Line height", settings.lineHeight],
+    ["H1 size", settings.sizeH1],
+    ["H2 size", settings.sizeH2],
+    ["H3 size", settings.sizeH3],
+    ["H4 size", settings.sizeH4],
+  ] as const;
+  for (const [label, value] of numericValues) {
+    if (value !== undefined && (!Number.isFinite(value) || value <= 0)) return `${label} must be a positive number.`;
+  }
+  const colorValues = [
+    settings.colorBody, settings.colorH1, settings.colorH2, settings.colorH3, settings.colorH4,
+    settings.colorCodeBg, settings.colorCodeText, settings.colorSelection, settings.colorLink, settings.colorLinkHover,
+  ];
+  for (const color of colorValues) {
+    if (!color) continue;
+    const probe = document.createElement("span");
+    probe.style.color = "";
+    probe.style.color = color;
+    if (!probe.style.color) return `“${color}” is not a valid color.`;
+  }
+  if ((settings.customFonts ?? []).some((font) => !font.family.trim() || !font.fileName.trim())) {
+    return "Each custom font needs a family name and file.";
+  }
+  return null;
+}
+
+function stableSettingsKey(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableSettingsKey).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value)
+      .filter(([, item]) => item !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableSettingsKey(item)}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "undefined";
+}
+
 export function ThemePanel(props: ThemePanelProps) {
   const titleId = `theme-panel-title-${createUniqueId()}`;
+  const [activeSettingsTab, setActiveSettingsTab] = createSignal<"appearance" | "files" | "shortcuts">("appearance");
+  const [showAdvancedColors, setShowAdvancedColors] = createSignal(false);
+  const [baseline, setBaseline] = createSignal<Settings>({ ...props.settings });
+  const [draft, setDraft] = createSignal<Settings>({ ...props.settings });
+  const [isApplying, setIsApplying] = createSignal(false);
+  const [applyError, setApplyError] = createSignal("");
+  let sessionActive = true;
+  const pendingFontSources = new Map<string, string>();
+  const pendingThemeFonts = new Map<string, ImportedThemeFont>();
+  onCleanup(() => { sessionActive = false; });
+
+  const isDirty = () => stableSettingsKey(draft()) !== stableSettingsKey(baseline());
+  const validationError = () => validateSettings(draft());
   // Local state for font import form
   const [isImporting, setIsImporting] = createSignal(false);
   const [importFilePath, setImportFilePath] = createSignal("");
@@ -61,8 +117,8 @@ export function ThemePanel(props: ThemePanelProps) {
   });
 
   const getEffectiveIsDark = () => {
-    if (props.settings.theme === "dark") return true;
-    if (props.settings.theme === "light") return false;
+    if (draft().theme === "dark") return true;
+    if (draft().theme === "light") return false;
     return systemIsDark();
   };
 
@@ -77,14 +133,7 @@ export function ThemePanel(props: ThemePanelProps) {
 
   // Handle single property update
   const updateSetting = <K extends keyof Settings>(key: K, value: Settings[K]) => {
-    const updated = { ...props.settings, [key]: value };
-    props.onSettingsChange(updated);
-    applyThemeSettings(updated);
-    
-    // Save to settings.json
-    settingsApi.saveSettings(updated).catch((err) => {
-      console.error("Failed to save settings", err);
-    });
+    setDraft((current) => ({ ...current, [key]: value }));
   };
 
   // Reset to defaults
@@ -106,35 +155,35 @@ export function ThemePanel(props: ThemePanelProps) {
       colorH4: undefined,
       colorCodeBg: undefined,
       colorCodeText: undefined,
+      colorSelection: undefined,
       colorLink: undefined,
       colorLinkHover: undefined,
-      customFonts: props.settings.customFonts, // Keep custom fonts registered
+      hideUnsupportedFiles: draft().hideUnsupportedFiles,
+      customFonts: draft().customFonts, // Keep custom fonts registered
     };
-    props.onSettingsChange(resetSettings);
-    applyThemeSettings(resetSettings);
-    settingsApi.saveSettings(resetSettings).catch((err) => console.error(err));
+    setDraft(resetSettings);
   };
 
   // Font Picker Options
   const getBodyFonts = () => {
-    const list = ["Outfit", "Inter", "system-ui", "Georgia", "Arial"];
-    const custom = props.settings.customFonts || [];
+    const list = ["system-ui", "Georgia", "Arial"];
+    const custom = draft().customFonts || [];
     const uniqueCustom = Array.from(new Set(custom.map(f => f.family)));
-    return [...list, ...uniqueCustom];
+    return Array.from(new Set([...list, ...uniqueCustom, ...(draft().fontBody ? [draft().fontBody!] : [])]));
   };
 
   const getMonoFonts = () => {
-    const list = ["Fira Code", "Courier New", "Consolas", "monospace"];
-    const custom = props.settings.customFonts || [];
+    const list = ["monospace", "Consolas", "Courier New"];
+    const custom = draft().customFonts || [];
     const uniqueCustom = Array.from(new Set(custom.map(f => f.family)));
-    return [...list, ...uniqueCustom];
+    return Array.from(new Set([...list, ...uniqueCustom, ...(draft().fontMono ? [draft().fontMono!] : [])]));
   };
 
   // Import font handlers
   const handlePickFontFile = async () => {
     try {
       const selected = await pickFontFile("Select Font File");
-      if (selected) {
+      if (selected && sessionActive) {
         setImportFilePath(selected);
         // Autopopulate family name from file name
         const filename = selected.split(/[/\\]/).pop() || "";
@@ -161,18 +210,17 @@ export function ThemePanel(props: ThemePanelProps) {
 
     setImportError("");
     try {
-      const newFont = await runLongOperation("Import font", () => settingsApi.importFont(
-        importFilePath(), importFamily().trim(), importWeight(), importStyle()
-      ));
-
-      const existingFonts = props.settings.customFonts || [];
-      const updatedFonts = [...existingFonts, newFont];
-      
-      updateSetting("customFonts", updatedFonts);
-
-      // Re-register fonts in engine
-      const fontsDir = await settingsApi.getFontsDir();
-      registerCustomFonts(updatedFonts, fontsDir);
+      const sourcePath = importFilePath();
+      const extension = sourcePath.split(".").pop()?.toLowerCase() || "ttf";
+      const pendingName = `pending-${crypto.randomUUID()}.${extension}`;
+      const newFont: CustomFont = {
+        family: importFamily().trim(),
+        fileName: pendingName,
+        weight: importWeight(),
+        style: importStyle(),
+      };
+      pendingFontSources.set(pendingName, sourcePath);
+      setDraft((current) => ({ ...current, customFonts: [...(current.customFonts ?? []), newFont] }));
 
       // Reset form
       setIsImporting(false);
@@ -190,22 +238,14 @@ export function ThemePanel(props: ThemePanelProps) {
       title: "Delete Font",
       kind: "warning",
     });
-    if (!confirmed) {
+    if (!confirmed || !sessionActive) {
       return;
     }
-    try {
-      await settingsApi.deleteFont(font.fileName);
-      const existingFonts = props.settings.customFonts || [];
-      const updatedFonts = existingFonts.filter(f => f.fileName !== font.fileName);
-      
-      updateSetting("customFonts", updatedFonts);
-
-      // Re-register in engine
-      const fontsDir = await settingsApi.getFontsDir();
-      registerCustomFonts(updatedFonts, fontsDir);
-    } catch (err) {
-      console.error("Failed to delete font file", err);
-    }
+    pendingFontSources.delete(font.fileName);
+    setDraft((current) => ({
+      ...current,
+      customFonts: (current.customFonts ?? []).filter((item) => item.fileName !== font.fileName),
+    }));
   };
 
   // Export Theme Handler
@@ -234,18 +274,12 @@ export function ThemePanel(props: ThemePanelProps) {
       const themePath = await pickThemeFile("Select Theme JSON to Import");
       if (!themePath) return;
 
-      await runLongOperation("Import theme", async () => {
-        const importedSettings = await settingsApi.importTheme(themePath);
-        props.onSettingsChange(importedSettings);
-        applyThemeSettings(importedSettings);
-        await settingsApi.saveSettings(importedSettings);
-        const fontsDir = await settingsApi.getFontsDir();
-        registerCustomFonts(importedSettings.customFonts, fontsDir);
-        await message("Theme imported and applied successfully!", {
-          title: "Import Theme",
-          kind: "info",
-        });
-      });
+      const importedTheme = await runLongOperation("Import theme", () => settingsApi.importTheme(themePath));
+      if (!sessionActive) return;
+      pendingFontSources.clear();
+      pendingThemeFonts.clear();
+      for (const font of importedTheme.fonts) pendingThemeFonts.set(font.fileName, font);
+      setDraft(importedTheme.settings);
     } catch (err) {
       console.error(err);
       await message(`Import failed: ${err}`, {
@@ -255,42 +289,136 @@ export function ThemePanel(props: ThemePanelProps) {
     }
   };
 
+  const handleApply = async () => {
+    if (props.isClosing || !isDirty() || validationError() || isApplying() || isLongOperationPending()) return;
+    setIsApplying(true);
+    setApplyError("");
+    const previousSettings = baseline();
+    const stagedFonts: CustomFont[] = [];
+    let committed = false;
+    try {
+      const fontsDir = await settingsApi.getFontsDir();
+      const nextFonts: CustomFont[] = [];
+      for (const font of draft().customFonts ?? []) {
+        const sourcePath = pendingFontSources.get(font.fileName);
+        const themeFont = pendingThemeFonts.get(font.fileName);
+        if (sourcePath) {
+          const staged = await settingsApi.importFont(sourcePath, font.family, font.weight, font.style);
+          stagedFonts.push(staged);
+          nextFonts.push(staged);
+        } else if (themeFont) {
+          const staged = await settingsApi.importFont(
+            "", font.family, font.weight, font.style, themeFont.base64Data, themeFont.fileName,
+          );
+          stagedFonts.push(staged);
+          nextFonts.push(staged);
+        } else {
+          nextFonts.push(font);
+        }
+      }
+
+      const savedSettings: Settings = {
+        ...draft(),
+        customFonts: nextFonts,
+        hideUnsupportedFiles: draft().hideUnsupportedFiles ?? previousSettings.hideUnsupportedFiles ?? uiStore.state.hideUnsupportedFiles,
+      };
+      const invalid = validateSettings(savedSettings);
+      if (invalid) throw new Error(invalid);
+
+      await settingsApi.saveSettings(savedSettings);
+      committed = true;
+      props.onSettingsChange(savedSettings);
+      setBaseline(savedSettings);
+      setDraft(savedSettings);
+      pendingFontSources.clear();
+      pendingThemeFonts.clear();
+      uiStore.setHideUnsupportedFiles(Boolean(savedSettings.hideUnsupportedFiles));
+      applyThemeSettings(savedSettings);
+      registerCustomFonts(savedSettings.customFonts, fontsDir);
+
+      const retainedFiles = new Set(nextFonts.map((font) => font.fileName));
+      const removedFiles = (previousSettings.customFonts ?? []).filter((font) => !retainedFiles.has(font.fileName));
+      for (const font of removedFiles) {
+        try { await settingsApi.deleteFont(font.fileName); }
+        catch (error) { console.warn("Could not remove an unused font file", error); }
+      }
+    } catch (error) {
+      if (!committed) {
+        await Promise.all(stagedFonts.map((font) => settingsApi.deleteFont(font.fileName).catch(() => {})));
+      }
+      setApplyError(committed
+        ? `Settings were saved, but the app could not finish refreshing them: ${String(error)}`
+        : `Could not apply settings: ${String(error)}`);
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
   return (
     <ModalLayer
-      pending={isLongOperationPending()}
+      pending={isApplying() || props.isClosing}
       isOpen={props.isOpen}
       labelledBy={titleId}
-      overlayClass="theme-panel-backdrop"
-      contentClass="theme-panel"
+      overlayClass={`theme-panel-backdrop ${props.isClosing ? "is-closing" : ""}`}
+      contentClass={`theme-panel ${props.isClosing ? "is-closing" : ""}`}
       onClose={props.onClose}
     >
         <div class="theme-panel-header">
-          <h3 id={titleId}>Appearance & Theming</h3>
-          <button class="btn-close" aria-label="Close appearance settings" disabled={isLongOperationPending()} onClick={() => props.onClose()}>
+          <h3 id={titleId}>Settings</h3>
+          <button class="btn-close" aria-label="Close settings" disabled={isApplying() || props.isClosing} onClick={() => props.onClose()}>
             <Icon name="x" size={18} />
           </button>
         </div>
 
-        <div class="theme-panel-content" aria-busy={isLongOperationPending() ? "true" : "false"}>
-          <FileVisibilityPreference />
+        <fieldset class="theme-panel-fields" disabled={isApplying() || isLongOperationPending() || props.isClosing}>
+        <div class="theme-panel-tabs" role="tablist" aria-label="Settings categories">
+          <button role="tab" aria-controls="settings-appearance-panel" aria-selected={activeSettingsTab() === "appearance" ? "true" : "false"} classList={{ active: activeSettingsTab() === "appearance" }} onClick={() => setActiveSettingsTab("appearance")}>Appearance</button>
+          <button role="tab" aria-controls="settings-files-panel" aria-selected={activeSettingsTab() === "files" ? "true" : "false"} classList={{ active: activeSettingsTab() === "files" }} onClick={() => setActiveSettingsTab("files")}>Files & Storage</button>
+          <button role="tab" aria-controls="settings-shortcuts-panel" aria-selected={activeSettingsTab() === "shortcuts" ? "true" : "false"} classList={{ active: activeSettingsTab() === "shortcuts" }} onClick={() => setActiveSettingsTab("shortcuts")}>Shortcuts</button>
+        </div>
+        <Show when={activeSettingsTab() === "files"}>
+          <div id="settings-files-panel" class="theme-panel-content settings-tab-panel" role="tabpanel" aria-busy={isApplying() ? "true" : "false"}>
+            <h4>Files & Storage</h4>
+            <FileVisibilityPreference
+              checked={draft().hideUnsupportedFiles ?? uiStore.state.hideUnsupportedFiles}
+              onChange={(hidden) => updateSetting("hideUnsupportedFiles", hidden)}
+            />
+            <p class="settings-local-first-note">Notes stay in the folders you choose. Collection groups only organize references inside Collectives.</p>
+          </div>
+        </Show>
+        <Show when={activeSettingsTab() === "shortcuts"}>
+          <div id="settings-shortcuts-panel" class="theme-panel-content settings-tab-panel" role="tabpanel">
+            <h4>Keyboard shortcuts</h4>
+            <dl class="settings-shortcut-list">
+              <div><dt><kbd>Ctrl/⌘ N</kbd></dt><dd>Create a note. Review or change its save folder before creating.</dd></div>
+              <div><dt><kbd>Ctrl/⌘ P</kbd></dt><dd>Open a note by name in the active collection.</dd></div>
+              <div><dt><kbd>Ctrl/⌘ Shift F</kbd></dt><dd>Search Markdown note contents in the active collection.</dd></div>
+              <div><dt><kbd>Ctrl/⌘ S</kbd></dt><dd>Save the current draft.</dd></div>
+              <div><dt><kbd>Alt ←</kbd></dt><dd>Go back when focus is outside an editor or text field.</dd></div>
+              <div><dt><kbd>Alt →</kbd></dt><dd>Go forward when focus is outside an editor or text field.</dd></div>
+            </dl>
+          </div>
+        </Show>
+        <Show when={activeSettingsTab() === "appearance"}>
+        <div id="settings-appearance-panel" class="theme-panel-content" role="tabpanel" aria-busy={isApplying() ? "true" : "false"}>
           {/* Section: Theme Mode */}
           <div class="theme-section">
             <h4>Theme Mode</h4>
             <div class="theme-mode-options">
               <button disabled={isLongOperationPending()}
-                class={`mode-option-btn ${props.settings.theme === "light" ? "active" : ""}`}
+                class={`mode-option-btn ${draft().theme === "light" ? "active" : ""}`}
                 onClick={() => updateSetting("theme", "light")}
               >
                 <Icon name="sun" size={14} /> Light
               </button>
               <button disabled={isLongOperationPending()}
-                class={`mode-option-btn ${props.settings.theme === "dark" ? "active" : ""}`}
+                class={`mode-option-btn ${draft().theme === "dark" ? "active" : ""}`}
                 onClick={() => updateSetting("theme", "dark")}
               >
                 <Icon name="moon" size={14} /> Dark
               </button>
               <button disabled={isLongOperationPending()}
-                class={`mode-option-btn ${props.settings.theme === "system" ? "active" : ""}`}
+                class={`mode-option-btn ${draft().theme === "system" ? "active" : ""}`}
                 onClick={() => updateSetting("theme", "system")}
               >
                 <Icon name="monitor" size={14} /> System
@@ -305,10 +433,10 @@ export function ThemePanel(props: ThemePanelProps) {
             <div class="input-group">
               <label>Body Font Family</label>
               <select 
-                value={props.settings.fontBody || ""} 
+                value={draft().fontBody || ""}
                 onChange={(e) => updateSetting("fontBody", e.currentTarget.value || undefined)}
               >
-                <option value="">Default (Outfit)</option>
+                <option value="">System default</option>
                 <For each={getBodyFonts()}>
                   {(font) => <option value={font}>{font}</option>}
                 </For>
@@ -318,10 +446,10 @@ export function ThemePanel(props: ThemePanelProps) {
             <div class="input-group">
               <label>Monospace Font Family</label>
               <select 
-                value={props.settings.fontMono || ""} 
+                value={draft().fontMono || ""}
                 onChange={(e) => updateSetting("fontMono", e.currentTarget.value || undefined)}
               >
-                <option value="">Default (Fira Code)</option>
+                <option value="">System monospace</option>
                 <For each={getMonoFonts()}>
                   {(font) => <option value={font}>{font}</option>}
                 </For>
@@ -331,14 +459,14 @@ export function ThemePanel(props: ThemePanelProps) {
             <div class="input-group">
               <div style={{ display: "flex", "justify-content": "space-between" }}>
                 <label>Line Height</label>
-                <span class="value-display">{(props.settings.lineHeight ?? 1.6).toFixed(1)}</span>
+                <span class="value-display">{(draft().lineHeight ?? 1.6).toFixed(1)}</span>
               </div>
               <input 
                 type="range" 
                 min="1.0" 
                 max="2.5" 
                 step="0.1"
-                value={props.settings.lineHeight ?? 1.6}
+                value={draft().lineHeight ?? 1.6}
                 onInput={(e) => updateSetting("lineHeight", parseFloat(e.currentTarget.value))}
               />
             </div>
@@ -346,14 +474,14 @@ export function ThemePanel(props: ThemePanelProps) {
             <div class="input-group">
               <div style={{ display: "flex", "justify-content": "space-between" }}>
                 <label>Font Scale Override</label>
-                <span class="value-display">{props.settings.fontScale.toFixed(2)}x</span>
+                <span class="value-display">{draft().fontScale.toFixed(2)}x</span>
               </div>
               <input 
                 type="range" 
                 min="0.8" 
                 max="1.5" 
                 step="0.05"
-                value={props.settings.fontScale}
+                value={draft().fontScale}
                 onInput={(e) => updateSetting("fontScale", parseFloat(e.currentTarget.value))}
               />
             </div>
@@ -363,8 +491,8 @@ export function ThemePanel(props: ThemePanelProps) {
                 <label>H1 size (em)</label>
                 <input 
                   type="text" 
-                  placeholder={(2.2 * props.settings.fontScale).toFixed(2)}
-                  value={props.settings.sizeH1 || ""}
+                  placeholder={(2.2 * draft().fontScale).toFixed(2)}
+                  value={draft().sizeH1 || ""}
                   onChange={(e) => updateSetting("sizeH1", parseSizeValue(e.currentTarget.value))}
                 />
               </div>
@@ -372,8 +500,8 @@ export function ThemePanel(props: ThemePanelProps) {
                 <label>H2 size (em)</label>
                 <input 
                   type="text" 
-                  placeholder={(1.65 * props.settings.fontScale).toFixed(2)}
-                  value={props.settings.sizeH2 || ""}
+                  placeholder={(1.65 * draft().fontScale).toFixed(2)}
+                  value={draft().sizeH2 || ""}
                   onChange={(e) => updateSetting("sizeH2", parseSizeValue(e.currentTarget.value))}
                 />
               </div>
@@ -381,8 +509,8 @@ export function ThemePanel(props: ThemePanelProps) {
                 <label>H3 size (em)</label>
                 <input 
                   type="text" 
-                  placeholder={(1.35 * props.settings.fontScale).toFixed(2)}
-                  value={props.settings.sizeH3 || ""}
+                  placeholder={(1.35 * draft().fontScale).toFixed(2)}
+                  value={draft().sizeH3 || ""}
                   onChange={(e) => updateSetting("sizeH3", parseSizeValue(e.currentTarget.value))}
                 />
               </div>
@@ -390,16 +518,20 @@ export function ThemePanel(props: ThemePanelProps) {
                 <label>H4 size (em)</label>
                 <input 
                   type="text" 
-                  placeholder={(1.15 * props.settings.fontScale).toFixed(2)}
-                  value={props.settings.sizeH4 || ""}
+                  placeholder={(1.15 * draft().fontScale).toFixed(2)}
+                  value={draft().sizeH4 || ""}
                   onChange={(e) => updateSetting("sizeH4", parseSizeValue(e.currentTarget.value))}
                 />
               </div>
             </div>
           </div>
 
-          {/* Section: Colors */}
+          {/* Detailed color overrides remain collapsed until requested. */}
           <div class="theme-section">
+            <button class="theme-advanced-toggle" aria-expanded={showAdvancedColors() ? "true" : "false"} onClick={() => setShowAdvancedColors((open) => !open)}>
+              {showAdvancedColors() ? "Hide advanced colors" : "Advanced color overrides"}
+            </button>
+            <Show when={showAdvancedColors()}>
             <h4>Colors</h4>
             
             <div class="color-pickers-grid">
@@ -408,13 +540,13 @@ export function ThemePanel(props: ThemePanelProps) {
                 <div class="color-input-wrapper">
                   <input 
                     type="color" 
-                    value={props.settings.colorBody || defaults().colorBody}
+                    value={draft().colorBody || defaults().colorBody}
                     onInput={(e) => updateSetting("colorBody", e.currentTarget.value)}
                   />
                   <input 
                     type="text" 
                     placeholder="default"
-                    value={props.settings.colorBody || ""}
+                    value={draft().colorBody || ""}
                     onInput={(e) => updateSetting("colorBody", e.currentTarget.value || undefined)}
                   />
                 </div>
@@ -425,13 +557,13 @@ export function ThemePanel(props: ThemePanelProps) {
                 <div class="color-input-wrapper">
                   <input 
                     type="color" 
-                    value={props.settings.colorH1 || defaults().colorH1}
+                    value={draft().colorH1 || defaults().colorH1}
                     onInput={(e) => updateSetting("colorH1", e.currentTarget.value)}
                   />
                   <input 
                     type="text" 
                     placeholder="default"
-                    value={props.settings.colorH1 || ""}
+                    value={draft().colorH1 || ""}
                     onInput={(e) => updateSetting("colorH1", e.currentTarget.value || undefined)}
                   />
                 </div>
@@ -442,13 +574,13 @@ export function ThemePanel(props: ThemePanelProps) {
                 <div class="color-input-wrapper">
                   <input 
                     type="color" 
-                    value={props.settings.colorH2 || defaults().colorH2}
+                    value={draft().colorH2 || defaults().colorH2}
                     onInput={(e) => updateSetting("colorH2", e.currentTarget.value)}
                   />
                   <input 
                     type="text" 
                     placeholder="default"
-                    value={props.settings.colorH2 || ""}
+                    value={draft().colorH2 || ""}
                     onInput={(e) => updateSetting("colorH2", e.currentTarget.value || undefined)}
                   />
                 </div>
@@ -459,13 +591,13 @@ export function ThemePanel(props: ThemePanelProps) {
                 <div class="color-input-wrapper">
                   <input 
                     type="color" 
-                    value={props.settings.colorH3 || defaults().colorH3}
+                    value={draft().colorH3 || defaults().colorH3}
                     onInput={(e) => updateSetting("colorH3", e.currentTarget.value)}
                   />
                   <input 
                     type="text" 
                     placeholder="default"
-                    value={props.settings.colorH3 || ""}
+                    value={draft().colorH3 || ""}
                     onInput={(e) => updateSetting("colorH3", e.currentTarget.value || undefined)}
                   />
                 </div>
@@ -476,13 +608,13 @@ export function ThemePanel(props: ThemePanelProps) {
                 <div class="color-input-wrapper">
                   <input 
                     type="color" 
-                    value={props.settings.colorH4 || defaults().colorH4}
+                    value={draft().colorH4 || defaults().colorH4}
                     onInput={(e) => updateSetting("colorH4", e.currentTarget.value)}
                   />
                   <input 
                     type="text" 
                     placeholder="default"
-                    value={props.settings.colorH4 || ""}
+                    value={draft().colorH4 || ""}
                     onInput={(e) => updateSetting("colorH4", e.currentTarget.value || undefined)}
                   />
                 </div>
@@ -493,13 +625,13 @@ export function ThemePanel(props: ThemePanelProps) {
                 <div class="color-input-wrapper">
                   <input 
                     type="color" 
-                    value={props.settings.colorCodeText || defaults().colorCodeText}
+                    value={draft().colorCodeText || defaults().colorCodeText}
                     onInput={(e) => updateSetting("colorCodeText", e.currentTarget.value)}
                   />
                   <input 
                     type="text" 
                     placeholder="default"
-                    value={props.settings.colorCodeText || ""}
+                    value={draft().colorCodeText || ""}
                     onInput={(e) => updateSetting("colorCodeText", e.currentTarget.value || undefined)}
                   />
                 </div>
@@ -510,14 +642,31 @@ export function ThemePanel(props: ThemePanelProps) {
                 <div class="color-input-wrapper">
                   <input 
                     type="color" 
-                    value={props.settings.colorCodeBg || defaults().colorCodeBg}
+                    value={draft().colorCodeBg || defaults().colorCodeBg}
                     onInput={(e) => updateSetting("colorCodeBg", e.currentTarget.value)}
                   />
                   <input 
                     type="text" 
                     placeholder="default"
-                    value={props.settings.colorCodeBg || ""}
+                    value={draft().colorCodeBg || ""}
                     onInput={(e) => updateSetting("colorCodeBg", e.currentTarget.value || undefined)}
+                  />
+                </div>
+              </div>
+
+              <div class="color-picker-item">
+                <label>Text Selection</label>
+                <div class="color-input-wrapper">
+                  <input
+                    type="color"
+                    value={draft().colorSelection || defaults().colorSelection}
+                    onInput={(e) => updateSetting("colorSelection", e.currentTarget.value)}
+                  />
+                  <input
+                    type="text"
+                    placeholder="default"
+                    value={draft().colorSelection || ""}
+                    onInput={(e) => updateSetting("colorSelection", e.currentTarget.value || undefined)}
                   />
                 </div>
               </div>
@@ -527,13 +676,13 @@ export function ThemePanel(props: ThemePanelProps) {
                 <div class="color-input-wrapper">
                   <input 
                     type="color" 
-                    value={props.settings.colorLink || defaults().colorLink}
+                    value={draft().colorLink || defaults().colorLink}
                     onInput={(e) => updateSetting("colorLink", e.currentTarget.value)}
                   />
                   <input 
                     type="text" 
                     placeholder="default"
-                    value={props.settings.colorLink || ""}
+                    value={draft().colorLink || ""}
                     onInput={(e) => updateSetting("colorLink", e.currentTarget.value || undefined)}
                   />
                 </div>
@@ -544,19 +693,20 @@ export function ThemePanel(props: ThemePanelProps) {
                 <div class="color-input-wrapper">
                   <input 
                     type="color" 
-                    value={props.settings.colorLinkHover || defaults().colorLinkHover}
+                    value={draft().colorLinkHover || defaults().colorLinkHover}
                     onInput={(e) => updateSetting("colorLinkHover", e.currentTarget.value)}
                   />
                   <input 
                     type="text" 
                     placeholder="default"
-                    value={props.settings.colorLinkHover || ""}
+                    value={draft().colorLinkHover || ""}
                     onInput={(e) => updateSetting("colorLinkHover", e.currentTarget.value || undefined)}
                   />
                 </div>
               </div>
             </div>
             
+            </Show>
             <button class="btn btn-secondary btn-full" style={{ "margin-top": "12px" }} onClick={handleReset}>
               Reset to default settings
             </button>
@@ -629,10 +779,10 @@ export function ThemePanel(props: ThemePanelProps) {
 
             <div class="fonts-list">
               <Show 
-                when={props.settings.customFonts && props.settings.customFonts.length > 0}
+                when={(draft().customFonts?.length ?? 0) > 0}
                 fallback={<div class="fonts-empty">No custom fonts imported.</div>}
               >
-                <For each={props.settings.customFonts}>
+                <For each={draft().customFonts ?? []}>
                   {(font) => (
                     <div class="font-item">
                       <div class="font-info">
@@ -660,6 +810,18 @@ export function ThemePanel(props: ThemePanelProps) {
                 <Icon name="upload" size={14} /> Import Theme
               </button>
             </div>
+          </div>
+        </div>
+        </Show>
+        </fieldset>
+        <div class="theme-panel-footer">
+          <Show when={applyError()}><div class="apply-error" role="alert">{applyError()}</div></Show>
+          <Show when={validationError() && isDirty()}><div class="apply-error" role="status">{validationError()}</div></Show>
+          <div class="theme-panel-footer-actions">
+            <button class="btn btn-secondary" disabled={isApplying() || props.isClosing} onClick={() => props.onClose()}>Cancel</button>
+            <button class="btn btn-primary" disabled={props.isClosing || !isDirty() || Boolean(validationError()) || isApplying() || isLongOperationPending()} onClick={handleApply}>
+              {isApplying() ? "Applying…" : "Apply"}
+            </button>
           </div>
         </div>
     </ModalLayer>

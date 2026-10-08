@@ -16,16 +16,21 @@ interface DialogProps {
   errorMessage?: string;
   children?: JSX.Element;
   pending?: boolean;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  inputDisabled?: boolean;
 }
 
 export function Dialog(props: DialogProps) {
   const [inputValue, setInputValue] = createSignal("");
+  let inputRef: HTMLInputElement | undefined;
   const titleId = `dialog-title-${createUniqueId()}`;
   const errorId = `dialog-error-${createUniqueId()}`;
 
   createEffect(() => {
     if (props.isOpen) {
       setInputValue(props.defaultValue ?? "");
+      queueMicrotask(() => inputRef?.select());
     }
   });
 
@@ -76,11 +81,14 @@ export function Dialog(props: DialogProps) {
 
         <Show when={props.type === "input"}>
           <input
+            ref={inputRef}
             type="text"
             class="dialog-input"
+            disabled={props.inputDisabled}
             value={inputValue()}
             onInput={(e) => setInputValue(e.currentTarget.value)}
             placeholder={props.placeholder}
+            aria-label={props.placeholder ?? props.title}
             onKeyDown={handleKeyDown}
             data-modal-initial-focus="true"
           />
@@ -97,10 +105,10 @@ export function Dialog(props: DialogProps) {
 
       <div class="dialog-footer">
         <button class="btn btn-text" disabled={props.pending} onClick={() => props.onClose()}>
-          Cancel
+          {props.cancelLabel ?? "Cancel"}
         </button>
         <button class="btn btn-primary" disabled={props.pending} aria-busy={props.pending ? "true" : "false"} onClick={handleConfirm}>
-          Confirm
+          {props.confirmLabel ?? "Confirm"}
         </button>
       </div>
     </ModalLayer>

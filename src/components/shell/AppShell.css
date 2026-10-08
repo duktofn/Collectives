@@ -25,6 +25,8 @@
 }
 
 .app-shell-header {
+  display: flex;
+  align-items: center;
   min-width: 0;
   flex: 0 0 auto;
   border-bottom: var(--ds-border-width) solid var(--ds-border);
@@ -32,6 +34,7 @@
 }
 
 .workspace-header {
+  flex: 1;
   min-width: 0;
   min-height: var(--ds-shell-header-height);
 }
@@ -86,10 +89,9 @@
 }
 
 .app-shell-sidebar-expand {
-  position: absolute;
-  top: var(--ds-space-3);
-  left: var(--ds-space-3);
-  z-index: var(--ds-z-shell);
+  position: static;
+  flex: 0 0 auto;
+  margin-left: var(--ds-space-3);
   width: var(--ds-expand-control-size);
   height: var(--ds-expand-control-size);
   background: var(--ds-surface);
@@ -154,6 +156,9 @@
 .selected-entry-card { margin-top: var(--ds-space-6); padding: var(--ds-space-5); border: var(--ds-border-width) solid var(--ds-border); border-radius: var(--ds-radius-md); background: var(--ds-surface); }
 .selected-entry-card h4 { margin-bottom: var(--ds-space-2); color: var(--ds-text-primary); }
 .selected-entry-card code { display: block; margin-top: var(--ds-space-2); padding: var(--ds-space-2); border: var(--ds-border-width) solid var(--ds-border); border-radius: var(--ds-radius-sm); background: var(--ds-canvas); color: var(--ds-text-secondary); overflow-wrap: anywhere; }
+.selected-entry-related-note { display: block; width: 100%; margin-top: var(--ds-space-2); padding: var(--ds-space-2) var(--ds-space-3); border: 1px solid var(--ds-border); border-radius: var(--ds-radius-sm); background: var(--ds-canvas); color: var(--ds-text-primary); text-align: left; cursor: pointer; }
+.selected-entry-related-note:hover { background: var(--ds-surface-hover); }
+.selected-entry-path { display: block; margin: var(--ds-space-3) 0; padding: var(--ds-space-2); border: 1px solid var(--ds-border); border-radius: var(--ds-radius-sm); overflow-wrap: anywhere; }
 
 .app-shell-global-error {
   display: flex;

@@ -28,6 +28,7 @@ interface CollectionsState {
     newPath: string;
     fileName: string;
   } | null;
+  movePromptDeferred: boolean;
 }
 
 const [state, setState] = createStore<CollectionsState>({
@@ -37,6 +38,7 @@ const [state, setState] = createStore<CollectionsState>({
   error: null,
   brokenEntries: [],
   movePrompt: null,
+  movePromptDeferred: false,
 });
 
 const activeCollection = createMemo(() => {
@@ -106,6 +108,7 @@ export async function handleFilesystemChangesV2(payload: { collectionId: string;
     await reconcileCollectionSnapshot(payload.collectionId);
     return { accepted: false, needsSnapshot: true };
   }
+  if (payload.changes.length > 0) clearWikilinkCache();
   for (const change of payload.changes) {
     if (!change || typeof change !== "object") continue;
     const value = change as { kind?: string; path?: string; changedFilePath?: string };
@@ -119,6 +122,22 @@ export async function handleFilesystemChangesV2(payload: { collectionId: string;
 export const collectionsStore = {
   state,
   activeCollection,
+
+  getParentGroupId(entryId: string): string | null {
+    const collection = this.activeCollection();
+    if (!collection) return null;
+    const find = (entries: Entry[], parentGroupId: string | null): string | null => {
+      for (const entry of entries) {
+        if (entry.id === entryId) return parentGroupId;
+        if (entry.type === "group") {
+          const nested = find(entry.children, entry.id);
+          if (nested !== null) return nested;
+        }
+      }
+      return null;
+    };
+    return find(collection.entries, null);
+  },
 
   getFolderRefWatchCursor(collectionId: string) {
     const cache = normalizedCaches.get(collectionId);
@@ -228,16 +247,37 @@ export const collectionsStore = {
     }
   },
   
-  async addFiles(paths: string[]) {
+  async addFiles(paths: string[], parentGroupId?: string) {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      await collectionsApi.addFileEntries(activeId, paths);
+      if (parentGroupId) {
+        const collection = this.activeCollection();
+        const findGroupPath = (entries: Entry[], parentPath: number[] = []): number[] | null => {
+          for (let index = 0; index < entries.length; index++) {
+            const entry = entries[index];
+            if (entry?.type !== "group") continue;
+            const groupPath = [...parentPath, index];
+            if (entry.id === parentGroupId) return groupPath;
+            const nested = findGroupPath(entry.children, groupPath);
+            if (nested) return nested;
+          }
+          return null;
+        };
+        const parentPath = collection ? findGroupPath(collection.entries) : null;
+        if (!parentPath) throw new Error("The selected group is no longer available. Choose where to add the note again.");
+        for (const path of paths) {
+          await collectionsApi.addEntry(activeId, parentPath, { type: "file", id: crypto.randomUUID(), path });
+        }
+      } else {
+        await collectionsApi.addFileEntries(activeId, paths);
+      }
       await this.reloadActiveCollection();
       await this.validateActiveCollection();
       await this.watchActiveCollection();
     } catch (err: unknown) {
       setState("error", String(err) || "Failed to add files");
+      throw err;
     }
   },
   
@@ -251,6 +291,7 @@ export const collectionsStore = {
       await this.watchActiveCollection();
     } catch (err: unknown) {
       setState("error", String(err) || "Failed to add folder");
+      throw err;
     }
   },
   
@@ -355,7 +396,9 @@ export const collectionsStore = {
         await this.watchActiveCollection();
       }
     } catch (err: unknown) {
-      setState("error", String(err) || "Failed to relink entry");
+      const message = String(err) || "Failed to update the entry path";
+      setState("error", message);
+      throw err;
     }
   },
   
@@ -374,7 +417,15 @@ export const collectionsStore = {
   },
 
   clearMovePrompt() {
-    setState("movePrompt", null);
+    setState({ movePrompt: null, movePromptDeferred: false });
+  },
+
+  deferMovePrompt() {
+    if (state.movePrompt) setState("movePromptDeferred", true);
+  },
+
+  reviewMovePrompt() {
+    if (state.movePrompt) setState("movePromptDeferred", false);
   },
 
   async validateActiveCollection() {
@@ -395,6 +446,7 @@ export const collectionsStore = {
               newPath: detectedPath,
               fileName: brokenEntry.path.split(/[/\\]/).pop() || brokenEntry.path,
             });
+            setState("movePromptDeferred", false);
             break; // Show one prompt at a time
           }
         }

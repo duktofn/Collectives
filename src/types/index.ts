@@ -32,6 +32,15 @@ export interface CustomFont {
   style: string;
 }
 
+export interface ImportedThemeFont extends CustomFont {
+  base64Data: string;
+}
+
+export interface ImportedTheme {
+  settings: Settings;
+  fonts: ImportedThemeFont[];
+}
+
 export interface Settings {
   theme: string;
   fontBody?: string;
@@ -48,9 +57,11 @@ export interface Settings {
   colorH4?: string;
   colorCodeBg?: string;
   colorCodeText?: string;
+  colorSelection?: string;
   colorLink?: string;
   colorLinkHover?: string;
   lineHeight?: number;
+  hideUnsupportedFiles?: boolean;
   customFonts?: CustomFont[];
 }
 

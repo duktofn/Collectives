@@ -366,6 +366,121 @@ pub fn write_file(
     Ok(DocumentWriteReceipt { version_token })
 }
 
+/// Creates a UTF-8 document only when the destination does not already exist.
+/// The staged sibling plus hard-link publication makes the final name exclusive
+/// while keeping readers from seeing a partially written document.
+pub fn create_file(path: String, content: String) -> Result<DocumentWriteReceipt, SafetyError> {
+    use std::io::Write;
+    use std::path::Path;
+
+    let destination = Path::new(&path);
+    let parent = destination
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    if !parent.is_dir() {
+        return Err(SafetyError::new(
+            "save_failed",
+            "The destination folder does not exist or is unavailable",
+        ));
+    }
+    let file_name = destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| SafetyError::new("save_failed", "Choose a valid file name"))?;
+    let bytes = content
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .into_bytes();
+    if bytes.len() as u64 > MAX_DOCUMENT_BYTES {
+        return Err(SafetyError::new(
+            "document_too_large",
+            "The new document exceeds the 10 MiB limit",
+        ));
+    }
+
+    let stage_path = parent.join(format!(
+        ".{file_name}.collectives-{}.tmp",
+        uuid::Uuid::new_v4()
+    ));
+    let mut stage = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&stage_path)
+        .map_err(|error| {
+            SafetyError::new(
+                "save_failed",
+                format!("Could not prepare the new document: {error}"),
+            )
+        })?;
+    let stage_result = stage.write_all(&bytes).and_then(|()| stage.sync_all());
+    drop(stage);
+    if let Err(error) = stage_result {
+        let _ = std::fs::remove_file(&stage_path);
+        return Err(SafetyError::new(
+            "save_failed",
+            format!("Could not write the new document: {error}"),
+        ));
+    }
+
+    if let Err(error) = std::fs::hard_link(&stage_path, destination) {
+        if error.kind() == std::io::ErrorKind::AlreadyExists {
+            let _ = std::fs::remove_file(&stage_path);
+            return Err(SafetyError::new(
+                "external_change_conflict",
+                "A file already exists at that path; choose another name",
+            ));
+        }
+        let mut output = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(destination)
+        {
+            Ok(output) => output,
+            Err(create_error) => {
+                let _ = std::fs::remove_file(&stage_path);
+                let code = if create_error.kind() == std::io::ErrorKind::AlreadyExists {
+                    "external_change_conflict"
+                } else {
+                    "save_failed"
+                };
+                return Err(SafetyError::new(
+                    code,
+                    if code == "external_change_conflict" {
+                        "A file already exists at that path; choose another name".to_string()
+                    } else {
+                        format!("Could not create the new document: {create_error}; staged publication also failed: {error}")
+                    },
+                ));
+            }
+        };
+        if let Err(write_error) = output.write_all(&bytes).and_then(|()| output.sync_all()) {
+            drop(output);
+            let _ = std::fs::remove_file(destination);
+            let _ = std::fs::remove_file(&stage_path);
+            return Err(SafetyError::new(
+                "save_failed",
+                format!("Could not finish writing the new document: {write_error}"),
+            ));
+        }
+    }
+    let _ = std::fs::remove_file(&stage_path);
+    #[cfg(unix)]
+    std::fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| {
+            SafetyError::new(
+                "recoverable_transaction",
+                format!(
+                    "The document was created, but its folder could not be synchronized: {error}"
+                ),
+            )
+        })?;
+    Ok(DocumentWriteReceipt {
+        version_token: blake3::hash(&bytes).to_hex().to_string(),
+    })
+}
+
 #[cfg(windows)]
 fn replace_file_preserving_windows(
     replacement: &std::path::Path,
@@ -539,5 +654,28 @@ mod windows_replacement_tests {
         replace_file_preserving(&replacement, &destination).unwrap();
         assert_eq!(fs::read(&destination).unwrap(), b"new");
         assert!(!replacement.exists());
+    }
+}
+
+#[cfg(test)]
+mod create_file_tests {
+    use super::create_file;
+    use std::fs;
+
+    #[test]
+    fn create_file_publishes_content_and_refuses_to_replace() {
+        let temp = tempfile::tempdir().unwrap();
+        let destination = temp.path().join("draft.md");
+        let path = destination.to_string_lossy().into_owned();
+        let receipt = create_file(path.clone(), "first draft".into()).unwrap();
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "first draft");
+        assert_eq!(
+            receipt.version_token,
+            blake3::hash(b"first draft").to_hex().to_string()
+        );
+
+        let error = create_file(path, "replacement".into()).unwrap_err();
+        assert_eq!(error.code, "external_change_conflict");
+        assert_eq!(fs::read_to_string(destination).unwrap(), "first draft");
     }
 }

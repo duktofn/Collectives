@@ -38,6 +38,7 @@ pub struct Settings {
     // Custom elements colors
     pub color_code_bg: Option<String>,
     pub color_code_text: Option<String>,
+    pub color_selection: Option<String>,
     pub color_link: Option<String>,
     pub color_link_hover: Option<String>,
 
@@ -46,6 +47,10 @@ pub struct Settings {
 
     // Imported custom fonts registry
     pub custom_fonts: Option<Vec<CustomFont>>,
+    // None means this setting has not been written yet and allows the frontend
+    // to migrate the former localStorage preference.
+    #[serde(default)]
+    pub hide_unsupported_files: Option<bool>,
 }
 
 impl Default for Settings {
@@ -66,10 +71,12 @@ impl Default for Settings {
             color_h4: None,
             color_code_bg: None,
             color_code_text: None,
+            color_selection: None,
             color_link: None,
             color_link_hover: None,
             line_height: None,
             custom_fonts: None,
+            hide_unsupported_files: None,
         }
     }
 }
@@ -90,7 +97,27 @@ pub fn save_settings_to_path(settings_file: &Path, settings: &Settings) -> Resul
     }
     let data = serde_json::to_string_pretty(settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-    fs::write(settings_file, data).map_err(|e| format!("Failed to write settings file: {}", e))?;
+    let parent = settings_file.parent().unwrap_or_else(|| Path::new("."));
+    let temp_file = parent.join(format!(".settings-{}.tmp", uuid::Uuid::new_v4()));
+    let write_result: Result<(), String> = (|| {
+        use std::io::Write;
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_file)
+            .map_err(|e| format!("Failed to create temporary settings file: {}", e))?;
+        file.write_all(data.as_bytes())
+            .map_err(|e| format!("Failed to write temporary settings file: {}", e))?;
+        file.sync_all()
+            .map_err(|e| format!("Failed to flush temporary settings file: {}", e))?;
+        fs::rename(&temp_file, settings_file)
+            .map_err(|e| format!("Failed to replace settings file: {}", e))?;
+        Ok(())
+    })();
+    if write_result.is_err() {
+        let _ = fs::remove_file(&temp_file);
+    }
+    write_result?;
     Ok(())
 }
 
@@ -145,5 +172,44 @@ mod tests {
         assert_eq!(loaded.font_body.unwrap(), "Inter");
         assert_eq!(loaded.font_mono.unwrap(), "Fira Code");
         assert_eq!(loaded.font_scale, 1.2);
+    }
+
+    #[test]
+    fn test_settings_save_replaces_existing_file_and_cleans_temporary_file() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("settings.json");
+        fs::write(&file_path, "previous settings").unwrap();
+
+        let settings = Settings {
+            theme: "light".to_string(),
+            font_scale: 1.25,
+            hide_unsupported_files: Some(true),
+            ..Default::default()
+        };
+        save_settings_to_path(&file_path, &settings).unwrap();
+
+        let loaded = load_settings_from_path(&file_path);
+        assert_eq!(loaded.theme, "light");
+        assert_eq!(loaded.font_scale, 1.25);
+        assert_eq!(loaded.hide_unsupported_files, Some(true));
+        assert!(!temp_dir.path().read_dir().unwrap().any(|entry| {
+            entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".settings-")
+        }));
+    }
+
+    #[test]
+    fn legacy_settings_leave_visibility_preference_unset_for_migration() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("settings.json");
+        fs::write(&file_path, r#"{"theme":"light","fontScale":1.2}"#).unwrap();
+
+        let loaded = load_settings_from_path(&file_path);
+
+        assert_eq!(loaded.theme, "light");
+        assert_eq!(loaded.hide_unsupported_files, None);
     }
 }

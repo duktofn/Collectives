@@ -6,20 +6,21 @@ export async function resolveAndNavigate(
   token: WikilinkToken,
   collectionId: string,
   callbacks: {
-    onMatch: (candidate: ResolveCandidate, fragment: WikilinkFragment | null) => void;
+    onMatch: (candidate: ResolveCandidate, fragment: WikilinkFragment | null) => void | Promise<void>;
     onNoMatch: (token: WikilinkToken) => void;
+    onError?: (token: WikilinkToken, error: unknown) => void;
   }
 ): Promise<void> {
   try {
     const candidate = await resolveWikilink(collectionId, token.noteName);
     if (candidate) {
-      callbacks.onMatch(candidate, token.fragment);
+      await callbacks.onMatch(candidate, token.fragment);
     } else {
       callbacks.onNoMatch(token);
     }
   } catch (error) {
     console.error("Failed to resolve wikilink:", error);
-    callbacks.onNoMatch(token);
+    callbacks.onError?.(token, error);
   }
 }
 

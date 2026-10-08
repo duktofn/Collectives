@@ -22,6 +22,23 @@ struct ExportedTheme {
     fonts: Vec<ExportedFont>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedThemeFont {
+    pub family: String,
+    pub file_name: String,
+    pub weight: String,
+    pub style: String,
+    pub base64_data: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedTheme {
+    pub settings: Settings,
+    pub fonts: Vec<ImportedThemeFont>,
+}
+
 pub fn export_theme(
     app_data_dir: &Path,
     settings: &Settings,
@@ -65,7 +82,7 @@ pub fn export_theme(
     Ok(())
 }
 
-pub fn import_theme(app_data_dir: &Path, theme_path: &Path) -> Result<Settings, String> {
+pub fn import_theme(_app_data_dir: &Path, theme_path: &Path) -> Result<ImportedTheme, String> {
     if !theme_path.exists() {
         return Err(format!("Theme file does not exist: {:?}", theme_path));
     }
@@ -76,12 +93,8 @@ pub fn import_theme(app_data_dir: &Path, theme_path: &Path) -> Result<Settings, 
     let theme: ExportedTheme =
         serde_json::from_str(&data).map_err(|e| format!("Failed to parse theme file: {}", e))?;
 
-    let fonts_dir = get_fonts_dir(app_data_dir);
-    fs::create_dir_all(&fonts_dir)
-        .map_err(|e| format!("Failed to create fonts directory: {}", e))?;
-
-    // Restore font files
-    for font in &theme.fonts {
+    let mut fonts = Vec::with_capacity(theme.fonts.len());
+    for font in theme.fonts {
         // Directory traversal check
         if font.file_name.contains('/') || font.file_name.contains('\\') || font.file_name == ".." {
             return Err(format!(
@@ -90,16 +103,21 @@ pub fn import_theme(app_data_dir: &Path, theme_path: &Path) -> Result<Settings, 
             ));
         }
 
-        let bytes = BASE64_STANDARD
+        BASE64_STANDARD
             .decode(&font.base64_data)
             .map_err(|e| format!("Failed to decode base64 font data: {}", e))?;
-
-        let font_dest_path = fonts_dir.join(&font.file_name);
-        fs::write(&font_dest_path, bytes)
-            .map_err(|e| format!("Failed to write font file {:?}: {}", font_dest_path, e))?;
+        fonts.push(ImportedThemeFont {
+            family: font.family,
+            file_name: font.file_name,
+            weight: font.weight,
+            style: font.style,
+            base64_data: font.base64_data,
+        });
     }
-
-    Ok(theme.settings)
+    Ok(ImportedTheme {
+        settings: theme.settings,
+        fonts,
+    })
 }
 
 #[cfg(test)]
@@ -144,7 +162,8 @@ mod tests {
 
         // 2. Import into a new empty app data dir
         let temp_app_data_new = tempdir().unwrap();
-        let imported_settings = import_theme(temp_app_data_new.path(), &export_path).unwrap();
+        let imported_theme = import_theme(temp_app_data_new.path(), &export_path).unwrap();
+        let imported_settings = imported_theme.settings;
 
         // Verify settings recovered
         assert_eq!(imported_settings.theme, "dark");
@@ -157,9 +176,12 @@ mod tests {
         assert_eq!(custom_fonts.len(), 1);
         assert_eq!(custom_fonts[0].family, "TestFont");
 
-        // Verify font file restored
+        // Import parsing leaves active font storage untouched until Apply.
         let restored_font_path = get_fonts_dir(temp_app_data_new.path()).join(font_file_name);
-        assert!(restored_font_path.exists());
-        assert_eq!(fs::read(&restored_font_path).unwrap(), b"mock woff2 data");
+        assert!(!restored_font_path.exists());
+        assert_eq!(
+            imported_theme.fonts[0].base64_data,
+            BASE64_STANDARD.encode(b"mock woff2 data")
+        );
     }
 }

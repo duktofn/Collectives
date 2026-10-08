@@ -1,13 +1,7 @@
-import { syntaxTree } from "@codemirror/language";
-import { RangeSetBuilder, Extension } from "@codemirror/state";
-import {
-  Decoration,
-  DecorationSet,
-  EditorView,
-  ViewPlugin,
-  ViewUpdate,
-} from "@codemirror/view";
-import { EmptyWidget } from "./empty-widget";
+import { syntaxTree } from '@codemirror/language';
+import { RangeSetBuilder, Extension } from '@codemirror/state';
+import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
+import { EmptyWidget } from './empty-widget';
 
 interface DecSpec {
   from: number;
@@ -18,30 +12,18 @@ interface DecSpec {
 class RenderPlugin {
   decorations: DecorationSet;
   atomic: DecorationSet;
-  private lastLineFrom = -1;
 
   constructor(view: EditorView) {
     const { decorations, atomic } = this.buildDecorations(view);
     this.decorations = decorations;
     this.atomic = atomic;
-    const head = view.state.selection.main.head;
-    this.lastLineFrom = view.state.doc.lineAt(head).from;
-  }
-
-  private selectionAffectsDecorations(update: ViewUpdate): boolean {
-    const head = update.state.selection.main.head;
-    const lineFrom = update.state.doc.lineAt(head).from;
-    const changed = lineFrom !== this.lastLineFrom;
-    this.lastLineFrom = lineFrom;
-    return changed;
   }
 
   update(update: ViewUpdate) {
     const shouldRebuild =
       update.docChanged ||
       update.viewportChanged ||
-      update.transactions.some((tr) => tr.reconfigured) ||
-      (update.selectionSet && this.selectionAffectsDecorations(update));
+      update.transactions.some((tr) => tr.reconfigured);
 
     if (shouldRebuild) {
       const { decorations, atomic } = this.buildDecorations(update.view);
@@ -54,22 +36,7 @@ class RenderPlugin {
     const decs: DecSpec[] = [];
     const atomicDecs: DecSpec[] = [];
     const tree = syntaxTree(view.state);
-    const selection = view.state.selection.main;
-
-    // Resolve only the node under the cursor instead of scanning every link
-    // in the document on each line-level selection update.
-    let activeLink: ReturnType<typeof tree.resolveInner> | null = tree.resolveInner(selection.head, -1);
-    while (activeLink && activeLink.name !== "Link") activeLink = activeLink.parent;
-    if (!activeLink || activeLink.name !== "Link") {
-      activeLink = tree.resolveInner(selection.head, 1);
-      while (activeLink && activeLink.name !== "Link") activeLink = activeLink.parent;
-    }
-    const activeLinkRange = activeLink?.name === "Link"
-      ? { from: activeLink.from, to: activeLink.to }
-      : null;
-    const isCursorInLink = (from: number, to: number) => Boolean(
-      activeLinkRange && from >= activeLinkRange.from && to <= activeLinkRange.to,
-    );
+    // Keep Write geometry stable on pointer selection. Raw syntax is edited in Source.
 
     for (const { from, to } of view.visibleRanges) {
       tree.iterate({
@@ -80,15 +47,9 @@ class RenderPlugin {
           const nodeFrom = node.from;
           const nodeTo = node.to;
 
-          // Check if cursor is on the same line as this node
-          const startLine = view.state.doc.lineAt(nodeFrom);
-          const endLine = view.state.doc.lineAt(nodeTo);
-          const isCursorInLine =
-            selection.head >= startLine.from && selection.head <= endLine.to;
-
           // Headings
-          if (name.startsWith("ATXHeading")) {
-            const level = parseInt(name.replace("ATXHeading", "")) || 1;
+          if (name.startsWith('ATXHeading')) {
+            const level = parseInt(name.replace('ATXHeading', '')) || 1;
             decs.push({
               from: nodeFrom,
               to: nodeFrom,
@@ -99,203 +60,191 @@ class RenderPlugin {
           }
 
           // Heading HeaderMark (e.g. #, ##)
-          if (name === "HeaderMark" && node.node.parent?.name.startsWith("ATXHeading")) {
-            if (!isCursorInLine) {
-              const lineEnd = view.state.doc.lineAt(nodeFrom).to;
-              const maxTo = Math.min(nodeTo + 1, lineEnd);
-              const val = Decoration.replace({
-                widget: new EmptyWidget(),
-              });
-              decs.push({
-                from: nodeFrom,
-                to: maxTo, // include space after # safely
-                value: val,
-              });
-              atomicDecs.push({
-                from: nodeFrom,
-                to: maxTo,
-                value: val,
-              });
-            }
+          if (name === 'HeaderMark' && node.node.parent?.name.startsWith('ATXHeading')) {
+            const lineEnd = view.state.doc.lineAt(nodeFrom).to;
+            const maxTo = Math.min(nodeTo + 1, lineEnd);
+            const val = Decoration.replace({
+              widget: new EmptyWidget(),
+            });
+            decs.push({
+              from: nodeFrom,
+              to: maxTo, // include space after # safely
+              value: val,
+            });
+            atomicDecs.push({
+              from: nodeFrom,
+              to: maxTo,
+              value: val,
+            });
           }
 
           // Strong Emphasis (Bold)
-          if (name === "StrongEmphasis") {
+          if (name === 'StrongEmphasis') {
             decs.push({
               from: nodeFrom,
               to: nodeTo,
               value: Decoration.mark({
-                class: "cm-strong",
+                class: 'cm-strong',
               }),
             });
 
-            if (!isCursorInLine) {
-              // Hide the ** markers
-              const val1 = Decoration.replace({ widget: new EmptyWidget() });
-              const val2 = Decoration.replace({ widget: new EmptyWidget() });
+            // Hide the ** markers
+            const val1 = Decoration.replace({ widget: new EmptyWidget() });
+            const val2 = Decoration.replace({ widget: new EmptyWidget() });
 
-              decs.push({
-                from: nodeFrom,
-                to: nodeFrom + 2,
-                value: val1,
-              });
-              decs.push({
-                from: nodeTo - 2,
-                to: nodeTo,
-                value: val2,
-              });
+            decs.push({
+              from: nodeFrom,
+              to: nodeFrom + 2,
+              value: val1,
+            });
+            decs.push({
+              from: nodeTo - 2,
+              to: nodeTo,
+              value: val2,
+            });
 
-              atomicDecs.push({
-                from: nodeFrom,
-                to: nodeFrom + 2,
-                value: val1,
-              });
-              atomicDecs.push({
-                from: nodeTo - 2,
-                to: nodeTo,
-                value: val2,
-              });
-            }
+            atomicDecs.push({
+              from: nodeFrom,
+              to: nodeFrom + 2,
+              value: val1,
+            });
+            atomicDecs.push({
+              from: nodeTo - 2,
+              to: nodeTo,
+              value: val2,
+            });
           }
 
           // Emphasis (Italic)
-          if (name === "Emphasis") {
+          if (name === 'Emphasis') {
             decs.push({
               from: nodeFrom,
               to: nodeTo,
               value: Decoration.mark({
-                class: "cm-emphasis",
+                class: 'cm-emphasis',
               }),
             });
 
-            if (!isCursorInLine) {
-              // Hide the * markers
-              const val1 = Decoration.replace({ widget: new EmptyWidget() });
-              const val2 = Decoration.replace({ widget: new EmptyWidget() });
+            // Hide the * markers
+            const val1 = Decoration.replace({ widget: new EmptyWidget() });
+            const val2 = Decoration.replace({ widget: new EmptyWidget() });
 
-              decs.push({
-                from: nodeFrom,
-                to: nodeFrom + 1,
-                value: val1,
-              });
-              decs.push({
-                from: nodeTo - 1,
-                to: nodeTo,
-                value: val2,
-              });
+            decs.push({
+              from: nodeFrom,
+              to: nodeFrom + 1,
+              value: val1,
+            });
+            decs.push({
+              from: nodeTo - 1,
+              to: nodeTo,
+              value: val2,
+            });
 
-              atomicDecs.push({
-                from: nodeFrom,
-                to: nodeFrom + 1,
-                value: val1,
-              });
-              atomicDecs.push({
-                from: nodeTo - 1,
-                to: nodeTo,
-                value: val2,
-              });
-            }
+            atomicDecs.push({
+              from: nodeFrom,
+              to: nodeFrom + 1,
+              value: val1,
+            });
+            atomicDecs.push({
+              from: nodeTo - 1,
+              to: nodeTo,
+              value: val2,
+            });
           }
 
           // Inline Code
-          if (name === "InlineCode") {
+          if (name === 'InlineCode') {
             decs.push({
               from: nodeFrom,
               to: nodeTo,
               value: Decoration.mark({
-                class: "cm-inline-code",
+                class: 'cm-inline-code',
               }),
             });
 
-            if (!isCursorInLine) {
-              // Hide backticks
-              const val1 = Decoration.replace({ widget: new EmptyWidget() });
-              const val2 = Decoration.replace({ widget: new EmptyWidget() });
+            // Hide backticks
+            const val1 = Decoration.replace({ widget: new EmptyWidget() });
+            const val2 = Decoration.replace({ widget: new EmptyWidget() });
 
-              decs.push({
-                from: nodeFrom,
-                to: nodeFrom + 1,
-                value: val1,
-              });
-              decs.push({
-                from: nodeTo - 1,
-                to: nodeTo,
-                value: val2,
-              });
+            decs.push({
+              from: nodeFrom,
+              to: nodeFrom + 1,
+              value: val1,
+            });
+            decs.push({
+              from: nodeTo - 1,
+              to: nodeTo,
+              value: val2,
+            });
 
-              atomicDecs.push({
-                from: nodeFrom,
-                to: nodeFrom + 1,
-                value: val1,
-              });
-              atomicDecs.push({
-                from: nodeTo - 1,
-                to: nodeTo,
-                value: val2,
-              });
-            }
+            atomicDecs.push({
+              from: nodeFrom,
+              to: nodeFrom + 1,
+              value: val1,
+            });
+            atomicDecs.push({
+              from: nodeTo - 1,
+              to: nodeTo,
+              value: val2,
+            });
           }
 
           // Link styling
-          if (name === "LinkLabel") {
+          if (name === 'LinkLabel') {
             decs.push({
               from: nodeFrom,
               to: nodeTo,
               value: Decoration.mark({
-                class: "cm-link-text",
+                class: 'cm-link-text',
               }),
             });
 
-            if (!isCursorInLink(nodeFrom, nodeTo)) {
-              // Hide brackets
-              const val1 = Decoration.replace({ widget: new EmptyWidget() });
-              const val2 = Decoration.replace({ widget: new EmptyWidget() });
+            // Hide brackets
+            const val1 = Decoration.replace({ widget: new EmptyWidget() });
+            const val2 = Decoration.replace({ widget: new EmptyWidget() });
 
-              decs.push({
-                from: nodeFrom,
-                to: nodeFrom + 1,
-                value: val1,
-              });
-              decs.push({
-                from: nodeTo - 1,
-                to: nodeTo,
-                value: val2,
-              });
+            decs.push({
+              from: nodeFrom,
+              to: nodeFrom + 1,
+              value: val1,
+            });
+            decs.push({
+              from: nodeTo - 1,
+              to: nodeTo,
+              value: val2,
+            });
 
-              atomicDecs.push({
-                from: nodeFrom,
-                to: nodeFrom + 1,
-                value: val1,
-              });
-              atomicDecs.push({
-                from: nodeTo - 1,
-                to: nodeTo,
-                value: val2,
-              });
-            }
+            atomicDecs.push({
+              from: nodeFrom,
+              to: nodeFrom + 1,
+              value: val1,
+            });
+            atomicDecs.push({
+              from: nodeTo - 1,
+              to: nodeTo,
+              value: val2,
+            });
           }
 
-          if (name === "LinkResource") {
-            if (!isCursorInLink(nodeFrom, nodeTo)) {
-              // Hide the (url) part
-              const val = Decoration.replace({ widget: new EmptyWidget() });
+          if (name === 'LinkResource') {
+            // Hide the (url) part
+            const val = Decoration.replace({ widget: new EmptyWidget() });
 
-              decs.push({
-                from: nodeFrom,
-                to: nodeTo,
-                value: val,
-              });
+            decs.push({
+              from: nodeFrom,
+              to: nodeTo,
+              value: val,
+            });
 
-              atomicDecs.push({
-                from: nodeFrom,
-                to: nodeTo,
-                value: val,
-              });
-            }
+            atomicDecs.push({
+              from: nodeFrom,
+              to: nodeTo,
+              value: val,
+            });
           }
 
           // Blockquotes
-          if (name === "Blockquote") {
+          if (name === 'Blockquote') {
             // Apply line decoration to every line in the blockquote
             const lineStart = view.state.doc.lineAt(nodeFrom).number;
             const lineEnd = view.state.doc.lineAt(nodeTo).number;
@@ -305,19 +254,19 @@ class RenderPlugin {
                 from: line.from,
                 to: line.from,
                 value: Decoration.line({
-                  class: "cm-blockquote-line",
+                  class: 'cm-blockquote-line',
                 }),
               });
             }
           }
 
           // Horizontal Rule
-          if (name === "HorizontalRule") {
+          if (name === 'HorizontalRule') {
             decs.push({
               from: nodeFrom,
               to: nodeTo,
               value: Decoration.mark({
-                class: "cm-hr",
+                class: 'cm-hr',
               }),
             });
           }

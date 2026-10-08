@@ -81,12 +81,20 @@ pub const IPC_COMMANDS: &[CommandMetadata] = &[
         handler: "ipc::commands::documents::write_file",
     },
     CommandMetadata {
+        name: "create_file",
+        handler: "ipc::commands::documents::create_file",
+    },
+    CommandMetadata {
         name: "resolve_wikilink",
         handler: "ipc::commands::links::resolve_wikilink",
     },
     CommandMetadata {
         name: "search_link_index",
         handler: "ipc::commands::links::search_link_index",
+    },
+    CommandMetadata {
+        name: "search_note_content",
+        handler: "ipc::commands::links::search_note_content",
     },
     CommandMetadata {
         name: "import_folder",
@@ -157,7 +165,7 @@ pub const IPC_COMMANDS: &[CommandMetadata] = &[
         handler: "ipc::commands::filesystem::detect_moved_entry",
     },
 ];
-pub const IPC_COMMAND_COUNT: usize = 37;
+pub const IPC_COMMAND_COUNT: usize = 39;
 pub const IPC_METADATA_COMMANDS: &[CommandMetadata] = &[
     CommandMetadata {
         name: "apply_collection_mutation_v2",
@@ -207,8 +215,10 @@ macro_rules! generated_ipc_handler {
             ipc::commands::collections::validate_entries,
             ipc::commands::documents::read_file,
             ipc::commands::documents::write_file,
+            ipc::commands::documents::create_file,
             ipc::commands::links::resolve_wikilink,
             ipc::commands::links::search_link_index,
+            ipc::commands::links::search_note_content,
             ipc::commands::archive::import_folder,
             ipc::commands::archive::export_collection_to_folder,
             ipc::commands::archive::export_collection_to_zip,

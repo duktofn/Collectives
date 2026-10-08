@@ -3,7 +3,7 @@ import { collectionsStore } from "../../stores/collections";
 import { searchLinkIndex } from "../../features/links";
 import { Extension } from "@codemirror/state";
 
-async function wikilinkCompletionSource(context: CompletionContext) {
+export async function wikilinkCompletionSource(context: CompletionContext) {
   // Match `[[` followed by any characters that are not `]`
   const before = context.matchBefore(/\[\[[^\]]*$/);
   if (!before) return null;

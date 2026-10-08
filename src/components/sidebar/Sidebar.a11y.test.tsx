@@ -8,6 +8,9 @@ describe("Sidebar accessibility contract", () => {
   it("uses a labelled collection button and keeps actions outside the listbox", () => {
     render(() => (
       <Sidebar
+        onNewNoteClick={vi.fn()}
+        recoveryDraftCount={0}
+        onReviewRecovery={vi.fn()}
         onNewCollectionClick={vi.fn()}
         onImportFolderClick={vi.fn()}
         onImportZipClick={vi.fn()}
@@ -15,6 +18,7 @@ describe("Sidebar accessibility contract", () => {
         requestSelect={vi.fn(async () => true)}
         requestFolderRefSelect={vi.fn(async () => true)}
         requestSwitch={vi.fn(async () => true)}
+        onReviewMovePrompt={vi.fn()}
       />
     ));
     const trigger = document.querySelector<HTMLButtonElement>('[aria-label="Choose collection"]');

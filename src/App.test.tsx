@@ -44,7 +44,7 @@ Object.defineProperty(window, 'matchMedia', {
 describe('App Component', () => {
   it('renders welcome message', () => {
     const { getByText } = render(() => <App />);
-    expect(getByText('Welcome to Collections')).toBeDefined();
+    expect(getByText('Welcome to Collectives')).toBeDefined();
   });
 
   it('toggles sidebar collapse/expand', async () => {

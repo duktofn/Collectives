@@ -5,12 +5,74 @@ const OPEN_TO_CLOSE: Record<string, string> = {
   "(": ")",
   "[": "]",
   "{": "}",
+  "*": "*",
   "`": "`",
   '"': '"',
   "'": "'",
 };
 
 const CLOSE_CHARS = new Set(Object.values(OPEN_TO_CLOSE));
+
+export interface DelimiterEdit {
+  from: number;
+  to: number;
+  insert: string;
+  cursor: number;
+  overtype?: boolean;
+}
+
+function isEscaped(text: string, from: number): boolean {
+  let slashes = 0;
+  for (let index = from - 1; index >= 0 && text[index] === "\\"; index--) slashes++;
+  return slashes % 2 === 1;
+}
+
+function hasUnclosedStrongDelimiter(text: string, to: number): boolean {
+  let open = false;
+  const lineStart = text.lastIndexOf("\n", to - 1) + 1;
+  for (let index = lineStart; index < to;) {
+    if (text[index] !== "*" || isEscaped(text, index)) {
+      index++;
+      continue;
+    }
+    let end = index + 1;
+    while (end < to && text[end] === "*" && !isEscaped(text, end)) end++;
+    if (Math.floor((end - index) / 2) % 2 === 1) open = !open;
+    index = end;
+  }
+  return open;
+}
+
+/** Pure pairing rules shared by the document editor and Markdown table cells. */
+export function getDelimiterEdit(text: string, from: number, to: number, input: string): DelimiterEdit | null {
+  if (input.length !== 1 || from < 0 || to < from || to > text.length) return null;
+  const char = input;
+  if (char === "*" && from === to && text[from - 1] === "*" && text[from] === "*"
+    && !hasUnclosedStrongDelimiter(text, from - 1)
+    && !isEscaped(text, from - 1) && !isEscaped(text, from)) {
+    // Turn the empty italic pair *|* into the empty bold pair **|**.
+    return { from, to: from + 1, insert: "***", cursor: from + 1 };
+  }
+  if (from === to && CLOSE_CHARS.has(char) && text[from] === char) {
+    return { from, to, insert: "", cursor: from + 1, overtype: true };
+  }
+  if (isEscaped(text, from)) return null;
+
+  const close = OPEN_TO_CLOSE[char];
+  if (!close) return null;
+  if (char === "'" && /[\p{L}\p{N}_]/u.test(text[from - 1] ?? "")) return null;
+
+  if (char === "[" && from > 0 && text[from - 1] === "[") {
+    return { from, to, insert: char, cursor: from + 1 };
+  }
+  const selected = text.slice(from, to);
+  return {
+    from,
+    to,
+    insert: char + selected + close,
+    cursor: from + char.length + selected.length,
+  };
+}
 
 function getMatchingClose(open: string): string | null {
   return OPEN_TO_CLOSE[open] ?? null;
@@ -21,11 +83,6 @@ function getMatchingOpen(close: string): string | null {
     if (mappedClose === close) return open;
   }
   return null;
-}
-
-function shouldSkipPairInsert(view: EditorView, from: number, open: string): boolean {
-  if (open !== "[") return false;
-  return from > 0 && view.state.doc.sliceString(from - 1, from) === "[";
 }
 
 function handleOvertypeClose(view: EditorView, from: number, to: number, char: string): boolean {
@@ -40,29 +97,6 @@ function handleOvertypeClose(view: EditorView, from: number, to: number, char: s
   return true;
 }
 
-function insertPair(
-  view: EditorView,
-  from: number,
-  to: number,
-  open: string,
-  close: string
-): boolean {
-  if (from !== to) {
-    const selected = view.state.doc.sliceString(from, to);
-    view.dispatch({
-      changes: { from, to, insert: open + selected + close },
-      selection: { anchor: from + open.length + selected.length },
-    });
-    return true;
-  }
-
-  view.dispatch({
-    changes: { from, to, insert: open + close },
-    selection: { anchor: from + open.length },
-  });
-  return true;
-}
-
 function handleDelimiterInput(
   view: EditorView,
   from: number,
@@ -70,26 +104,13 @@ function handleDelimiterInput(
   text: string
 ): boolean {
   if (view.state.readOnly) return false;
-  if (text.length !== 1) return false;
-
-  const char = text;
-
-  if (handleOvertypeClose(view, from, to, char)) {
-    return true;
-  }
-
-  const close = getMatchingClose(char);
-  if (!close) return false;
-
-  if (shouldSkipPairInsert(view, from, char)) {
-    view.dispatch({
-      changes: { from, to, insert: char },
-      selection: { anchor: from + 1 },
-    });
-    return true;
-  }
-
-  return insertPair(view, from, to, char, close);
+  const edit = getDelimiterEdit(view.state.doc.toString(), from, to, text);
+  if (!edit) return false;
+  view.dispatch({
+    ...(edit.insert ? { changes: { from: edit.from, to: edit.to, insert: edit.insert } } : {}),
+    selection: { anchor: edit.cursor },
+  });
+  return true;
 }
 
 function asymmetricBackspace(view: EditorView): boolean {
@@ -131,8 +152,30 @@ function asymmetricForwardDelete(view: EditorView): boolean {
 }
 
 export const delimiterPairExtension: Extension = [
+  EditorView.domEventHandlers({
+    paste(_event, view) {
+      pastedViews.add(view);
+      queueMicrotask(() => pastedViews.delete(view));
+      return false;
+    },
+    drop(_event, view) {
+      pastedViews.add(view);
+      queueMicrotask(() => pastedViews.delete(view));
+      return false;
+    },
+    compositionstart(_event, view) {
+      composingViews.add(view);
+      return false;
+    },
+    compositionend(_event, view) {
+      setTimeout(() => composingViews.delete(view), 0);
+      return false;
+    },
+  }),
   EditorView.inputHandler.of((view, from, to, text) =>
-    handleDelimiterInput(view, from, to, text)
+    !pastedViews.has(view) && !composingViews.has(view) && !view.composing
+      ? handleDelimiterInput(view, from, to, text)
+      : false
   ),
   Prec.high(
     keymap.of([
@@ -155,3 +198,6 @@ export {
   handleDelimiterInput,
   handleOvertypeClose,
 };
+
+const pastedViews = new WeakSet<EditorView>();
+const composingViews = new WeakSet<EditorView>();

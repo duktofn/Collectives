@@ -21,8 +21,8 @@ function validateManifest(manifest) {
   if (manifest.version !== 'ipc.v1' || manifest.schemaVersion !== 1) {
     throw new Error('IPC manifest must declare ipc.v1/schemaVersion 1');
   }
-  if (!Array.isArray(manifest.commands) || manifest.commands.length !== 37) {
-    throw new Error(`IPC manifest must contain exactly 37 commands; got ${manifest.commands?.length ?? 0}`);
+  if (!Array.isArray(manifest.commands) || manifest.commands.length !== 39) {
+    throw new Error(`IPC manifest must contain exactly 39 commands; got ${manifest.commands?.length ?? 0}`);
   }
   if (manifest.metadataCommands !== undefined && !Array.isArray(manifest.metadataCommands)) {
     throw new Error('metadataCommands must be an array when present');

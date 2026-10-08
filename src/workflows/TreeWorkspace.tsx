@@ -3,6 +3,9 @@ import type { FolderRefIntentInput } from "../features/filesystem/folderRefReadi
 import type { OperationLeaseRegistry } from "./operationLease";
 
 interface TreeWorkspaceProps {
+  onNewNoteClick: () => void;
+  onQuickOpen?: () => void;
+  onContentSearch?: () => void;
   onNewCollectionClick: () => void;
   onImportFolderClick: () => void;
   onImportZipClick: () => void;
@@ -10,6 +13,9 @@ interface TreeWorkspaceProps {
   requestSelect: (entryId: string | null) => Promise<boolean>;
   requestFolderRefSelect: (intent: FolderRefIntentInput) => Promise<boolean>;
   requestSwitch: (collectionId: string) => Promise<boolean>;
+  onReviewMovePrompt: () => void;
+  recoveryDraftCount: number;
+  onReviewRecovery: () => void;
   operationLeaseRegistry?: OperationLeaseRegistry;
 }
 

@@ -2,7 +2,7 @@ import { Settings, CustomFont } from "../types";
 import { convertFileSrc } from "../platform";
 import { requestEditorMeasure } from "./editorMeasure";
 
-const variableMappings: Record<keyof Omit<Settings, "theme" | "customFonts">, string> = {
+const variableMappings: Record<keyof Omit<Settings, "theme" | "customFonts" | "hideUnsupportedFiles">, string> = {
   fontScale: "--font-scale",
   fontBody: "--font-body",
   fontMono: "--font-mono",
@@ -17,6 +17,7 @@ const variableMappings: Record<keyof Omit<Settings, "theme" | "customFonts">, st
   colorH4: "--color-h4",
   colorCodeBg: "--color-code-bg",
   colorCodeText: "--color-code-text",
+  colorSelection: "--color-selection",
   colorLink: "--color-link",
   colorLinkHover: "--color-link-hover",
   lineHeight: "--line-height",
@@ -36,7 +37,7 @@ export function applyThemeSettings(settings: Settings): void {
   }
 
   // 2. Apply all variables
-  for (const [key, varName] of Object.entries(variableMappings) as [keyof Omit<Settings, "theme" | "customFonts">, string][]) {
+  for (const [key, varName] of Object.entries(variableMappings) as [keyof Omit<Settings, "theme" | "customFonts" | "hideUnsupportedFiles">, string][]) {
     const value = settings[key];
     if (value !== undefined && value !== null && value !== "") {
       if (typeof value === "number") {
@@ -46,7 +47,10 @@ export function applyThemeSettings(settings: Settings): void {
           root.style.setProperty(varName, String(value));
         }
       } else {
-        root.style.setProperty(varName, String(value));
+        const fallback = key === "fontBody"
+          ? ', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+          : key === "fontMono" ? ', Consolas, monospace' : "";
+        root.style.setProperty(varName, `${String(value)}${fallback}`);
       }
     } else {
       root.style.removeProperty(varName);
@@ -129,6 +133,7 @@ export function getDefaultThemeValues(isDarkMode: boolean): Record<string, strin
       colorH4: "#a39f96",
       colorCodeBg: "#22201e",
       colorCodeText: "#e57e54",
+      colorSelection: "#d7d4f0",
       colorLink: "#6366f1",
       colorLinkHover: "#4f46e5",
     };
@@ -147,6 +152,7 @@ export function getDefaultThemeValues(isDarkMode: boolean): Record<string, strin
       colorH4: "#706b64",
       colorCodeBg: "#f4f1ea",
       colorCodeText: "#d96236",
+      colorSelection: "#d7d4f0",
       colorLink: "#6366f1",
       colorLinkHover: "#4f46e5",
     };

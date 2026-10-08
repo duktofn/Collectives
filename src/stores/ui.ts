@@ -6,6 +6,7 @@ interface UIState {
   isSidebarOpen: boolean;
   sidebarWidth: number;
   hideUnsupportedFiles: boolean;
+  isReferencePanelOpen: boolean;
 }
 
 const savedWidth = typeof window !== "undefined" ? localStorage.getItem("sidebarWidth") : null;
@@ -18,6 +19,7 @@ const [state, setState] = createStore<UIState>({
   isSidebarOpen: true,
   sidebarWidth: initialWidth,
   hideUnsupportedFiles,
+  isReferencePanelOpen: false,
 });
 
 export const uiStore = {
@@ -25,6 +27,14 @@ export const uiStore = {
   
   toggleSidebar() {
     setState("isSidebarOpen", (prev) => !prev);
+  },
+
+  toggleReferencePanel() {
+    setState("isReferencePanelOpen", (open) => !open);
+  },
+
+  setReferencePanelOpen(open: boolean) {
+    setState("isReferencePanelOpen", open);
   },
 
   setSidebarOpen(open: boolean) {
@@ -74,6 +84,7 @@ export const uiStore = {
     setState({
       expandedNodes: {},
       selectedEntryId: null,
+      isReferencePanelOpen: false,
     });
   }
 };

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Collection, Entry, FsEntry, BrokenEntry, Settings, ResolveCandidate, ZipConflict, CustomFont } from "../../types";
+import { Collection, Entry, FsEntry, BrokenEntry, Settings, ResolveCandidate, ZipConflict, CustomFont, ImportedTheme } from "../../types";
 
 export type FileKind = "markdown" | "text-source";
 export type LineEnding = "LF" | "CRLF" | "mixed" | "none";
@@ -27,6 +27,26 @@ export interface MigrationStatus { mode: string; schemaVersion: number; sourceDi
 export interface WatchSpec { path: string; entryId: string; recursive: boolean }
 export interface WatchCursor { streamId: string; subscriptionEpoch: string; sequence: number }
 export interface MetadataSnapshot { collection: Collection; revision: number; cursor: WatchCursor }
+export interface ContentSearchResult {
+  displayName: string;
+  entryId: string;
+  path: string;
+  snippet: string;
+  lineNumber: number;
+  columnUtf16: number;
+  matchStartUtf16: number;
+  matchEndUtf16: number;
+}
+export interface ContentSearchPage {
+  results: ContentSearchResult[];
+  offset: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
+  truncated: boolean;
+  scannedFiles: number;
+  skippedFiles: number;
+}
 
 type EmptyArgs = undefined;
 
@@ -50,18 +70,20 @@ export interface CommandMap {
   read_file: { args: { path: string }; result: FileSnapshot | string };
   read_folderref_snapshot: { args: { rootPath: string; childPath: string }; result: FileSnapshot };
   write_file: { args: { path: string; content: string; expectedToken?: string }; result: WriteReceipt };
+  create_file: { args: { path: string; content: string }; result: WriteReceipt };
   resolve_wikilink: { args: { collectionId: string; noteName: string }; result: ResolveCandidate | null };
   search_link_index: { args: { collectionId: string; query: string; limit?: number }; result: ResolveCandidate[] };
+  search_note_content: { args: { collectionId: string; query: string; offset?: number; limit?: number }; result: ContentSearchPage };
   import_folder: { args: { path: string; name: string }; result: Collection };
   export_collection_to_folder: { args: { collectionId: string; destPath: string }; result: void };
   export_collection_to_zip: { args: { collectionId: string; destZipPath: string }; result: void };
   check_zip_conflicts: { args: { zipPath: string; destFolder: string }; result: ZipConflict[] };
   import_zip: { args: { zipPath: string; destFolder: string; resolutions: Record<string, string> }; result: Collection };
-  import_font: { args: { sourcePath: string; familyName: string; weight: string; style: string }; result: CustomFont };
+  import_font: { args: { sourcePath: string; familyName: string; weight: string; style: string; fontDataBase64?: string; preferredFileName?: string }; result: CustomFont };
   delete_font: { args: { fileName: string }; result: void };
   get_fonts_dir: { args: EmptyArgs; result: string };
   export_theme: { args: { settings: Settings; destPath: string }; result: void };
-  import_theme: { args: { themePath: string }; result: Settings };
+  import_theme: { args: { themePath: string }; result: ImportedTheme };
   watch_entry: { args: { path: string; entryId: string }; result: void };
   unwatch_entry: { args: { path: string }; result: void };
   watch_folder: { args: { path: string; entryId: string }; result: void };

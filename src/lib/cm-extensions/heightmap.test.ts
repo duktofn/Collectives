@@ -87,14 +87,15 @@ describe("HeightMap layout (edit-render)", () => {
     return mounted.view;
   }
 
-  it("renders code block preview widget when cursor is outside the block", () => {
+  it("keeps fenced code as source lines when the cursor is outside the block", () => {
     const view = create(REPRO_DOCS.codeBlock);
     expect(isCursorInFencedCode(view.state, 0)).toBe(false);
-    expect(view.dom.querySelector(".cm-codeblock-widget-container")).not.toBeNull();
+    expect(view.dom.querySelector(".cm-codeblock-widget-container")).toBeNull();
+    expect(view.dom.querySelector(".cm-codeblock-line:not(.cm-codeblock-fence-line):not(.cm-codeblock-fence-edit)")).not.toBeNull();
     expect(countFencedCodeNodes(view.state)).toBe(1);
   });
 
-  it("shows source lines when cursor moves inside a code block", () => {
+  it("keeps the same source lines when the cursor moves inside a code block", () => {
     const view = create(REPRO_DOCS.codeBlock);
     const codeLine = view.state.doc.line(4);
     view.dispatch({
@@ -102,7 +103,7 @@ describe("HeightMap layout (edit-render)", () => {
     });
     expect(isCursorInFencedCode(view.state, codeLine.from)).toBe(true);
     expect(view.dom.querySelector(".cm-codeblock-widget-container")).toBeNull();
-    expect(view.dom.querySelector(".cm-codeblock-line")).not.toBeNull();
+    expect(view.dom.querySelectorAll(".cm-codeblock-line:not(.cm-codeblock-fence-line):not(.cm-codeblock-fence-edit)")).toHaveLength(2);
   });
 
   it("skips chart blocks for fenced-code render decorations", () => {

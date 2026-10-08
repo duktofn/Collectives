@@ -4,8 +4,8 @@ use tauri_app_lib::ipc::generated::{IPC_COMMANDS, IPC_COMMAND_COUNT, IPC_VERSION
 #[test]
 fn generated_ipc_contract_has_exact_phase2_registry() {
     assert_eq!(IPC_VERSION, "ipc.v1");
-    assert_eq!(IPC_COMMAND_COUNT, 37);
-    assert_eq!(IPC_COMMANDS.len(), 37);
+    assert_eq!(IPC_COMMAND_COUNT, 39);
+    assert_eq!(IPC_COMMANDS.len(), 39);
     assert_eq!(IPC_COMMANDS.first().unwrap().name, "get_collections");
     assert_eq!(IPC_COMMANDS.last().unwrap().name, "detect_moved_entry");
     assert!(IPC_COMMANDS

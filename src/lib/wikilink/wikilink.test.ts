@@ -9,6 +9,7 @@ import { EditorView } from "@codemirror/view";
 vi.mock("../../features/links", () => {
   return {
     resolveWikilink: vi.fn((_collectionId: string, noteName: string) => {
+      if (noteName === "indexfail") return Promise.reject(new Error("index unavailable"));
       if (noteName === "exists") {
         return Promise.resolve({
           displayName: "exists",
@@ -140,6 +141,16 @@ describe("Wikilink Resolver", () => {
 
     expect(onMatch).not.toHaveBeenCalled();
     expect(onNoMatch).toHaveBeenCalledWith(token);
+  });
+
+  it("distinguishes a missing target from an unavailable link index", async () => {
+    const token = { raw: "[[indexfail]]", noteName: "indexfail", fragment: null };
+    const onMatch = vi.fn();
+    const onNoMatch = vi.fn();
+    const onError = vi.fn();
+    await resolveAndNavigate(token, "col-1", { onMatch, onNoMatch, onError });
+    expect(onNoMatch).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(token, expect.any(Error));
   });
 
   it("should navigate to block fragment correctly", () => {

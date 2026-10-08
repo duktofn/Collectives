@@ -1,0 +1,104 @@
+.recovery-dialog-backdrop {
+  z-index: 1400;
+}
+
+.recovery-dialog {
+  width: min(720px, calc(100vw - 28px));
+  max-height: min(86vh, 800px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  background: var(--bg-modal);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.recovery-dialog-heading,
+.recovery-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.recovery-dialog-heading h2 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.recovery-dialog-heading p,
+.recovery-draft-meta span,
+.recovery-preview-truncated {
+  margin-top: 4px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.recovery-draft-picker,
+.recovery-preview-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.recovery-draft-picker select {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--color-text-primary);
+}
+
+.recovery-draft-meta strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.recovery-preview-label textarea {
+  width: 100%;
+  min-height: 220px;
+  max-height: 44vh;
+  resize: vertical;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow: auto;
+  user-select: text;
+}
+
+.recovery-error {
+  padding: 8px 10px;
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  color: var(--color-danger);
+  overflow-wrap: anywhere;
+}
+
+.recovery-dialog-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--color-border);
+  padding-top: 10px;
+}
+
+@media (max-width: 560px) {
+  .recovery-dialog-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

@@ -1,7 +1,61 @@
 use crate::application::domain::{
-    Collection, CollectionMetadata, CustomFont, Entry, FileSnapshot, FsEntry, ResolveCandidate,
-    Settings, ZipConflict,
+    Collection, CollectionMetadata, ContentSearchPage, ContentSearchResult, CustomFont, Entry,
+    FileSnapshot, FsEntry, ResolveCandidate, Settings, ZipConflict,
 };
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentSearchResultDto {
+    pub display_name: String,
+    pub entry_id: String,
+    pub path: String,
+    pub snippet: String,
+    pub line_number: usize,
+    pub column_utf16: usize,
+    pub match_start_utf16: usize,
+    pub match_end_utf16: usize,
+}
+impl From<ContentSearchResult> for ContentSearchResultDto {
+    fn from(value: ContentSearchResult) -> Self {
+        Self {
+            display_name: value.display_name,
+            entry_id: value.entry_id,
+            path: value.path,
+            snippet: value.snippet,
+            line_number: value.line_number,
+            column_utf16: value.column_utf16,
+            match_start_utf16: value.match_start_utf16,
+            match_end_utf16: value.match_end_utf16,
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentSearchPageDto {
+    pub results: Vec<ContentSearchResultDto>,
+    pub offset: usize,
+    pub limit: usize,
+    pub total: usize,
+    pub has_more: bool,
+    pub truncated: bool,
+    pub scanned_files: usize,
+    pub skipped_files: usize,
+}
+impl From<ContentSearchPage> for ContentSearchPageDto {
+    fn from(value: ContentSearchPage) -> Self {
+        Self {
+            results: value.results.into_iter().map(Into::into).collect(),
+            offset: value.offset,
+            limit: value.limit,
+            total: value.total,
+            has_more: value.has_more,
+            truncated: value.truncated,
+            scanned_files: value.scanned_files,
+            skipped_files: value.skipped_files,
+        }
+    }
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -445,10 +499,12 @@ pub struct SettingsDto {
     pub color_h4: Option<String>,
     pub color_code_bg: Option<String>,
     pub color_code_text: Option<String>,
+    pub color_selection: Option<String>,
     pub color_link: Option<String>,
     pub color_link_hover: Option<String>,
     pub line_height: Option<f32>,
     pub custom_fonts: Option<Vec<CustomFontDto>>,
+    pub hide_unsupported_files: Option<bool>,
 }
 impl From<Settings> for SettingsDto {
     fn from(value: Settings) -> Self {
@@ -468,9 +524,11 @@ impl From<Settings> for SettingsDto {
             color_h4: value.color_h4,
             color_code_bg: value.color_code_bg,
             color_code_text: value.color_code_text,
+            color_selection: value.color_selection,
             color_link: value.color_link,
             color_link_hover: value.color_link_hover,
             line_height: value.line_height,
+            hide_unsupported_files: value.hide_unsupported_files,
             custom_fonts: value
                 .custom_fonts
                 .map(|fonts| fonts.into_iter().map(Into::into).collect()),
@@ -495,9 +553,11 @@ impl From<SettingsDto> for Settings {
             color_h4: value.color_h4,
             color_code_bg: value.color_code_bg,
             color_code_text: value.color_code_text,
+            color_selection: value.color_selection,
             color_link: value.color_link,
             color_link_hover: value.color_link_hover,
             line_height: value.line_height,
+            hide_unsupported_files: value.hide_unsupported_files,
             custom_fonts: value.custom_fonts.map(|fonts| {
                 fonts
                     .into_iter()

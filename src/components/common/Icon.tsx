@@ -22,7 +22,12 @@ interface IconProps extends JSX.SvgSVGAttributes<SVGSVGElement> {
     | "moon"
     | "monitor"
     | "download"
-    | "upload";
+    | "upload"
+    | "bookmark"
+    | "chevron-left"
+    | "list"
+    | "more"
+    | "clock";
   size?: number;
 }
 
@@ -90,6 +95,10 @@ export function Icon(props: IconProps) {
       {props.name === "chevron-right" && (
         <path d="m9 18 6-6-6-6" />
       )}
+      {props.name === "chevron-left" && <path d="m15 18-6-6 6-6" />}
+      {props.name === "list" && <><path d="M9 6h12M9 12h12M9 18h12" /><path d="M3 6h.01M3 12h.01M3 18h.01" /></>}
+      {props.name === "more" && <><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>}
+      {props.name === "clock" && <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>}
       {props.name === "chevron-down" && (
         <path d="m6 9 6 6 6-6" />
       )}
@@ -119,6 +128,9 @@ export function Icon(props: IconProps) {
           <circle cx="11" cy="11" r="8" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </>
+      )}
+      {props.name === "bookmark" && (
+        <path d="M6 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18l-6-4-6 4Z" />
       )}
       {props.name === "menu" && (
         <>

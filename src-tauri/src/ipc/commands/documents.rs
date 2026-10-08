@@ -29,3 +29,12 @@ pub fn write_file(
 ) -> Result<crate::repositories::documents::DocumentWriteReceipt, SafetyError> {
     crate::application::services::write_file(&state, path, content, expected_token)
 }
+
+#[tauri::command]
+pub fn create_file(
+    state: State<'_, AppServices>,
+    path: String,
+    content: String,
+) -> Result<crate::repositories::documents::DocumentWriteReceipt, SafetyError> {
+    crate::application::services::create_file(&state, path, content)
+}

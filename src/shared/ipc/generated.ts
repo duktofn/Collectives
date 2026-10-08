@@ -252,6 +252,21 @@ export const IPC_COMMANDS = [
     "result": "WriteReceipt"
   },
   {
+    "name": "create_file",
+    "handler": "ipc::commands::documents::create_file",
+    "args": [
+      {
+        "name": "path",
+        "type": "string"
+      },
+      {
+        "name": "content",
+        "type": "string"
+      }
+    ],
+    "result": "WriteReceipt"
+  },
+  {
     "name": "resolve_wikilink",
     "handler": "ipc::commands::links::resolve_wikilink",
     "args": [
@@ -284,6 +299,29 @@ export const IPC_COMMANDS = [
       }
     ],
     "result": "ResolveCandidate[]"
+  },
+  {
+    "name": "search_note_content",
+    "handler": "ipc::commands::links::search_note_content",
+    "args": [
+      {
+        "name": "collectionId",
+        "type": "string"
+      },
+      {
+        "name": "query",
+        "type": "string"
+      },
+      {
+        "name": "offset",
+        "type": "number | undefined"
+      },
+      {
+        "name": "limit",
+        "type": "number | undefined"
+      }
+    ],
+    "result": "ContentSearchPage"
   },
   {
     "name": "import_folder",
@@ -383,6 +421,14 @@ export const IPC_COMMANDS = [
       {
         "name": "style",
         "type": "string"
+      },
+      {
+        "name": "fontDataBase64",
+        "type": "string | undefined"
+      },
+      {
+        "name": "preferredFileName",
+        "type": "string | undefined"
       }
     ],
     "result": "CustomFont"
@@ -428,7 +474,7 @@ export const IPC_COMMANDS = [
         "type": "string"
       }
     ],
-    "result": "Settings"
+    "result": "ImportedTheme"
   },
   {
     "name": "watch_entry",

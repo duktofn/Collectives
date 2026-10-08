@@ -4,6 +4,13 @@ import { EditorMode, WikilinkFragment } from "../types";
 import { uiStore } from "./ui";
 import { applyMetadataContinuity, type MetadataEntryDelta } from "../features/editor/metadataContinuity";
 import { classifyFilePath, type FileKind } from "../shared/fileCapabilities.generated";
+import {
+  clearPersistedRecoveryDraft,
+  makeRecoveryDraftId,
+  scheduleRecoveryDraft,
+  scheduleRecoveryDraftCapture,
+  type RecoveryDraft,
+} from "../features/editor/recovery";
 
 function formatEditorError(error: unknown): string {
   const safety = api.asSafetyError(error);
@@ -21,10 +28,13 @@ interface EditorState {
   error: string | null;
   conflictKind: "file" | "metadata" | null;
   pendingNavigation: WikilinkFragment | null;
+  pendingSearchPosition: { path: string; lineNumber: number; columnUtf16: number } | null;
   pendingSelection: string | null;
   versionToken: string;
   generation: number;
   revision: number;
+  recoverySessionId: string;
+  recoveryCollectionId: string;
   fileKind: FileKind | null;
   lastMarkdownMode: EditorMode;
 }
@@ -35,6 +45,7 @@ interface SaveSnapshot {
   revision: number;
   content: string;
   expectedToken?: string;
+  recoverySessionId: string;
 }
 
 const [state, setState] = createStore<EditorState>({
@@ -48,9 +59,12 @@ const [state, setState] = createStore<EditorState>({
   error: null,
   conflictKind: null,
   pendingNavigation: null,
+  pendingSearchPosition: null,
   versionToken: "",
   generation: 0,
   revision: 0,
+  recoverySessionId: "",
+  recoveryCollectionId: "",
   pendingSelection: null,
   fileKind: null,
   lastMarkdownMode: "edit-render",
@@ -62,6 +76,17 @@ let activeSaveSnapshot: SaveSnapshot | null = null;
 let filesystemConflictEpoch = 0;
 let selectionRequest = 0;
 let openRequest = 0;
+let recoveryCollectionId = "";
+let currentContentReader: (() => string | null) | null = null;
+
+function getCurrentContent(): string {
+  try {
+    const live = currentContentReader?.();
+    return typeof live === "string" ? live : state.currentContent;
+  } catch {
+    return state.currentContent;
+  }
+}
 
 function currentSaveSnapshot(): SaveSnapshot | null {
   if (!state.openFilePath || state.isReadOnly || !state.isDirty) return null;
@@ -69,8 +94,9 @@ function currentSaveSnapshot(): SaveSnapshot | null {
     path: state.openFilePath,
     generation: state.generation,
     revision: state.revision,
-    content: state.currentContent,
+    content: getCurrentContent(),
     expectedToken: state.versionToken || undefined,
+    recoverySessionId: state.recoverySessionId,
   };
 }
 
@@ -113,7 +139,7 @@ async function drainSaveQueue(): Promise<void> {
         if (currentDisk.versionToken !== persistedVersionToken) {
           setState({
             openFileContent: currentDisk.content,
-            isDirty: state.currentContent !== currentDisk.content,
+            isDirty: getCurrentContent() !== currentDisk.content,
             versionToken: currentDisk.versionToken || persistedVersionToken,
             error: "external_change_conflict: the file changed while the save was completing; the draft was retained",
             conflictKind: "file",
@@ -124,15 +150,18 @@ async function drainSaveQueue(): Promise<void> {
           setState({ error: null, conflictKind: null });
         }
       }
+      clearPersistedRecoveryDraft(writeSnapshot.path, writeSnapshot.recoverySessionId, writeSnapshot.revision);
+      const currentContent = getCurrentContent();
       if (
         writeSnapshot.generation === state.generation
         && writeSnapshot.path === state.openFilePath
         && writeSnapshot.revision === state.revision
-        && state.currentContent === writeSnapshot.content
+        && currentContent === writeSnapshot.content
       ) {
         const retainedConflict = state.conflictKind === "metadata" ? "metadata" : null;
         setState({
           openFileContent: writeSnapshot.content,
+          currentContent: writeSnapshot.content,
           isDirty: false,
           versionToken: persistedVersionToken,
           conflictKind: retainedConflict,
@@ -162,6 +191,45 @@ async function drainSaveQueue(): Promise<void> {
 
 export const editorStore = {
   state,
+
+  setRecoveryCollectionId(collectionId: string | null) {
+    recoveryCollectionId = collectionId ?? "";
+    if (collectionId && state.openFilePath) setState("recoveryCollectionId", collectionId);
+  },
+
+  registerCurrentContentReader(reader: () => string): () => void {
+    currentContentReader = reader;
+    return () => {
+      if (currentContentReader === reader) currentContentReader = null;
+    };
+  },
+
+  getCurrentContent,
+
+  markContentChanged() {
+    if (state.isReadOnly) return;
+    const revision = state.revision + 1;
+    setState({ isDirty: true, revision });
+    const collectionId = state.recoveryCollectionId || recoveryCollectionId;
+    if (!state.openFilePath || !state.recoverySessionId || !collectionId) return;
+    const path = state.openFilePath;
+    const sessionId = state.recoverySessionId;
+    const entryId = uiStore.state.selectedEntryId || path;
+    const metadata = {
+      id: makeRecoveryDraftId(collectionId, entryId, path),
+      collectionId,
+      entryId,
+      path,
+      baseVersionToken: state.versionToken,
+      revision,
+      sessionId,
+      updatedAt: Date.now(),
+    };
+    scheduleRecoveryDraftCapture(metadata, () => {
+      if (state.openFilePath !== path || state.recoverySessionId !== sessionId) return null;
+      return getCurrentContent();
+    });
+  },
 
   async applyMetadataContinuity(changes: unknown[]): Promise<boolean> {
     const deltas = changes.filter((change): change is MetadataEntryDelta => {
@@ -245,6 +313,8 @@ export const editorStore = {
         versionToken: snapshot.versionToken,
         revision: 0,
         fileKind: snapshot.fileKind ?? classifyFilePath(path),
+        recoverySessionId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        recoveryCollectionId,
         conflictKind: null,
       });
     } catch (err: unknown) {
@@ -295,11 +365,14 @@ export const editorStore = {
       error: null,
       conflictKind: null,
       pendingNavigation: null,
+      pendingSearchPosition: null,
       pendingSelection: null,
       versionToken: "",
       generation,
       revision: 0,
       fileKind: null,
+      recoverySessionId: "",
+      recoveryCollectionId: "",
     });
     saveQueue = [];
     return generation;
@@ -323,20 +396,42 @@ export const editorStore = {
       error: null,
       conflictKind: null,
       pendingNavigation: null,
+      pendingSearchPosition: null,
       pendingSelection: null,
       versionToken: snapshot.versionToken,
       revision: 0,
       fileKind: snapshot.fileKind ?? classifyFilePath(path),
+      recoverySessionId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      recoveryCollectionId,
     });
     return true;
   },
 
   updateContent(content: string) {
     if (state.isReadOnly) return;
+    const revision = state.revision + 1;
     setState({
       currentContent: content,
       isDirty: content !== state.openFileContent,
-      revision: state.revision + 1,
+      revision,
+    });
+    const collectionId = state.recoveryCollectionId || recoveryCollectionId;
+    if (!state.openFilePath || !state.recoverySessionId || !collectionId) return;
+    if (content === state.openFileContent) {
+      clearPersistedRecoveryDraft(state.openFilePath, state.recoverySessionId, Number.MAX_SAFE_INTEGER);
+      return;
+    }
+    const entryId = uiStore.state.selectedEntryId || state.openFilePath;
+    scheduleRecoveryDraft({
+      id: makeRecoveryDraftId(collectionId, entryId, state.openFilePath),
+      collectionId,
+      entryId,
+      path: state.openFilePath,
+      baseVersionToken: state.versionToken,
+      content,
+      revision,
+      sessionId: state.recoverySessionId,
+      updatedAt: Date.now(),
     });
   },
 
@@ -351,6 +446,8 @@ export const editorStore = {
   },
 
   async closeFile(discard: boolean = false): Promise<boolean> {
+    const closingPath = state.openFilePath;
+    const closingRecoverySession = state.recoverySessionId;
     selectionRequest += 1;
     if (state.isDirty && !state.isReadOnly && !discard) {
       try { await this.saveFile(); } catch { return false; }
@@ -366,12 +463,18 @@ export const editorStore = {
       error: null,
       conflictKind: null,
       pendingNavigation: null,
+      pendingSearchPosition: null,
       pendingSelection: null,
       versionToken: "",
       generation: state.generation + 1,
       revision: 0,
       fileKind: null,
+      recoverySessionId: "",
+      recoveryCollectionId: "",
     });
+    if (discard && closingPath && closingRecoverySession) {
+      clearPersistedRecoveryDraft(closingPath, closingRecoverySession, Number.MAX_SAFE_INTEGER);
+    }
     uiStore.selectEntry(null);
     saveQueue = [];
     return true;
@@ -393,6 +496,7 @@ export const editorStore = {
       if (!isCurrent()) return false;
       const snapshot = typeof raw === "string" ? { content: raw, versionToken: "" } : raw;
       saveQueue = [];
+      clearPersistedRecoveryDraft(path, state.recoverySessionId, Number.MAX_SAFE_INTEGER);
       setState({
         openFileContent: snapshot.content,
         currentContent: snapshot.content,
@@ -402,6 +506,8 @@ export const editorStore = {
         conflictKind: null,
         generation: generation + 1,
         revision: 0,
+        recoverySessionId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        recoveryCollectionId: state.recoveryCollectionId || recoveryCollectionId,
       });
       return true;
     } catch (error) {
@@ -410,7 +516,7 @@ export const editorStore = {
     }
   },
 
-  async overwriteExternalVersion(): Promise<boolean> {
+  async overwriteExternalVersion(comparedDiskToken: string): Promise<boolean> {
     const path = state.openFilePath;
     if (!path || !state.isDirty || state.isReadOnly || state.isSaving || state.conflictKind !== "file") return false;
     const generation = state.generation;
@@ -420,6 +526,10 @@ export const editorStore = {
       const raw = await api.readFile(path);
       if (path !== state.openFilePath || generation !== state.generation || revision !== state.revision) return false;
       const snapshot = typeof raw === "string" ? { content: raw, versionToken: "" } : raw;
+      if (snapshot.versionToken !== comparedDiskToken) {
+        setState("error", "external_change_conflict: the file changed again after comparison; compare the current versions before overwriting");
+        return false;
+      }
       if (!snapshot.versionToken) {
         setState("error", "external_change_conflict: the current disk version has no version token; the draft was retained");
         return false;
@@ -435,6 +545,70 @@ export const editorStore = {
     } finally {
       if (!saveDrainPromise) setState("isSaving", false);
     }
+  },
+
+  async saveDraftCopy(path: string): Promise<boolean> {
+    const content = getCurrentContent();
+    try {
+      await api.createFile(path, content);
+      return true;
+    } catch (error) {
+      setState("error", formatEditorError(error));
+      return false;
+    }
+  },
+
+  async restoreRecoveredDraft(draft: RecoveryDraft, selectionId = draft.path): Promise<boolean> {
+    const request = ++openRequest;
+    let disk: { content: string; versionToken: string; fileKind?: FileKind } | null = null;
+    let readError: unknown = null;
+    try {
+      const raw = await api.readFile(draft.path);
+      disk = typeof raw === "string"
+        ? { content: raw, versionToken: "", fileKind: classifyFilePath(draft.path) ?? "markdown" }
+        : raw;
+    } catch (error) {
+      readError = error;
+    }
+    if (request !== openRequest) return false;
+    const generation = state.generation + 1;
+    const conflict = !disk || !draft.baseVersionToken || disk.versionToken !== draft.baseVersionToken;
+    const error = !disk
+      ? `recovered_file_missing: the original file is unavailable; the recovered draft is preserved. ${formatEditorError(readError)}`
+      : conflict
+        ? "external_change_conflict: the file changed since this draft was recovered; compare versions or save a copy"
+        : null;
+    uiStore.selectEntry(selectionId);
+    setState({
+      openFilePath: draft.path,
+      openFileContent: disk?.content ?? "",
+      currentContent: draft.content,
+      isDirty: draft.content !== (disk?.content ?? ""),
+      isReadOnly: false,
+      mode: (disk?.fileKind ?? classifyFilePath(draft.path)) === "text-source" ? "edit-source" : "edit-render",
+      isSaving: false,
+      error,
+      conflictKind: conflict ? "file" : null,
+      pendingNavigation: null,
+      pendingSearchPosition: null,
+      pendingSelection: null,
+      versionToken: disk?.versionToken ?? "",
+      generation,
+      revision: draft.revision + 1,
+      fileKind: disk?.fileKind ?? classifyFilePath(draft.path),
+      recoverySessionId: draft.sessionId,
+      recoveryCollectionId: draft.collectionId,
+    });
+    saveQueue = [];
+    if (!conflict) {
+      scheduleRecoveryDraft({ ...draft, revision: draft.revision + 1, updatedAt: Date.now() }, 0);
+    }
+    return true;
+  },
+
+  keepEditing() {
+    // The disk conflict remains active and blocks writes, while the local draft stays editable.
+    setState("error", null);
   },
 
   async selectEntry(id: string | null): Promise<boolean> {
@@ -458,6 +632,18 @@ export const editorStore = {
 
   clearPendingNavigation() {
     setState("pendingNavigation", null);
+  },
+
+  navigateToPosition(path: string, lineNumber: number, columnUtf16: number) {
+    setState("pendingSearchPosition", {
+      path,
+      lineNumber: Math.max(1, Math.floor(lineNumber)),
+      columnUtf16: Math.max(0, Math.floor(columnUtf16)),
+    });
+  },
+
+  clearPendingSearchPosition() {
+    setState("pendingSearchPosition", null);
   },
 
   get currentFileName(): string | null {

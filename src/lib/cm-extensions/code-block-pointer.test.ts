@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { EditorView, runScopeHandlers } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 import { baseEditorExtensions, getExtensionsForMode } from "./markdown-mode";
+import { isChartFencedCode } from "./code-block-widget";
 
 vi.mock("../../features/links", () => ({
   resolveWikilink: vi.fn(() => Promise.resolve(null)),
@@ -10,79 +11,25 @@ vi.mock("../../features/links", () => ({
 }));
 
 vi.mock("chart.js", () => {
-  const ChartMock = vi.fn(function ChartMock(this: { destroy: () => void }) {
-    this.destroy = vi.fn();
-  });
+  const ChartMock = vi.fn(function ChartMock(this: { destroy: () => void }) { this.destroy = vi.fn(); });
   Object.assign(ChartMock, { register: vi.fn() });
   return { Chart: ChartMock, registerables: [] };
 });
 
 const CODE_DOCUMENT = "Before\n\n```javascript\nconst x = 1;\nconsole.log(x);\n```\n\nAfter";
 
-function installJsdomTextGeometry() {
-  const rect = { left: 0, right: 100, top: 0, bottom: 16, width: 100, height: 16 };
-  Object.defineProperty(Range.prototype, "getClientRects", {
-    configurable: true,
-    value: () => [rect],
-  });
-  Object.defineProperty(Range.prototype, "getBoundingClientRect", {
-    configurable: true,
-    value: () => rect,
-  });
-}
-
-function mount() {
-  installJsdomTextGeometry();
+function mount(mode: "edit-render" | "view" = "edit-render", doc = CODE_DOCUMENT) {
   const parent = document.createElement("div");
   document.body.appendChild(parent);
   const view = new EditorView({
-    state: EditorState.create({
-      doc: CODE_DOCUMENT,
-      extensions: [...baseEditorExtensions, ...getExtensionsForMode("edit-render")],
-    }),
+    state: EditorState.create({ doc, extensions: [...baseEditorExtensions, ...getExtensionsForMode(mode)] }),
     parent,
   });
   return { view, parent };
 }
 
-function renderedCodeCoordinate(view: EditorView, sourceText: string, lineNumber: number) {
-  const code = view.dom.querySelector(".cm-codeblock-widget-container code");
-  expect(code).not.toBeNull();
-  expect(code?.textContent).toContain(sourceText);
-  const renderedText = code?.textContent ?? "";
-  const renderedLine = renderedText.split("\n").findIndex((line) => line.includes(sourceText));
-  expect(renderedLine).toBeGreaterThanOrEqual(0);
-  const rect = code?.getBoundingClientRect() ?? new DOMRect();
-  const lineHeight = 16;
-  return {
-    code: code as HTMLElement,
-    x: rect.left + 8,
-    y: rect.top + (renderedLine + 0.5) * lineHeight,
-    sourceLine: view.state.doc.line(lineNumber),
-  };
-}
-
-function dispatchMouse(target: Element, type: string, x: number, y: number, buttons = 0) {
-  target.dispatchEvent(new MouseEvent(type, {
-    bubbles: true,
-    cancelable: true,
-    clientX: x,
-    clientY: y,
-    button: 0,
-    buttons,
-  }));
-}
-
-function dispatchKey(view: EditorView, key: string, keyCode: number) {
-  const event = new KeyboardEvent("keydown", { key, code: key, keyCode, which: keyCode, bubbles: true, cancelable: true });
-  const before = view.state.selection.main.head;
-  view.contentDOM.dispatchEvent(event);
-  if (view.state.selection.main.head === before) expect(runScopeHandlers(view, event, "editor")).toBe(true);
-}
-
-describe("Feature 4.2 fenced-code ownership and pointer boundaries", () => {
+describe("source-owned fenced code rendering", () => {
   const mounted: { view: EditorView; parent: HTMLDivElement }[] = [];
-
   afterEach(() => {
     for (const { view, parent } of mounted.splice(0)) {
       view.destroy();
@@ -90,84 +37,64 @@ describe("Feature 4.2 fenced-code ownership and pointer boundaries", () => {
     }
   });
 
-  it("derives a rendered-code coordinate and enters the exact source offset on click", () => {
+  it("keeps code lines as CodeMirror text and hides only fence lines", () => {
     const mountedView = mount();
     mounted.push(mountedView);
     const { view } = mountedView;
-    const target = renderedCodeCoordinate(view, "console.log", 5);
-    const sourceOffset = target.sourceLine.from + "console".length;
-    vi.spyOn(view, "posAtCoords").mockReturnValue(sourceOffset);
+    const bodyLines = view.dom.querySelectorAll(".cm-codeblock-line:not(.cm-codeblock-fence-line):not(.cm-codeblock-fence-edit)");
+    expect(view.dom.querySelector(".cm-codeblock-widget-container")).toBeNull();
+    expect(bodyLines).toHaveLength(2);
+    expect(bodyLines[0].textContent).toBe("const x = 1;");
+    expect(bodyLines[1].textContent).toBe("console.log(x);");
+    expect(view.dom.querySelectorAll(".cm-codeblock-fence-placeholder")).toHaveLength(2);
 
-    expect(view.dom.querySelectorAll(".cm-codeblock-widget-container")).toHaveLength(1);
-    expect(view.dom.querySelectorAll(".cm-codeblock-line")).toHaveLength(0);
-    dispatchMouse(target.code, "mousedown", target.x, target.y);
-    dispatchMouse(target.code, "mouseup", target.x, target.y);
-    dispatchMouse(target.code, "click", target.x, target.y);
-
-    expect(view.state.selection.main.head).toBe(sourceOffset);
-    expect(view.dom.querySelectorAll(".cm-codeblock-widget-container")).toHaveLength(0);
-    expect(view.dom.querySelectorAll(".cm-codeblock-line")).toHaveLength(4);
+    const bodyLine = view.state.doc.line(4);
+    view.dispatch({ selection: { anchor: bodyLine.from + 4 } });
+    expect(Array.from(view.dom.querySelectorAll(".cm-codeblock-fence-edit"), line => line.textContent)).toEqual(["```javascript", "```"]);
+    expect(view.state.doc.sliceString(view.state.selection.main.head - 4, view.state.selection.main.head)).toBe("cons");
+    expect(view.dom.querySelectorAll(".cm-codeblock-line:not(.cm-codeblock-fence-line):not(.cm-codeblock-fence-edit)")).toHaveLength(2);
   });
 
-  it("keeps drag selection and keyboard entry on real document ranges across fences", () => {
-    const mountedView = mount();
+  it("keeps code selectable in read-only view without enabling edits", () => {
+    const mountedView = mount("view");
     mounted.push(mountedView);
     const { view } = mountedView;
-    const target = renderedCodeCoordinate(view, "console.log", 5);
-    const sourceLine = target.sourceLine;
-    const end = sourceLine.to;
-    vi.spyOn(view, "posAtCoords").mockReturnValueOnce(sourceLine.from).mockReturnValueOnce(end);
-
-    dispatchMouse(target.code, "mousedown", target.x, target.y, 1);
-    dispatchMouse(target.code, "mousemove", target.x + 24, target.y, 1);
-    dispatchMouse(target.code, "mouseup", target.x + 24, target.y);
-    expect(view.state.selection.main.from).toBe(sourceLine.from);
-    expect(view.state.selection.main.to).toBe(end);
-
-    vi.spyOn(view, "coordsAtPos").mockReturnValue({ left: 0, right: 0, top: 0, bottom: 16 });
-    vi.spyOn(view, "posAtCoords").mockReturnValue(sourceLine.from);
-    view.dispatch({ selection: { anchor: view.state.doc.line(3).to } });
-    view.focus();
-    dispatchKey(view, "ArrowDown", 40);
-    expect(view.state.selection.main.head).toBeGreaterThanOrEqual(view.state.doc.line(4).from);
-
-    view.dispatch({ selection: { anchor: view.state.doc.line(4).from + 4 } });
-    expect(view.state.selection.main.head).toBe(view.state.doc.line(4).from + 4);
-    view.focus();
-    dispatchKey(view, "Home", 36);
-    expect(view.state.selection.main.head).toBeGreaterThanOrEqual(view.state.doc.line(4).from);
-    expect(view.state.selection.main.head).toBeLessThanOrEqual(sourceLine.to);
-    dispatchKey(view, "End", 35);
-    expect(view.state.selection.main.head).toBeGreaterThanOrEqual(view.state.doc.line(4).from);
-    expect(view.state.selection.main.head).toBeLessThanOrEqual(sourceLine.to);
+    expect(view.state.facet(EditorState.readOnly)).toBe(true);
+    expect(view.contentDOM.getAttribute("contenteditable")).toBe("false");
+    expect(view.dom.querySelector(".cm-codeblock-widget-container")).toBeNull();
+    expect(view.dom.querySelectorAll(".cm-codeblock-line:not(.cm-codeblock-fence-line):not(.cm-codeblock-fence-edit)")).toHaveLength(2);
   });
 
-  it("owns source-line decorations and exposes no fenced-code atomic range", () => {
+  it("keeps an unterminated fence's final source line and leaves chart ownership alone", () => {
+    const openFence = mount("edit-render", "```text\nfirst\nlast");
+    mounted.push(openFence);
+    expect(openFence.view.dom.querySelectorAll(".cm-codeblock-line:not(.cm-codeblock-fence-line):not(.cm-codeblock-fence-edit)")).toHaveLength(2);
+    expect(openFence.view.dom.querySelector(".cm-codeblock-line-last")?.textContent).toBe("last");
+
+    const chart = mount("edit-render", "```chart\ntype: bar\n```");
+    mounted.push(chart);
+    const chartStart = chart.view.state.doc.line(1).from;
+    expect(isChartFencedCode(chart.view.state, chartStart)).toBe(true);
+    expect(chart.view.dom.querySelector(".cm-chart-widget-container")).not.toBeNull();
+    expect(chart.view.dom.querySelectorAll(".cm-codeblock-line")).toHaveLength(0);
+  });
+
+  it("does not give code blocks atomic ranges", () => {
     const mountedView = mount();
     mounted.push(mountedView);
     const { view } = mountedView;
-    const sourceLine = view.state.doc.line(5);
-    view.dispatch({ selection: { anchor: sourceLine.from } });
-
-    expect(view.dom.querySelectorAll(".cm-codeblock-widget-container")).toHaveLength(0);
-    expect(view.dom.querySelectorAll(".cm-codeblock-line")).toHaveLength(4);
-    let fencedFrom = -1;
-    let fencedTo = -1;
+    let from = -1;
+    let to = -1;
     syntaxTree(view.state).iterate({
       enter(node) {
-        if (node.name === "FencedCode") {
-          fencedFrom = node.from;
-          fencedTo = node.to;
-        }
+        if (node.name === "FencedCode") { from = node.from; to = node.to; }
       },
     });
-    expect(fencedFrom).toBeGreaterThanOrEqual(0);
-    expect(fencedTo).toBeGreaterThan(fencedFrom);
-    const hasFencedAtomicRange = view.state.facet(EditorView.atomicRanges).some((provider) => {
+    const atomicProviders = view.state.facet(EditorView.atomicRanges);
+    expect(atomicProviders.every((provider) => {
       let found = false;
-      provider(view).between(fencedFrom, fencedTo, () => { found = true; });
-      return found;
-    });
-    expect(hasFencedAtomicRange).toBe(false);
+      provider(view).between(from, to, () => { found = true; });
+      return !found;
+    })).toBe(true);
   });
 });

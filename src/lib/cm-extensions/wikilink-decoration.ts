@@ -1,18 +1,12 @@
-import { RangeSetBuilder, EditorState, Extension } from "@codemirror/state";
-import {
-  Decoration,
-  DecorationSet,
-  EditorView,
-  ViewPlugin,
-  ViewUpdate,
-} from "@codemirror/view";
-import { parseWikilink } from "../wikilink/parser";
-import { resolveAndNavigate } from "../wikilink/resolver";
-import { collectionsStore } from "../../stores/collections";
-import { editorStore } from "../../stores/editor";
-import { resolveWikilink } from "../../features/links";
-import { message } from "../../platform";
-import { EmptyWidget } from "./empty-widget";
+import { RangeSetBuilder, EditorState, Extension } from '@codemirror/state';
+import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
+import { parseWikilink } from '../wikilink/parser';
+import { resolveAndNavigate } from '../wikilink/resolver';
+import { collectionsStore } from '../../stores/collections';
+import { editorStore } from '../../stores/editor';
+import { resolveWikilink } from '../../features/links';
+import { EmptyWidget } from './empty-widget';
+import { clearWikilinkPreviewCache, wikilinkPreviewHandlers } from './wikilink-preview';
 
 interface DecSpec {
   from: number;
@@ -35,6 +29,7 @@ function setCacheValue(key: string, value: boolean) {
 
 export function clearWikilinkCache() {
   wikilinkCache.clear();
+  clearWikilinkPreviewCache();
 }
 
 class WikilinkDecorationPlugin {
@@ -51,8 +46,7 @@ class WikilinkDecorationPlugin {
     if (
       update.docChanged ||
       update.viewportChanged ||
-      update.selectionSet ||
-      update.transactions.some(tr => tr.reconfigured)
+      update.transactions.some((tr) => tr.reconfigured)
     ) {
       const { decorations, atomic } = this.buildDecorations(update.view);
       this.decorations = decorations;
@@ -64,7 +58,6 @@ class WikilinkDecorationPlugin {
     const decs: DecSpec[] = [];
     const atomicDecs: DecSpec[] = [];
     const doc = view.state.doc;
-    const selection = view.state.selection.main;
     const collectionId = collectionsStore.state.activeCollectionId;
 
     if (!collectionId) {
@@ -84,10 +77,6 @@ class WikilinkDecorationPlugin {
         const rawText = match[0];
         const parsed = parseWikilink(rawText);
         if (!parsed) continue;
-
-        const startLine = doc.lineAt(matchStart);
-        const endLine = doc.lineAt(matchEnd);
-        const isCursorInLine = selection.head >= startLine.from && selection.head <= endLine.to;
 
         const cacheKey = `${collectionId}:${parsed.noteName}`;
         if (!wikilinkCache.has(cacheKey)) {
@@ -111,58 +100,59 @@ class WikilinkDecorationPlugin {
         }
 
         const isValid = wikilinkCache.get(cacheKey) ?? true;
-        const linkClass = isValid ? "cm-wikilink" : "cm-wikilink cm-wikilink-broken";
+        const linkClass = isValid ? 'cm-wikilink' : 'cm-wikilink cm-wikilink-broken';
 
-        const hashIndex = rawText.indexOf("#");
+        const hashIndex = rawText.indexOf('#');
         const noteNameEnd = hashIndex !== -1 ? matchStart + hashIndex : matchEnd - 2;
 
         const valStart = Decoration.replace({ widget: new EmptyWidget() });
         const valEnd = Decoration.replace({ widget: new EmptyWidget() });
-        const valFrag = parsed.fragment && hashIndex !== -1 ? Decoration.replace({ widget: new EmptyWidget() }) : null;
+        const valFrag =
+          parsed.fragment && hashIndex !== -1
+            ? Decoration.replace({ widget: new EmptyWidget() })
+            : null;
 
-        if (!isCursorInLine) {
-          // Hide [[
+        // Hide [[
+        decs.push({
+          from: matchStart,
+          to: matchStart + 2,
+          value: valStart,
+        });
+
+        // Hide ]]
+        decs.push({
+          from: matchEnd - 2,
+          to: matchEnd,
+          value: valEnd,
+        });
+
+        // Hide fragment if present
+        if (valFrag) {
           decs.push({
-            from: matchStart,
-            to: matchStart + 2,
-            value: valStart,
+            from: noteNameEnd,
+            to: matchEnd - 2,
+            value: valFrag,
           });
+        }
 
-          // Hide ]]
-          decs.push({
-            from: matchEnd - 2,
-            to: matchEnd,
-            value: valEnd,
-          });
+        atomicDecs.push({
+          from: matchStart,
+          to: matchStart + 2,
+          value: valStart,
+        });
 
-          // Hide fragment if present
-          if (valFrag) {
-            decs.push({
-              from: noteNameEnd,
-              to: matchEnd - 2,
-              value: valFrag,
-            });
-          }
+        atomicDecs.push({
+          from: matchEnd - 2,
+          to: matchEnd,
+          value: valEnd,
+        });
 
+        if (valFrag) {
           atomicDecs.push({
-            from: matchStart,
-            to: matchStart + 2,
-            value: valStart,
+            from: noteNameEnd,
+            to: matchEnd - 2,
+            value: valFrag,
           });
-
-          atomicDecs.push({
-            from: matchEnd - 2,
-            to: matchEnd,
-            value: valEnd,
-          });
-
-          if (valFrag) {
-            atomicDecs.push({
-              from: noteNameEnd,
-              to: matchEnd - 2,
-              value: valFrag,
-            });
-          }
         }
 
         // Highlight only the note name part to prevent overlap with fragment replacement decoration
@@ -240,7 +230,7 @@ class WikilinkDecorationPlugin {
 const wikilinkClickEffect = EditorView.domEventHandlers({
   click(event, view) {
     const target = event.target as HTMLElement;
-    if (!target.classList.contains("cm-wikilink")) return false;
+    if (!target.classList.contains('cm-wikilink')) return false;
 
     const isEditable = !view.state.facet(EditorState.readOnly);
     if (isEditable && !event.ctrlKey && !event.metaKey) {
@@ -281,10 +271,16 @@ const wikilinkClickEffect = EditorView.domEventHandlers({
             }
           },
           onNoMatch: async (token) => {
-            await message(`Note "${token.noteName}" not found in this collection.`, {
-              title: "Note Not Found",
-              kind: "error",
-            });
+            window.dispatchEvent(
+              new CustomEvent('collectives:wikilink-missing', {
+                detail: { noteName: token.noteName },
+              })
+            );
+          },
+          onError: (_token, error) => {
+            window.dispatchEvent(
+              new CustomEvent('collectives:wikilink-error', { detail: { message: String(error) } })
+            );
           },
         });
         return true;
@@ -302,6 +298,7 @@ const wikilinkDecPlugin = ViewPlugin.fromClass(WikilinkDecorationPlugin, {
 export const wikilinkDecorationExtension: Extension = [
   wikilinkDecPlugin,
   wikilinkClickEffect,
+  wikilinkPreviewHandlers,
   EditorView.atomicRanges.of((view) => {
     const plugin = view.plugin(wikilinkDecPlugin);
     return plugin ? plugin.atomic : Decoration.none;

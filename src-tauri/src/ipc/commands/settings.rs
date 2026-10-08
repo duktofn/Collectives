@@ -17,9 +17,24 @@ pub fn import_font(
     family_name: String,
     weight: String,
     style: String,
+    font_data_base64: Option<String>,
+    preferred_file_name: Option<String>,
 ) -> Result<CustomFontDto, String> {
-    crate::application::services::import_font(&state, source_path, family_name, weight, style)
+    if let Some(data_base64) = font_data_base64 {
+        let file_name = preferred_file_name.ok_or_else(|| "Missing font file name".to_string())?;
+        crate::application::services::import_font_base64(
+            &state,
+            file_name,
+            family_name,
+            weight,
+            style,
+            data_base64,
+        )
         .map(Into::into)
+    } else {
+        crate::application::services::import_font(&state, source_path, family_name, weight, style)
+            .map(Into::into)
+    }
 }
 #[tauri::command]
 pub fn delete_font(state: State<'_, AppServices>, file_name: String) -> Result<(), String> {
@@ -41,6 +56,6 @@ pub fn export_theme(
 pub fn import_theme(
     state: State<'_, AppServices>,
     theme_path: String,
-) -> Result<SettingsDto, String> {
-    crate::application::services::import_theme(&state, theme_path).map(Into::into)
+) -> Result<crate::theme_io::ImportedTheme, String> {
+    crate::application::services::import_theme(&state, theme_path)
 }

@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   asSafetyError: vi.fn(() => null),
 }));
 
-vi.mock("../features/collections", () => ({ getCollections: mocks.getCollections, reconcileCollectionSnapshot: mocks.reconcileCollectionSnapshot, initializeIdentityCache: vi.fn(), validateEntries: vi.fn(async () => []), detectMovedEntry: vi.fn(async () => null), ...Object.fromEntries(["createCollection", "updateCollection", "deleteCollection", "addFileEntries", "addFolderRef", "createGroup", "renameGroup", "removeEntry", "deleteGroupAndPromote", "moveEntry", "applyCollectionMutationV2", "migrationStatus", "migrationRetry"].map((name) => [name, vi.fn()])) }));
+vi.mock("../features/collections", () => ({ getCollections: mocks.getCollections, reconcileCollectionSnapshot: mocks.reconcileCollectionSnapshot, initializeIdentityCache: vi.fn(), validateEntries: vi.fn(async () => []), detectMovedEntry: vi.fn(async () => null), ...Object.fromEntries(["createCollection", "updateCollection", "deleteCollection", "addEntry", "addFileEntries", "addFolderRef", "createGroup", "renameGroup", "removeEntry", "deleteGroupAndPromote", "moveEntry", "applyCollectionMutationV2", "migrationStatus", "migrationRetry"].map((name) => [name, vi.fn()])) }));
 vi.mock("../features/filesystem", () => ({ syncCollectionWatches: mocks.syncCollectionWatches, clearWatches: vi.fn(), watchEntry: vi.fn(), unwatchEntry: vi.fn(), watchFolder: vi.fn(), unwatchFolder: vi.fn() }));
 vi.mock("../features/archive", () => ({ importFolder: vi.fn(), importZip: vi.fn(), exportCollectionToFolder: vi.fn(), exportCollectionToZip: vi.fn() }));
 vi.mock("../features/editor", () => ({ readFile: mocks.readFile, writeFile: mocks.writeFile, asSafetyError: mocks.asSafetyError }));
@@ -66,7 +66,7 @@ describe("live Phase 3 collection/feed integration", () => {
     expect(conflict.accepted).toBe(true);
     expect(editorStore.state.openFilePath).toBe("renamed.md");
     expect(editorStore.state.isDirty).toBe(true);
-    expect(editorStore.state.error).toContain("external_change_conflict");
+    expect(editorStore.state.error).toContain("metadata_conflict");
   });
 
   it("does not reload on ordered filesystem feeds, and performs one live snapshot fallback on gaps/overflow", async () => {
