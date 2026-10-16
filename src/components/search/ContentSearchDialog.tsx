@@ -2,7 +2,7 @@ import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { createUniqueId } from "solid-js";
 import { searchNoteContent } from "../../features/links";
 import { createRequestGeneration } from "../../features/links/requestGeneration";
-import type { ContentSearchPage, ContentSearchResult } from "../../shared/ipc/client";
+import type { ContentSearchPage, ContentSearchResult } from "../../features/links";
 import { ModalLayer } from "../common/ModalLayer";
 import { Icon } from "../common/Icon";
 import { formatIpcError } from "../../shared/ipc/errors";

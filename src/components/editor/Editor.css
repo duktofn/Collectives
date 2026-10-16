@@ -780,8 +780,8 @@
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  margin: 20px 0;
-  padding: 40px 64px 40px 0;
+  margin: 8px 0;
+  padding: 0 72px 0 0;
   max-width: 100%;
   overflow: visible;
 }
@@ -900,11 +900,13 @@
 }
 
 .cm-table-column-control-top {
-  top: 5px;
+  top: 0;
+  transform: translateY(-100%);
 }
 
 .cm-table-column-control-bottom {
-  bottom: 5px;
+  bottom: 0;
+  transform: translateY(100%);
 }
 
 .btn-table-control {
@@ -938,6 +940,7 @@
 
 /* Chart Widget */
 .cm-chart-widget-container {
+  position: relative;
   margin: 24px 0;
   background-color: var(--bg-secondary);
   border: 1px solid var(--color-border);
@@ -947,8 +950,49 @@
 
 .cm-chart-wrapper {
   position: relative;
-  cursor: pointer;
+  cursor: default;
 }
+
+.cm-chart-widget-container,
+.chart-config-preview {
+  container: chart-layout / inline-size;
+}
+
+.chart-presentation,
+.chart-presentation > div {
+  min-width: 0;
+}
+
+/* Round charts keep a vertical legend alongside the plot when both fit. */
+@container chart-layout (min-width: 420px) {
+  .chart-presentation:has(> .chart-percentage-legend:not([hidden])) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(140px, 25%, 220px);
+    align-items: center;
+    gap: 20px;
+  }
+
+  .chart-presentation > .chart-percentage-legend {
+    grid-template-columns: minmax(0, 1fr);
+    margin-top: 0;
+  }
+}
+
+.chart-actions-host { position: absolute; top: 8px; right: 8px; z-index: 5; }
+.chart-menu-trigger { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border-radius: 7px; border: 1px solid var(--color-border); color: var(--color-text-secondary); background: var(--bg-primary); cursor: pointer; opacity: 0; transition: opacity 120ms; }
+.cm-chart-widget-container:hover .chart-menu-trigger, .cm-chart-widget-container:focus-within .chart-menu-trigger, .chart-menu-trigger[aria-expanded="true"] { opacity: 1; }
+.chart-menu-trigger:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.chart-percentage-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 5px 12px; margin-top: 12px; }
+.chart-percentage-legend[hidden] { display: none; }
+.chart-percentage-item { display: flex; align-items: center; gap: 7px; padding: 5px 7px; min-width: 0; border: 0; border-radius: 5px; background: transparent; color: var(--color-text-primary); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.chart-percentage-item:hover { background: var(--bg-active); }
+.chart-percentage-item > span:not(.chart-percentage-swatch) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-percentage-item strong { margin-left: auto; font-variant-numeric: tabular-nums; }
+.chart-percentage-item.is-hidden { opacity: 0.5; text-decoration: line-through; }
+.chart-percentage-swatch { display: inline-block; flex: 0 0 9px; height: 9px; border-radius: 3px; }
+.chart-percentage-item:focus-visible { outline: 2px solid var(--color-accent); }
+@media (hover: none) { .chart-menu-trigger { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .chart-menu-trigger { transition: none; } }
 
 .cm-chart-editor-wrapper {
   margin-top: 12px;
@@ -1037,6 +1081,32 @@
 }
 
 .cm-codeblock-fence-placeholder { display: none; }
+
+.cm-codeblock-language-header {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 26px;
+  padding: 4px 16px;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: var(--color-code-bg);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.cm-codeblock-language-name {
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--bg-active);
+}
+
+.cm-codeblock-language-header + .cm-codeblock-line-first {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
 
 .cm-codeblock-fence-edit { color: var(--color-text-secondary); }
 

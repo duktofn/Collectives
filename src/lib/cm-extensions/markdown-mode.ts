@@ -2,7 +2,7 @@ import { Compartment, Extension, EditorState } from "@codemirror/state";
 import { autocompletion } from "@codemirror/autocomplete";
 import { markdown } from "@codemirror/lang-markdown";
 import { tableMarkdownExtension } from "./table-markdown-extension";
-import { languages } from "@codemirror/language-data";
+import { codeLanguages } from './code-languages';
 import { indentOnInput } from "@codemirror/language";
 import { EditorView, drawSelection, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, standardKeymap } from "@codemirror/commands";
@@ -19,12 +19,18 @@ import { delimiterPairExtension } from "./delimiter-pairs";
 import { formattingKeymapExtension } from "./formatting-keymap";
 import { slashTemplateCompletionSource } from "./slash-template-autocomplete";
 import type { FileKind } from "../../shared/fileCapabilities.generated";
+import { editorLayoutExtension } from './editor-layout';
+import { codeSyntaxHighlighting, sourceCodeExtensions } from './code-presentation';
 
-const sourceMarkdownAutocomplete = autocompletion({ override: [slashTemplateCompletionSource], activateOnTyping: true });
-const renderMarkdownAutocomplete = autocompletion({ override: [wikilinkCompletionSource, slashTemplateCompletionSource], activateOnTyping: true });
+// Slash/WikiLink completion is explicitly requested by typing its marker.
+// Accept Enter as soon as its result is visible, including fast command input.
+const sourceMarkdownAutocomplete = autocompletion({ override: [slashTemplateCompletionSource], activateOnTyping: true, interactionDelay: 0 });
+const renderMarkdownAutocomplete = autocompletion({ override: [wikilinkCompletionSource, slashTemplateCompletionSource], activateOnTyping: true, interactionDelay: 0 });
 
 export const baseEditorExtensions: Extension[] = [
-  markdown({ codeLanguages: languages, extensions: [tableMarkdownExtension] }),
+  editorLayoutExtension,
+  markdown({ codeLanguages, extensions: [tableMarkdownExtension] }),
+  codeSyntaxHighlighting,
   history(),
   drawSelection(),
   indentOnInput(),
@@ -35,6 +41,8 @@ export const baseEditorExtensions: Extension[] = [
 ];
 
 export const textSourceEditorExtensions: Extension[] = [
+  editorLayoutExtension,
+  codeSyntaxHighlighting,
   history(),
   drawSelection(),
   indentOnInput(),
@@ -42,8 +50,8 @@ export const textSourceEditorExtensions: Extension[] = [
   keymap.of([...defaultKeymap, ...standardKeymap, ...historyKeymap]),
 ];
 
-export function getBaseExtensionsForFile(kind: FileKind | null): Extension[] {
-  return kind === "text-source" ? textSourceEditorExtensions : baseEditorExtensions;
+export function getBaseExtensionsForFile(kind: FileKind | null, path = ''): Extension[] {
+  return kind === "text-source" ? [textSourceEditorExtensions, sourceCodeExtensions(path)] : baseEditorExtensions;
 }
 
 export const modeCompartment = new Compartment();

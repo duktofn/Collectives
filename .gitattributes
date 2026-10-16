@@ -1,0 +1,7 @@
+* text=auto
+
+# These files are compared byte-for-byte with their generators on every OS.
+src/shared/ipc/generated.ts text eol=lf
+src/shared/fileCapabilities.generated.ts text eol=lf
+src-tauri/src/ipc/generated.rs text eol=lf
+src-tauri/src/file_capabilities_generated.rs text eol=lf

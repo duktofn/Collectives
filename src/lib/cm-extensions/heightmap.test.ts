@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { syntaxTree } from "@codemirror/language";
+import { forceParsing, syntaxTree } from "@codemirror/language";
 import {
   baseEditorExtensions,
   getExtensionsForMode,
@@ -40,6 +40,8 @@ function mountEditorView(doc: string, mode: "edit-source" | "edit-render") {
   });
 
   view.requestMeasure();
+  // Parsing has a time budget; under a loaded runner it may finish after mount.
+  forceParsing(view, view.state.doc.length, 1000);
   return { view, parent };
 }
 

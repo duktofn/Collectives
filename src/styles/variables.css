@@ -11,6 +11,7 @@
   --color-text-muted: #a39f96;
   
   --color-accent: #e57e54;
+  --accent-hover-target: #ffffff;
   --color-accent-hover: #ee9570;
   --color-accent-bg: rgba(229, 126, 84, 0.12);
   --color-on-accent: #191816;
@@ -78,6 +79,7 @@
   --color-text-muted: #706b64;
   
   --color-accent: #c44e24;
+  --accent-hover-target: #000000;
   --color-accent-hover: #b8441e;
   --color-accent-bg: rgba(217, 98, 54, 0.08);
   --color-on-accent: #ffffff;
@@ -114,6 +116,7 @@
     --color-text-muted: #706b64;
     
     --color-accent: #c44e24;
+    --accent-hover-target: #000000;
     --color-accent-hover: #b8441e;
     --color-accent-bg: rgba(217, 98, 54, 0.08);
     --color-on-accent: #ffffff;

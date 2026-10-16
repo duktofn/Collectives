@@ -196,7 +196,8 @@ class TableWidget extends WidgetType {
   }
 
   get estimatedHeight(): number {
-    return Math.max(112, 88 + (this.table.rows.length + 1) * 36);
+    // Controls float outside the table; they no longer reserve vertical gutters.
+    return 4 + (this.table.rows.length + 1) * 40;
   }
 
   toDOM(view: EditorView): HTMLElement {

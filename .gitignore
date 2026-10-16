@@ -1,5 +1,6 @@
 node_modules
 dist
+/release/
 .agents
 artifacts/phase0/
 artifacts/phase1/

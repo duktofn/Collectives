@@ -4,7 +4,7 @@ import { FILE_PICKER_EXTENSIONS } from "../shared/fileCapabilities.generated";
 export { ask, message };
 
 export async function pickFiles(title: string): Promise<string[] | null> {
-  const selected = await open({ multiple: true, title, filters: [{ name: "Supported text files", extensions: [...FILE_PICKER_EXTENSIONS] }] });
+  const selected = await open({ multiple: true, title, filters: [{ name: "All files", extensions: ["*"] }, { name: "Common text files", extensions: [...FILE_PICKER_EXTENSIONS] }] });
   if (Array.isArray(selected)) return selected;
   return selected ? [selected] : null;
 }
@@ -33,7 +33,7 @@ export async function saveThemeDialog(title: string): Promise<string | null> {
 }
 
 export async function saveDocumentDialog(title: string, defaultPath: string): Promise<string | null> {
-  return save({ title, defaultPath, filters: [{ name: "Supported text files", extensions: [...FILE_PICKER_EXTENSIONS] }] });
+  return save({ title, defaultPath, filters: [{ name: "All files", extensions: ["*"] }, { name: "Common text files", extensions: [...FILE_PICKER_EXTENSIONS] }] });
 }
 
 export async function pickFontFile(title: string): Promise<string | null> {

@@ -9,10 +9,9 @@ import {
 import { Decoration, DecorationSet, EditorView, ViewPlugin, WidgetType } from '@codemirror/view';
 import type { SyntaxNode } from '@lezer/common';
 import { editorModeFacet } from './facet';
-import { codePointerSelection } from './code-pointer-selection';
 
 export function isChartFencedCode(state: EditorState, nodeFrom: number): boolean {
-  return /^ {0,3}(?:`{3,}|~{3,})chart(?:\s|$)/.test(state.doc.lineAt(nodeFrom).text);
+  return /^ {0,3}(?:`{3,}|~{3,})chart\s*$/.test(state.doc.lineAt(nodeFrom).text);
 }
 
 function fencedCodeAt(state: EditorState, head: number): { from: number; to: number } | null {
@@ -66,6 +65,70 @@ class HiddenFenceWidget extends WidgetType {
   }
 }
 
+class CodeLanguageWidget extends WidgetType {
+  constructor(readonly language: string) {
+    super();
+  }
+
+  eq(other: CodeLanguageWidget) {
+    return this.language === other.language;
+  }
+
+  get estimatedHeight() {
+    return 26;
+  }
+
+  toDOM() {
+    const names: Record<string, string> = {
+      cpp: 'C++',
+      'c++': 'C++',
+      cxx: 'C++',
+      cc: 'C++',
+      csharp: 'C#',
+      'c#': 'C#',
+      cs: 'C#',
+      c: 'C',
+      json: 'JSON',
+      jsonc: 'JSONC',
+      text: 'Text',
+      txt: 'Text',
+      plaintext: 'Text',
+      plain: 'Text',
+      js: 'JavaScript',
+      javascript: 'JavaScript',
+      jsx: 'JSX',
+      ts: 'TypeScript',
+      typescript: 'TypeScript',
+      tsx: 'TSX',
+      py: 'Python',
+      python: 'Python',
+      rs: 'Rust',
+      rust: 'Rust',
+      html: 'HTML',
+      css: 'CSS',
+      sql: 'SQL',
+      yaml: 'YAML',
+      yml: 'YAML',
+      sh: 'Shell',
+      shell: 'Shell',
+      bash: 'Bash',
+      md: 'Markdown',
+      markdown: 'Markdown',
+      java: 'Java',
+      go: 'Go',
+    };
+    const label = names[this.language.toLowerCase()] ?? (this.language || 'Text');
+    const header = document.createElement('div');
+    header.className = 'cm-codeblock-language-header';
+    header.dataset.language = this.language || 'text';
+    const badge = document.createElement('span');
+    badge.className = 'cm-codeblock-language-name';
+    badge.textContent = label;
+    header.appendChild(badge);
+    return header;
+  }
+}
+
 const hiddenFence = Decoration.replace({
   block: true,
   inclusive: false,
@@ -88,6 +151,7 @@ function buildCodeBlockDecorations(
       const openingMatch = first.text.match(/^ {0,3}(`{3,}|~{3,})/);
       if (!openingMatch) return false;
       const marker = openingMatch[1];
+      const language = first.text.slice(openingMatch[0].length).trim().split(/\s+/)[0];
       const hasClosingFence = last.number > first.number && closingFence(last.text, marker);
       const firstBodyLine = first.number + 1;
       const lastBodyLine = last.number - (hasClosingFence ? 1 : 0);
@@ -100,9 +164,20 @@ function buildCodeBlockDecorations(
           // A line class has heightRelevant=false in CodeMirror. Collapsing it
           // via CSS leaves stale hit-test heights outside the measured viewport.
           // This direct block replacement declares the hidden source line and
-          // its zero height to the editor's height map, including its newline.
+          // its height to the editor's height map, including its newline.
           const end = Math.min(state.doc.length, line.to + 1);
-          if (end > line.from) builder.add(line.from, end, hiddenFence);
+          if (end > line.from)
+            builder.add(
+              line.from,
+              end,
+              number === first.number
+                ? Decoration.replace({
+                    block: true,
+                    inclusive: false,
+                    widget: new CodeLanguageWidget(language),
+                  })
+                : hiddenFence
+            );
           continue;
         }
         const classes = ['cm-codeblock-line'];
@@ -124,6 +199,7 @@ const codeBlockDecorationField = StateField.define<{
   decorations: DecorationSet;
   active: number[];
   pointerSelecting: boolean;
+  tree: ReturnType<typeof syntaxTree>;
 }>({
   create(state) {
     const active = activeFencePositions(state);
@@ -131,6 +207,7 @@ const codeBlockDecorationField = StateField.define<{
       decorations: buildCodeBlockDecorations(state, active),
       active,
       pointerSelecting: false,
+      tree: syntaxTree(state),
     };
   },
   update(value, transaction) {
@@ -147,11 +224,13 @@ const codeBlockDecorationField = StateField.define<{
           ? value.active.map((position) => transaction.changes.mapPos(position))
           : activeFencePositions(transaction.state);
     const changed = active.join(',') !== value.active.join(',');
+    const tree = syntaxTree(transaction.state);
     return {
       active,
       pointerSelecting,
+      tree,
       decorations:
-        transaction.docChanged || transaction.reconfigured || changed
+        transaction.docChanged || transaction.reconfigured || changed || tree !== value.tree
           ? buildCodeBlockDecorations(transaction.state, active)
           : value.decorations,
     };
@@ -188,8 +267,8 @@ const codePointerTracker = ViewPlugin.define(
 
 /**
  * Fenced code stays as ordinary CodeMirror text. These line decorations style
- * the body and collapse inactive Markdown fence lines. Write exposes the full
+ * the body and replace the inactive opening fence with a language label. Write exposes the full
  * fence, including its language, for the block under selection. Pointer,
  * keyboard, selection, and copy behavior to CodeMirror itself.
  */
-export const codeBlockWidgetExtension: Extension = [codeBlockDecorationField, codePointerTracker, codePointerSelection];
+export const codeBlockWidgetExtension: Extension = [codeBlockDecorationField, codePointerTracker];

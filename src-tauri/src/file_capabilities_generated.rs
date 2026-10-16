@@ -50,12 +50,14 @@ pub fn classify_extension(extension: &str) -> Option<FileKind> {
         "cfg" => Some(FileKind::TextSource),
         "conf" => Some(FileKind::TextSource),
         "log" => Some(FileKind::TextSource),
-        _ => None,
+        _ => Some(FileKind::TextSource),
     }
 }
 
 pub fn classify_path(path: &std::path::Path) -> Option<FileKind> {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .and_then(classify_extension)
+    classify_extension(
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .unwrap_or(""),
+    )
 }

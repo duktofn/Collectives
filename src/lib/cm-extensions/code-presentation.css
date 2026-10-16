@@ -1,0 +1,103 @@
+:root {
+  --syntax-modifier: #e891bd;
+  --syntax-variable: #c2a7ec;
+  --syntax-string: #a8c97b;
+  --syntax-number: #e8b86e;
+  --syntax-comment: #a4a098;
+  --syntax-type: #7fbfdf;
+  --syntax-property: #c2a7ec;
+}
+:root[data-theme='light'] {
+  --syntax-modifier: #813994;
+  --syntax-variable: #6b3999;
+  --syntax-string: #3b6622;
+  --syntax-number: #8f540f;
+  --syntax-comment: #6d6a65;
+  --syntax-type: #185c88;
+  --syntax-property: #6b3999;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --syntax-modifier: #813994;
+    --syntax-variable: #6b3999;
+    --syntax-string: #3b6622;
+    --syntax-number: #8f540f;
+    --syntax-comment: #6d6a65;
+    --syntax-type: #185c88;
+    --syntax-property: #6b3999;
+  }
+}
+:is(.cm-codeblock-line, .cm-source-editor) .cm-token-keyword {
+  color: var(--color-text-primary);
+}
+:is(.cm-codeblock-line, .cm-source-editor) .cm-token-modifier {
+  color: var(--syntax-modifier);
+}
+:is(.cm-codeblock-line, .cm-source-editor) .cm-token-variable {
+  color: var(--syntax-variable);
+}
+:is(.cm-codeblock-line, .cm-source-editor) .cm-token-string {
+  color: var(--syntax-string);
+}
+:is(.cm-codeblock-line, .cm-source-editor) .cm-token-number {
+  color: var(--syntax-number);
+}
+:is(.cm-codeblock-line, .cm-source-editor) .cm-token-comment {
+  color: var(--syntax-comment);
+  font-style: italic;
+}
+:is(.cm-codeblock-line, .cm-source-editor) .cm-token-type {
+  color: var(--syntax-type);
+}
+:is(.cm-codeblock-line, .cm-source-editor) .cm-token-property {
+  color: var(--syntax-property);
+}
+:is(.cm-codeblock-line, .cm-source-editor) .cm-token-function {
+  color: var(--color-text-primary);
+}
+:is(.cm-codeblock-line, .cm-source-editor) .cm-token-invalid {
+  text-decoration: underline wavy var(--color-danger);
+}
+.editor-workspace .cm-editor .cm-codeblock-line {
+  color: var(--color-text-primary);
+}
+.editor-workspace .cm-editor .cm-codeblock-fence-edit {
+  color: var(--color-text-secondary);
+}
+.editor-workspace .cm-editor.cm-source-editor {
+  font-family: var(--font-mono);
+  background: var(--bg-primary);
+}
+.editor-workspace .cm-source-editor .cm-content {
+  max-width: none;
+  margin: 0;
+  padding: 12px 8px 64px;
+}
+.editor-workspace .cm-source-editor .cm-scroller {
+  padding: 0;
+}
+.cm-source-editor .cm-gutters {
+  background: var(--bg-primary);
+  color: var(--color-text-muted);
+  border: none;
+}
+.cm-source-editor .cm-lineNumbers .cm-gutterElement {
+  min-width: 3ch;
+  padding: 0 8px;
+}
+.cm-source-editor .cm-activeLine,
+.cm-source-editor .cm-activeLineGutter {
+  background: transparent;
+}
+.cm-source-editor .cm-lineNumbers .cm-activeLineGutter {
+  color: var(--color-accent);
+}
+.cm-source-editor .cm-matchingBracket {
+  background: var(--bg-active);
+  outline: 1px solid var(--color-border-hover);
+}
+.cm-source-editor .cm-foldPlaceholder {
+  background: var(--bg-active);
+  color: var(--color-text-secondary);
+  border-color: var(--color-border);
+}

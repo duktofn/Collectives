@@ -204,6 +204,17 @@
 }
 
 /* Theme Mode Switcher */
+.theme-accent-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.theme-accent-controls .color-input-wrapper {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
 .theme-mode-options {
   display: flex;
   gap: 8px;

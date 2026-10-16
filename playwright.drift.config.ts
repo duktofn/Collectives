@@ -9,7 +9,7 @@ export default defineConfig({
     reuseExistingServer: true,
     timeout: 120_000,
   },
-  testMatch: 'code-click-drift.spec.ts',
+  testMatch: ['code-click-drift.spec.ts', 'editor-layout-interaction.spec.ts'],
   timeout: 60_000,
   projects: [
     { name: 'scale-1', use: { deviceScaleFactor: 1 } },

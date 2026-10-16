@@ -5,6 +5,8 @@ import { Icon } from "../common/Icon";
 import { ToolbarMenu } from "../common/ToolbarMenu";
 import { collectionsStore } from "../../stores/collections";
 import { requestMarkdownTemplateInsert, type MarkdownTemplate } from "../../lib/editorCommands";
+import { requestDocumentFormat } from '../../lib/editorCommands';
+import { canFormatDocument } from '../../lib/documentFormatting';
 
 interface EditorToolbarProps {
   canGoBack: () => boolean;
@@ -15,8 +17,18 @@ interface EditorToolbarProps {
 
 export function EditorToolbar(props: EditorToolbarProps) {
   const [copyMessage, setCopyMessage] = createSignal("");
+  const [formatting, setFormatting] = createSignal(false);
   let messageTimer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => clearTimeout(messageTimer));
+  const clearMessage = () => {
+    clearTimeout(messageTimer);
+    setCopyMessage("");
+  };
+  const showMessage = (message: string) => {
+    clearMessage();
+    setCopyMessage(message);
+    messageTimer = setTimeout(() => setCopyMessage(""), 3000);
+  };
   const getFileName = () => {
     const path = editorStore.state.openFilePath;
     if (!path) return "";
@@ -39,16 +51,23 @@ export function EditorToolbar(props: EditorToolbarProps) {
   const copyToClipboard = async (value: string, label: string) => {
     try {
       await navigator.clipboard.writeText(value);
-      setCopyMessage(`${label} copied`);
-      clearTimeout(messageTimer);
-      messageTimer = setTimeout(() => setCopyMessage(""), 2400);
+      showMessage(`${label} copied`);
     } catch {
-      setCopyMessage("Clipboard is unavailable");
+      showMessage("Clipboard is unavailable");
     }
   };
 
   const insertTemplate = (template: MarkdownTemplate) => {
-    if (!requestMarkdownTemplateInsert(template)) setCopyMessage("Place the cursor in editable Markdown outside a code block.");
+    if (!requestMarkdownTemplateInsert(template)) showMessage("Place the cursor in editable Markdown outside a code block.");
+  };
+  const formatDocument = async () => {
+    if (formatting()) return;
+    setFormatting(true);
+    try {
+      if (await requestDocumentFormat()) showMessage('Document formatted');
+    } catch (error) {
+      showMessage(`Could not format: ${error instanceof Error ? error.message : String(error)}`);
+    } finally { setFormatting(false); }
   };
 
   return (
@@ -77,8 +96,14 @@ export function EditorToolbar(props: EditorToolbarProps) {
           </div>
         </Show>
         <div class="editor-secondary-actions">
+          <Show when={editorStore.state.fileKind === 'text-source' && !editorStore.state.isReadOnly && canFormatDocument(editorStore.state.openFilePath ?? '')}>
+            <button type="button" class="editor-template-btn" aria-label="Format document" disabled={formatting()} onClick={() => void formatDocument()}>
+              {formatting() ? 'Formatting…' : 'Format'}
+            </button>
+          </Show>
           <Show when={!editorStore.state.isReadOnly && editorStore.state.fileKind === "markdown" && editorStore.state.mode !== "view"}>
             <ToolbarMenu label="Insert Markdown template" class="editor-template-btn" trigger={<><Icon name="plus" size={16} /><span>Insert</span></>}
+              onOpen={clearMessage}
               items={[
                 { label: "Heading", onSelect: () => insertTemplate("heading") },
                 { label: "Checklist item", onSelect: () => insertTemplate("checklist") },
@@ -91,6 +116,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
             <button class="editor-reference-toggle" type="button" aria-label="Outline and backlinks" title="Outline and backlinks" aria-expanded={uiStore.state.isReferencePanelOpen} onClick={() => uiStore.toggleReferencePanel()}><Icon name="list" size={17} /></button>
           </Show>
           <ToolbarMenu label="More note actions" trigger={<Icon name="more" size={18} />}
+            onOpen={clearMessage}
             items={[
               { label: "Copy path", onSelect: () => void copyToClipboard(getRelativePath(), "Path") },
               { label: "Copy WikiLink", onSelect: () => void copyToClipboard(`[[${editorStore.currentFileName ?? ""}]]`, "WikiLink") },

@@ -46,13 +46,26 @@ describe("source-owned fenced code rendering", () => {
     expect(bodyLines).toHaveLength(2);
     expect(bodyLines[0].textContent).toBe("const x = 1;");
     expect(bodyLines[1].textContent).toBe("console.log(x);");
-    expect(view.dom.querySelectorAll(".cm-codeblock-fence-placeholder")).toHaveLength(2);
+    expect(view.dom.querySelectorAll(".cm-codeblock-fence-placeholder")).toHaveLength(1);
+    expect(view.dom.querySelector(".cm-codeblock-language-name")?.textContent).toBe("JavaScript");
 
     const bodyLine = view.state.doc.line(4);
     view.dispatch({ selection: { anchor: bodyLine.from + 4 } });
     expect(Array.from(view.dom.querySelectorAll(".cm-codeblock-fence-edit"), line => line.textContent)).toEqual(["```javascript", "```"]);
     expect(view.state.doc.sliceString(view.state.selection.main.head - 4, view.state.selection.main.head)).toBe("cons");
     expect(view.dom.querySelectorAll(".cm-codeblock-line:not(.cm-codeblock-fence-line):not(.cm-codeblock-fence-edit)")).toHaveLength(2);
+  });
+
+  it.each([
+    ['cpp', 'C++'], ['c++', 'C++'], ['csharp', 'C#'], ['c#', 'C#'],
+    ['json', 'JSON'], ['text', 'Text'], ['', 'Text'],
+  ])('shows the language of a %s block in Read and Write', (language, label) => {
+    for (const mode of ['view', 'edit-render'] as const) {
+      const editor = mount(mode, `Before\n\n\`\`\`${language}\nexample\n\`\`\`\n\nAfter`);
+      mounted.push(editor);
+      expect(editor.view.dom.querySelector('.cm-codeblock-language-name')?.textContent).toBe(label);
+      expect(editor.view.state.doc.toString()).toContain(`\`\`\`${language}\nexample`);
+    }
   });
 
   it("keeps code selectable in read-only view without enabling edits", () => {

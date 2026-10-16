@@ -25,7 +25,7 @@ if (process.argv.includes("--check")) {
 } else {
   if (existsSync(captureRoot)) throw new Error(`refusing to overwrite visual capture: ${rel(captureRoot)}`);
   const cli = resolve(workspace, "node_modules/@playwright/test/cli.js");
-  execFileSync(process.execPath, [cli, "test", "e2e/phase4.visual.spec.ts"], { cwd: workspace, env: { ...process.env, PHASE4_RUN_ID: runId, PHASE4_CAPTURE_PHASE: phase }, stdio: "inherit", timeout: 600_000 });
+  execFileSync(process.execPath, [cli, "test", "--config=playwright.phase4.config.ts", "e2e/phase4.visual.spec.ts"], { cwd: workspace, env: { ...process.env, PHASE4_RUN_ID: runId, PHASE4_CAPTURE_PHASE: phase }, stdio: "inherit", timeout: 600_000 });
   const pngs = files(captureRoot).filter((file) => file.endsWith(".png")).sort();
   if (pngs.length !== 81) throw new Error(`expected 81 PNGs, got ${pngs.length}`);
   const manifest = { schema_version: 1, status: "pass", phase: "phase4", run_id: runId, capture_phase: phase, fixture_marker: "phase4-shell-v1", browser: "chromium", system_match_media: "light", generated_at: new Date().toISOString(), png_count: pngs.length, images: pngs.map((file) => ({ path: rel(file), bytes: statSync(file).size, sha256: sha256(readFileSync(file)) })) };

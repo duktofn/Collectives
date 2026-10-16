@@ -32,10 +32,11 @@ interface FolderRefReadinessState {
 }
 
 const [state, setState] = createStore<FolderRefReadinessState>({ activeIntent: null, records: {} });
-const inFlight = new Map<string, Promise<void>>();
+const inFlight = new Map<string, { generation: number; token: number; operation: Promise<void> }>();
 type PendingTimer = { timer: ReturnType<typeof setTimeout>; resolve: () => void };
 const pendingTimers = new Map<string, Set<PendingTimer>>();
 let invalidation = 0;
+let intentRequest = 0;
 
 export const folderRefReadiness = { state };
 
@@ -98,8 +99,10 @@ function isRetryableStaleRead(error: unknown): boolean {
 }
 
 export async function requestFolderRefChild(intentInput: Omit<FolderRefIntent, "generation">): Promise<boolean> {
+  const request = ++intentRequest;
   const flushed = await editorStore.flushPendingSave();
-  if (!flushed) return false;
+  if (!flushed || request !== intentRequest) return false;
+  cancelTimers();
   const generation = editorStore.beginFolderRefSnapshot();
   const intent: FolderRefIntent = { ...intentInput, generation };
   invalidation += 1;
@@ -112,6 +115,7 @@ export async function requestFolderRefChild(intentInput: Omit<FolderRefIntent, "
 }
 
 export function cancelFolderRefReadiness(folderRefEntryId?: string): void {
+  intentRequest += 1;
   invalidation += 1;
   cancelTimers();
   const records = { ...state.records };
@@ -151,8 +155,8 @@ export function retryFolderRefChildFromEvent(
 export async function resolveFolderRefIntent(intent: FolderRefIntent): Promise<void> {
   const key = folderRefReadinessKey(intent.collectionId, intent.folderRefEntryId, intent.childPath);
   const existing = inFlight.get(key);
-  if (existing) return existing;
   const token = invalidation;
+  if (existing?.generation === intent.generation && existing.token === token) return existing.operation;
   const operation = (async () => {
     const delays = [0, 25, 75, 175];
     let lastError: unknown = null;
@@ -177,12 +181,18 @@ export async function resolveFolderRefIntent(intent: FolderRefIntent): Promise<v
       details: { classification: "terminal" },
     };
     setRecord(intent, "broken", safety);
-  })().finally(() => { inFlight.delete(key); pendingTimers.delete(key); });
-  inFlight.set(key, operation);
+  })().finally(() => {
+    if (inFlight.get(key)?.operation === operation) {
+      inFlight.delete(key);
+      pendingTimers.delete(key);
+    }
+  });
+  inFlight.set(key, { generation: intent.generation, token, operation });
   return operation;
 }
 
 export function clearFolderRefReadinessForTests(): void {
+  intentRequest += 1;
   invalidation += 1;
   cancelTimers();
   inFlight.clear();

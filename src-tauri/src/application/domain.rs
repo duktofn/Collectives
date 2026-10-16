@@ -3,6 +3,9 @@ pub use crate::collection::model::{Collection, CollectionMetadata, Entry};
 pub use crate::fs_ops::FsEntry;
 pub use crate::repositories::documents::DocumentSnapshot as FileSnapshot;
 pub use crate::settings::{CustomFont, Settings};
+pub use crate::theme_io::ImportedTheme;
+
+pub const CONTENT_SEARCH_MAX_INDEX_ENTRIES: usize = 10_000;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

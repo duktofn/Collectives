@@ -61,7 +61,12 @@ class RenderPlugin {
 
           // Heading HeaderMark (e.g. #, ##)
           if (name === 'HeaderMark' && node.node.parent?.name.startsWith('ATXHeading')) {
-            const lineEnd = view.state.doc.lineAt(nodeFrom).to;
+            const line = view.state.doc.lineAt(nodeFrom);
+            // Hiding an empty heading removes its entire editable DOM range.
+            // Native input then lands before the marker instead of after it.
+            if (view.state.facet(EditorView.editable) && /^ {0,3}#{1,6}[\t #]*$/.test(line.text))
+              return;
+            const lineEnd = line.to;
             const maxTo = Math.min(nodeTo + 1, lineEnd);
             const val = Decoration.replace({
               widget: new EmptyWidget(),

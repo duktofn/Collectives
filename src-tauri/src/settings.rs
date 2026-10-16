@@ -31,6 +31,8 @@ pub struct Settings {
     pub color_h1: Option<String>,
     #[serde(alias = "color_body")]
     pub color_body: Option<String>,
+    #[serde(default)]
+    pub color_accent: Option<String>,
     pub color_h2: Option<String>,
     pub color_h3: Option<String>,
     pub color_h4: Option<String>,
@@ -66,6 +68,7 @@ impl Default for Settings {
             size_h4: None,
             color_h1: None,
             color_body: None,
+            color_accent: None,
             color_h2: None,
             color_h3: None,
             color_h4: None,

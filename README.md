@@ -83,9 +83,13 @@ Collectives/
 
 ## 🚀 Hướng Dẫn Cài Đặt & Phát Triển Cục Bộ
 
+### Đóng gói bản phát hành
+
+Tạo bộ cài và tệp chạy bằng `npm run release:build`. Các tệp phát hành được đưa vào thư mục riêng `release/x.y.z/` ở thư mục gốc, với tên bắt đầu bằng `Collective-x.y.z`; ví dụ `release/0.2.0/Collective-0.2.0.exe`. Phiên bản dùng quy ước SemVer: tăng `x` cho thay đổi lớn toàn ứng dụng, tăng `y` cho tính năng mới, và tăng `z` cho sửa lỗi hoặc cải thiện hiệu năng. Cập nhật đồng bộ phiên bản trong `package.json`, `src-tauri/tauri.conf.json` và `src-tauri/Cargo.toml` trước mỗi lần phát hành.
+
 ### Yêu cầu hệ thống
 Để chạy dự án ở môi trường phát triển, bạn cần chuẩn bị sẵn:
-1. **Node.js** (Khuyên dùng v18+) và **NPM** (hoặc yarn/pnpm).
+1. **Node.js 20.19+** và **NPM**; phiên bản dùng trong CI nằm trong `.nvmrc`.
 2. **Rust** và **Cargo** (Cài đặt qua [rustup.rs](https://rustup.rs/)).
 3. Cài đặt các công cụ biên dịch tương ứng với hệ điều hành của bạn (Xem chi tiết tại [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites/)).
 
@@ -99,7 +103,7 @@ Collectives/
 
 2. **Cài đặt các gói phụ thuộc (Dependencies):**
    ```bash
-   npm install
+   npm ci
    ```
 
 3. **Chạy ứng dụng trong chế độ phát triển (Development Mode):**
@@ -115,6 +119,33 @@ Collectives/
    Sau khi hoàn tất, file cài đặt (`.exe` trên Windows, `.dmg` / `.app` trên macOS, hoặc `.deb` trên Linux) sẽ nằm trong thư mục `src-tauri/target/release/bundle/`.
 
 ---
+
+## Kiểm tra project
+
+```bash
+npm run typecheck
+npm run lint
+npm run test -- --run
+npm run check:contracts
+npx playwright install chromium
+npm run test:e2e
+npm run build
+cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml --locked --all-targets
+```
+
+Trên Windows, cần Visual Studio Build Tools với **Desktop development with C++** và Windows SDK để biên dịch backend. Rust riêng lẻ không cung cấp `link.exe`.
+
+Có thể cài bộ công cụ này bằng PowerShell (chấp nhận hộp thoại UAC của Windows nếu xuất hiện):
+
+```powershell
+winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --override "--wait --quiet --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
+
+Sau khi cài hoàn tất, chạy lại `npm run tauri dev`.
+
+Test thông thường tự tạo fixture, không yêu cầu dữ liệu báo cáo phase từ máy khác. Các lượt chụp giao diện lịch sử chạy riêng bằng `playwright.phase4.config.ts` và `playwright.phase5.config.ts`.
 
 ## 📝 Ví Dụ Sử Dụng Đặc Biệt
 

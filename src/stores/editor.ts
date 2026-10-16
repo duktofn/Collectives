@@ -108,8 +108,9 @@ function sameSnapshot(left: SaveSnapshot, right: SaveSnapshot): boolean {
 
 function enqueueSnapshot(snapshot: SaveSnapshot): void {
   if (activeSaveSnapshot && sameSnapshot(activeSaveSnapshot, snapshot)) return;
-  const existing = saveQueue.find((queued) => sameSnapshot(queued, snapshot));
-  if (!existing) saveQueue.push(snapshot);
+  // Only the newest unstarted revision of a document needs to reach disk.
+  saveQueue = saveQueue.filter((queued) => queued.path !== snapshot.path || queued.generation !== snapshot.generation);
+  saveQueue.push(snapshot);
 }
 
 async function drainSaveQueue(): Promise<void> {
@@ -152,28 +153,18 @@ async function drainSaveQueue(): Promise<void> {
       }
       clearPersistedRecoveryDraft(writeSnapshot.path, writeSnapshot.recoverySessionId, writeSnapshot.revision);
       const currentContent = getCurrentContent();
-      if (
-        writeSnapshot.generation === state.generation
-        && writeSnapshot.path === state.openFilePath
-        && writeSnapshot.revision === state.revision
-        && currentContent === writeSnapshot.content
-      ) {
+      if (writeSnapshot.generation === state.generation && writeSnapshot.path === state.openFilePath) {
         const retainedConflict = state.conflictKind === "metadata" ? "metadata" : null;
         setState({
           openFileContent: writeSnapshot.content,
-          currentContent: writeSnapshot.content,
-          isDirty: false,
+          currentContent,
+          isDirty: currentContent !== writeSnapshot.content,
           versionToken: persistedVersionToken,
           conflictKind: retainedConflict,
         });
-      } else if (
-        writeSnapshot.generation === state.generation
-        && writeSnapshot.path === state.openFilePath
-      ) {
-        setState({
-          versionToken: persistedVersionToken,
-          conflictKind: state.conflictKind === "metadata" ? "metadata" : null,
-        });
+        // A switch/close is a save barrier, including edits made during I/O.
+        const latest = currentSaveSnapshot();
+        if (latest && !retainedConflict) enqueueSnapshot(latest);
       }
     } catch (err: unknown) {
       const latest = currentSaveSnapshot();
@@ -284,25 +275,26 @@ export const editorStore = {
     return true;
   },
 
-  async openFile(path: string, readOnly: boolean = false) {
+  async openFile(path: string, readOnly: boolean = false): Promise<boolean> {
     const request = ++openRequest;
     if (state.openFilePath && state.isDirty && !state.isReadOnly) {
       try {
         await this.saveFile();
       } catch (err) {
         console.error("Failed to auto-save file before switching:", err);
-        return;
+        return false;
       }
     }
-    if (request !== openRequest) return;
-    const generation = state.generation + 1;
-    setState("generation", generation);
-    setState("error", null);
-    setState("conflictKind", null);
+    if (request !== openRequest) return false;
+    const generation = state.generation;
     try {
       const rawSnapshot = await api.readFile(path);
       const snapshot = typeof rawSnapshot === "string" ? { content: rawSnapshot, versionToken: "", fileKind: classifyFilePath(path) } : rawSnapshot;
-      if (generation !== state.generation || request !== openRequest) return;
+      if (generation !== state.generation || request !== openRequest) return false;
+      // The current editor remains usable while the next file is being read.
+      // Save any input received during that read before committing the switch.
+      if (!await this.flushPendingSave()) return false;
+      if (generation !== state.generation || request !== openRequest) return false;
       setState({
         openFilePath: path,
         openFileContent: snapshot.content,
@@ -315,10 +307,16 @@ export const editorStore = {
         fileKind: snapshot.fileKind ?? classifyFilePath(path),
         recoverySessionId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         recoveryCollectionId,
+        generation: generation + 1,
+        error: null,
         conflictKind: null,
       });
+      return true;
     } catch (err: unknown) {
-      setState("error", formatEditorError(err));
+      if (generation !== state.generation || request !== openRequest) return false;
+      // A failed read of the next file must not become a save error on the
+      // document that is still displayed. The caller reports that open failure.
+      if (!state.openFilePath || state.openFilePath === path) setState("error", formatEditorError(err));
       throw err;
     }
   },
@@ -354,6 +352,7 @@ export const editorStore = {
   },
 
   beginFolderRefSnapshot(): number {
+    openRequest += 1;
     const generation = state.generation + 1;
     setState({
       openFilePath: null,
@@ -449,6 +448,7 @@ export const editorStore = {
     const closingPath = state.openFilePath;
     const closingRecoverySession = state.recoverySessionId;
     selectionRequest += 1;
+    openRequest += 1;
     if (state.isDirty && !state.isReadOnly && !discard) {
       try { await this.saveFile(); } catch { return false; }
     }
@@ -560,6 +560,8 @@ export const editorStore = {
 
   async restoreRecoveredDraft(draft: RecoveryDraft, selectionId = draft.path): Promise<boolean> {
     const request = ++openRequest;
+    if (!await this.flushPendingSave() || request !== openRequest) return false;
+    const previousGeneration = state.generation;
     let disk: { content: string; versionToken: string; fileKind?: FileKind } | null = null;
     let readError: unknown = null;
     try {
@@ -570,7 +572,9 @@ export const editorStore = {
     } catch (error) {
       readError = error;
     }
-    if (request !== openRequest) return false;
+    if (request !== openRequest || previousGeneration !== state.generation) return false;
+    if (!await this.flushPendingSave()) return false;
+    if (request !== openRequest || previousGeneration !== state.generation) return false;
     const generation = state.generation + 1;
     const conflict = !disk || !draft.baseVersionToken || disk.versionToken !== draft.baseVersionToken;
     const error = !disk

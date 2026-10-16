@@ -30,7 +30,7 @@ export function FolderRefChildRow(props: FolderRefChildRowProps) {
   const [broken, setBroken] = createSignal(false);
 
   const readiness = () => props.item.isDir ? null : getFolderRefReadiness(props.collectionId, props.folderRefEntryId, props.item.path);
-  const isSupported = () => props.item.isDir || isSupportedFilePath(props.item.path);
+  const isSupported = () => props.item.isDir || (props.item.isText ?? isSupportedFilePath(props.item.path));
   const displayName = () => isMarkdownPath(props.item.path) ? props.item.name.slice(0, props.item.name.lastIndexOf(".")) : props.item.name;
   const treeId = () => treeItemIdentity(["folderref", props.folderRefEntryId, props.item.path.replace(/\\/g, "/")]);
   const isOpenSelected = () => !props.item.isDir

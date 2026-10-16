@@ -1,6 +1,7 @@
 import { cleanup, render, waitFor } from "@solidjs/testing-library";
 import { EditorView } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
+import { undo } from "@codemirror/commands";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Editor } from "./Editor";
 import { editorStore } from "../../stores/editor";
@@ -34,4 +35,19 @@ it("updates the mounted view when reloading the same path", async () => {
   expect(await editorStore.reloadAndDiscard()).toBe(true);
   await waitFor(() => expect(view.state.doc.toString()).toBe("External content"));
   expect(editorStore.state.isDirty).toBe(false);
+});
+
+it("retains the current document and undo history when opening another file fails", async () => {
+  await editorStore.openFile("note.md");
+  render(() => <Editor />);
+  const view = EditorView.findFromDOM(document.querySelector(".cm-editor")!)!;
+  view.dispatch({ changes: { from: view.state.doc.length, insert: "\nLocal edit" } });
+  await editorStore.saveFile();
+  const previousState = view.state;
+  vi.mocked(api.readFile).mockRejectedValueOnce(new Error("next file is unavailable"));
+  await expect(editorStore.openFile("missing.md")).rejects.toThrow("unavailable");
+  expect(editorStore.state.error).toBeNull();
+  expect(view.state).toBe(previousState);
+  expect(undo(view)).toBe(true);
+  expect(view.state.doc.toString()).toBe("# Heading");
 });

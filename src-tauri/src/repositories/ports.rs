@@ -77,6 +77,13 @@ pub trait ArchiveRepository: Send + Sync {
 }
 
 pub trait DocumentRepository: Send + Sync {
+    fn search_content(
+        &self,
+        indexed: Vec<crate::link_index::IndexEntry>,
+        query: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<crate::application::domain::ContentSearchPage, String>;
     fn read(&self, path: &str) -> Result<DocumentSnapshot, SafetyError>;
     fn read_folderref_snapshot(
         &self,

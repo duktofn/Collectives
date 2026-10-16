@@ -9,6 +9,7 @@ pub struct FsEntry {
     pub path: String,
     pub is_dir: bool,
     pub size: Option<u64>,
+    pub is_text: Option<bool>,
 }
 
 pub fn normalize_path(path: &str) -> String {
@@ -51,6 +52,11 @@ pub fn read_children(path: &Path) -> Result<Vec<FsEntry>, String> {
             path: normalize_path(&path_buf.to_string_lossy()),
             is_dir,
             size,
+            is_text: if is_dir {
+                None
+            } else {
+                crate::text_files::probe_text_file(&path_buf)
+            },
         });
     }
 

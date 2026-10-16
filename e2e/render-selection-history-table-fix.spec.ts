@@ -72,6 +72,8 @@ test("renders code selection above line backgrounds and keeps table controls out
     const view = (window as unknown as { __historyFixture: { view: import("@codemirror/view").EditorView } }).__historyFixture.view;
     view.contentDOM.blur();
   });
+  // CodeMirror updates its focus class on a scheduled measurement.
+  await expect(page.locator("#regression-host .cm-editor")).not.toHaveClass(/cm-focused/);
   const unfocusedSelection = await page.evaluate(() => {
     const layer = document.querySelector<HTMLElement>("#regression-host .cm-selectionLayer");
     const selection = document.querySelector<HTMLElement>("#regression-host .cm-selectionBackground");
@@ -269,10 +271,11 @@ test("keeps controls in gutters while horizontally scrolling and exposes them to
     };
   });
   expect(visibleGeometry.shell.width).toBeLessThanOrEqual(420);
-  expect(visibleGeometry.scroll.left).toBeGreaterThanOrEqual(visibleGeometry.shell.left + 63);
+  expect(visibleGeometry.scroll.left).toBeGreaterThanOrEqual(visibleGeometry.shell.left);
   expect(visibleGeometry.controlRects[0].bottom).toBeLessThanOrEqual(visibleGeometry.scroll.top);
   expect(visibleGeometry.controlRects[1].top).toBeGreaterThanOrEqual(visibleGeometry.scroll.bottom);
-  expect(visibleGeometry.controlRects[2].right).toBeLessThanOrEqual(visibleGeometry.scroll.left);
+  expect(visibleGeometry.controlRects[2].left).toBeGreaterThanOrEqual(visibleGeometry.scroll.right);
+  expect(visibleGeometry.controlRects[2].right).toBeLessThanOrEqual(visibleGeometry.shell.right);
   expect(visibleGeometry.overlaps).toEqual([0, 0, 0]);
 
   await scroll.evaluate((element) => { element.scrollLeft = 0; });

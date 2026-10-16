@@ -7,21 +7,24 @@ export async function installWorkspaceMock(
   empty = false,
   overview = false,
   content?: string,
-  preferences?: { fontScale?: number; lineHeight?: number; fontMono?: string }
+  preferences?: { fontScale?: number; lineHeight?: number; fontMono?: string },
+  documents?: Record<string, string>
 ) {
   await page.addInitScript(
-    ({ theme, empty, overview, content, preferences }) => {
+    ({ theme, empty, overview, content, preferences, documents }) => {
       const root = 'D:/Sample/Knowledge';
-      const names = [
-        'Product direction',
-        'Research and references',
-        'Weekly review',
-        'Ideas for the next release',
-        ...Array.from({ length: 26 }, (_, i) => `Research note ${i + 1}`),
-      ];
+      const names = documents
+        ? Object.keys(documents)
+        : [
+            'Product direction',
+            'Research and references',
+            'Weekly review',
+            'Ideas for the next release',
+            ...Array.from({ length: 26 }, (_, i) => `Research note ${i + 1}`),
+          ];
       const notes = names.map((displayName, i) => ({
         displayName,
-        path: `${root}/${displayName}.md`,
+        path: `${root}/${displayName}${documents ? '' : '.md'}`,
         entryId: `note-${i}`,
         entryType: 'file',
       }));
@@ -58,14 +61,34 @@ export async function installWorkspaceMock(
             return null;
           }
           if (command === 'get_collections') return empty ? [] : [structuredClone(collection)];
-          if (command === 'load_settings') return { theme, fontScale: 1, customFonts: [], ...preferences };
+          if (command === 'remove_entry') {
+            type MockEntry = { id: string; children?: MockEntry[] };
+            const remove = (entries: MockEntry[]): MockEntry | null => {
+              const index = entries.findIndex((entry) => entry.id === args.entryId);
+              if (index >= 0) return entries.splice(index, 1)[0];
+              for (const entry of entries) {
+                const removed = entry.children && remove(entry.children);
+                if (removed) return removed;
+              }
+              return null;
+            };
+            return remove(collection.entries);
+          }
+          if (command === 'load_settings')
+            return { theme, fontScale: 1, customFonts: [], ...preferences };
           if (command === 'get_fonts_dir') return `${root}/fonts`;
           if (command === 'validate_entries' || command === 'read_folder_children') return [];
           if (command === 'sync_collection_watches') return cursor;
           if (command === 'reconcile_collection_snapshot')
             return { collection: structuredClone(collection), revision: 0, cursor };
-          if (command === 'read_file')
-            return { content: content ?? documentText, versionToken: 'sample-v1', fileKind: 'markdown' };
+          if (command === 'read_file') {
+            const name = String(args.path).replace(/\\/g, '/').split('/').pop() ?? '';
+            return {
+              content: documents?.[name] ?? content ?? documentText,
+              versionToken: 'sample-v1',
+              fileKind: documents && !/\.(?:md|markdown)$/i.test(name) ? 'text-source' : 'markdown',
+            };
+          }
           if (command === 'write_file' || command === 'create_file')
             return { versionToken: 'sample-v2' };
           if (command === 'resolve_wikilink')
@@ -110,6 +133,6 @@ export async function installWorkspaceMock(
         if (!overview) localStorage.setItem('lastSelectedEntryId', 'note-0');
       }
     },
-    { theme, empty, overview, content, preferences }
+    { theme, empty, overview, content, preferences, documents }
   );
 }

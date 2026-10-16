@@ -29,7 +29,7 @@ import { requestFolderRefChild } from "./features/filesystem/folderRefReadiness"
 import { announcementKey, announcer, mountAnnouncer } from "./a11y/announcer";
 import { flushPendingRecoveryDraft, listRecoveryDrafts, removeRecoveryDraft, type RecoveryDraft } from "./features/editor/recovery";
 import { canNavigateBack, canNavigateForward, cancelHistoryNavigation, peekHistoryTarget, recordNavigation } from "./features/editor/navigationHistory";
-import type { ContentSearchResult } from "./shared/ipc/client";
+import type { ContentSearchResult } from "./features/links";
 import "./App.css";
 import "./styles/workspace-polish.css";
 
@@ -477,6 +477,21 @@ export default function App() {
   };
 
   let selectionTransition: Promise<void> = Promise.resolve();
+  const restoreDisplayedSelection = () => {
+    const path = editorStore.state.openFilePath;
+    if (!path) return;
+    const findFile = (entries: Entry[]): string | null => {
+      for (const entry of entries) {
+        if (entry.type === "file" && entry.path === path) return entry.id;
+        if (entry.type === "group") {
+          const found = findFile(entry.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    uiStore.selectEntry(findFile(collectionsStore.activeCollection()?.entries ?? []) ?? path);
+  };
   const queueSelectionTransition = (transition: () => Promise<void>) => {
     selectionTransition = selectionTransition
       .then(transition)
@@ -525,8 +540,22 @@ export default function App() {
     if (info && (info.type === "file" || info.type === "file (inside folder-ref)")) {
       const isReadOnly = false;
       if (editorStore.state.openFilePath !== info.path) {
+        const collectionId = collectionsStore.state.activeCollectionId;
         queueSelectionTransition(async () => {
-          await editorStore.openFile(info.path, isReadOnly);
+          const isCurrentSelection = () => uiStore.state.selectedEntryId === info.id
+            && collectionsStore.state.activeCollectionId === collectionId;
+          if (!isCurrentSelection()) return;
+          try {
+            const opened = await editorStore.openFile(info.path, isReadOnly);
+            if (!opened && isCurrentSelection() && editorStore.state.openFilePath !== info.path) {
+              restoreDisplayedSelection();
+              showAppNotice("File switch blocked", editorStore.state.error || "The current draft could not be saved.");
+            }
+          } catch (error) {
+            if (!isCurrentSelection()) return;
+            restoreDisplayedSelection();
+            showAppNotice(`Could not open ${info.name}`, error);
+          }
         });
       }
     } else {
@@ -604,7 +633,7 @@ export default function App() {
       id: selectedId,
       name: fileName.endsWith(".md") ? fileName.slice(0, -3) : fileName,
       path: selectedId,
-      type: selectedId.endsWith(".md") ? "file (inside folder-ref)" : "folder (inside folder-ref)",
+      type: selectedId === editorStore.state.openFilePath || selectedId.endsWith(".md") ? "file (inside folder-ref)" : "folder (inside folder-ref)",
       relatedNotes: [],
     };
   };
@@ -789,7 +818,7 @@ export default function App() {
       const entry = collection ? findEntry(collection.entries) : null;
       editorStore.setRecoveryCollectionId(draft.collectionId);
       const restored = await editorStore.restoreRecoveredDraft(draft, entry?.id ?? draft.path);
-      if (!restored) throw new Error("The draft restore was superseded by another file operation.");
+      if (!restored) throw new Error("The recovery draft stayed closed. Save or resolve the current note, then try again.");
       setRecoveryDrafts((items) => items.filter((item) => item.id !== draft.id));
       if (recoveryDrafts().length <= 1) setIsRecoveryReviewOpen(false);
     } finally {

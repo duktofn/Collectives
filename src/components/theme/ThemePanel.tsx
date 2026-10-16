@@ -9,6 +9,7 @@ import { applyThemeSettings, registerCustomFonts, getDefaultThemeValues } from "
 import { ask, message, pickFontFile, saveThemeDialog, pickThemeFile } from "../../platform";
 import { uiStore } from "../../stores/ui";
 import "./ThemePanel.css";
+import { normalizeAccentColor } from '../../lib/themeColors';
 
 interface ThemePanelProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ interface ThemePanelProps {
 
 function validateSettings(settings: Settings): string | null {
   if (!["dark", "light", "system"].includes(settings.theme)) return "Choose a supported theme mode.";
+  if (settings.colorAccent && !normalizeAccentColor(settings.colorAccent)) return "Accent color must be a hex color, such as #7c3aed.";
   const numericValues = [
     ["Font scale", settings.fontScale],
     ["Line height", settings.lineHeight],
@@ -30,7 +32,8 @@ function validateSettings(settings: Settings): string | null {
     ["H4 size", settings.sizeH4],
   ] as const;
   for (const [label, value] of numericValues) {
-    if (value !== undefined && (!Number.isFinite(value) || value <= 0)) return `${label} must be a positive number.`;
+    // Native optional settings are serialized as null; both null and undefined use defaults.
+    if (value != null && (!Number.isFinite(value) || value <= 0)) return `${label} must be a positive number.`;
   }
   const colorValues = [
     settings.colorBody, settings.colorH1, settings.colorH2, settings.colorH3, settings.colorH4,
@@ -146,6 +149,7 @@ export function ThemePanel(props: ThemePanelProps) {
       lineHeight: undefined,
       sizeH1: undefined,
       colorBody: undefined,
+      colorAccent: undefined,
       sizeH2: undefined,
       sizeH3: undefined,
       sizeH4: undefined,
@@ -426,6 +430,32 @@ export function ThemePanel(props: ThemePanelProps) {
             </div>
           </div>
 
+          <div class="theme-section">
+            <h4>Accent Color</h4>
+            <div class="theme-accent-controls">
+              <div class="color-input-wrapper">
+                <input
+                  type="color"
+                  aria-label="Accent color picker"
+                  value={normalizeAccentColor(draft().colorAccent) ?? defaults().colorAccent}
+                  onInput={(event) => updateSetting('colorAccent', event.currentTarget.value)}
+                />
+                <input
+                  type="text"
+                  aria-label="Accent color hex"
+                  placeholder={defaults().colorAccent}
+                  value={draft().colorAccent ?? ''}
+                  onInput={(event) => updateSetting('colorAccent', event.currentTarget.value.trim() || undefined)}
+                  spellcheck={false}
+                />
+              </div>
+              <button type="button" class="btn btn-secondary" disabled={!draft().colorAccent} onClick={() => updateSetting('colorAccent', undefined)}>
+                Use theme default
+              </button>
+            </div>
+            <p class="settings-local-first-note">Used for buttons, highlights, and the active line number.</p>
+          </div>
+
           {/* Section: Typography */}
           <div class="theme-section">
             <h4>Typography</h4>
@@ -533,6 +563,7 @@ export function ThemePanel(props: ThemePanelProps) {
             </button>
             <Show when={showAdvancedColors()}>
             <h4>Colors</h4>
+            <p class="settings-local-first-note">Code also uses your color overrides: H1 for modifiers, H2 for types and tags, H3 for variables and properties, and Code Text for strings and numbers. Clear an override to restore the default code palette.</p>
             
             <div class="color-pickers-grid">
               <div class="color-picker-item">

@@ -2,6 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
+  testMatch: ["editor-*.spec.ts", "render-selection-history-table-fix.spec.ts", "write-cursor.spec.ts", "code-click-drift.spec.ts", "workspace-ux.spec.ts"],
   globalSetup: "./e2e/global-setup.ts",
   timeout: 30_000,
   fullyParallel: false,
@@ -12,6 +13,5 @@ export default defineConfig({
     url: "http://127.0.0.1:4174",
     reuseExistingServer: false,
     timeout: 120_000,
-    env: { VITE_PHASE4_VISUAL_FIXTURE: "1" },
   },
 });

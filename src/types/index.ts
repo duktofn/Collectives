@@ -17,6 +17,7 @@ export interface FsEntry {
   path: string;
   isDir: boolean;
   size?: number;
+  isText?: boolean | null;
 }
 
 export interface BrokenEntry {
@@ -52,6 +53,7 @@ export interface Settings {
   sizeH4?: number;
   colorH1?: string;
   colorBody?: string;
+  colorAccent?: string;
   colorH2?: string;
   colorH3?: string;
   colorH4?: string;

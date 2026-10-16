@@ -16,7 +16,7 @@ const themeEngine = vi.hoisted(() => ({
   registerCustomFonts: vi.fn(),
   getDefaultThemeValues: vi.fn(() => ({
     fontScale: "1", sizeH1: "2.2", sizeH2: "1.65", sizeH3: "1.35", sizeH4: "1.15", lineHeight: "1.6",
-    colorH1: "#111111", colorBody: "#111111", colorH2: "#111111", colorH3: "#111111", colorH4: "#111111",
+    colorAccent: "#e57e54", colorH1: "#111111", colorBody: "#111111", colorH2: "#111111", colorH3: "#111111", colorH4: "#111111",
     colorCodeBg: "#222222", colorCodeText: "#eeeeee", colorSelection: "#d7d4f0", colorLink: "#6366f1", colorLinkHover: "#4f46e5",
   })),
 }));
@@ -38,6 +38,36 @@ describe("ThemePanel settings draft", () => {
     vi.clearAllMocks();
     settingsApi.saveSettings.mockResolvedValue(undefined);
     settingsApi.getFontsDir.mockResolvedValue("/fonts");
+  });
+
+  it("saves a custom accent only on Apply and restores the theme default", async () => {
+    render(() => <ThemePanel isOpen onClose={vi.fn()} settings={initial} onSettingsChange={vi.fn()} />);
+    await fireEvent.input(screen.getByLabelText("Accent color hex"), { target: { value: "#2563eb" } });
+    expect(settingsApi.saveSettings).not.toHaveBeenCalled();
+    await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(settingsApi.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ colorAccent: "#2563eb" })));
+    await fireEvent.click(screen.getByRole("button", { name: "Use theme default" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(settingsApi.saveSettings).toHaveBeenLastCalledWith(expect.objectContaining({ colorAccent: undefined })));
+  });
+
+  it("rejects an invalid accent without saving", async () => {
+    render(() => <ThemePanel isOpen onClose={vi.fn()} settings={initial} onSettingsChange={vi.fn()} />);
+    await fireEvent.input(screen.getByLabelText("Accent color hex"), { target: { value: "#nope" } });
+    expect(screen.getByRole("status").textContent).toContain("Accent color must be a hex color");
+    await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(settingsApi.saveSettings).not.toHaveBeenCalled();
+  });
+
+  it("accepts null optional sizes returned by the native settings API", async () => {
+    const persisted: Settings = JSON.parse(JSON.stringify({
+      ...initial, lineHeight: null, sizeH1: null, sizeH2: null, sizeH3: null, sizeH4: null,
+    }));
+    render(() => <ThemePanel isOpen onClose={vi.fn()} settings={persisted} onSettingsChange={vi.fn()} />);
+    await fireEvent.click(screen.getByRole("button", { name: "Light" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(settingsApi.saveSettings).toHaveBeenCalledOnce());
   });
 
   it("keeps edits local until Apply and leaves the last applied baseline on Cancel", async () => {

@@ -108,4 +108,21 @@ describe("FolderRef stale-read readiness", () => {
     const other = { ...baseIntent, folderRefEntryId: "second-folder-ref", childPath: "C:/hotfix41/root/other.md" };
     expect(folderRefReadinessKey(baseIntent.collectionId, baseIntent.folderRefEntryId, baseIntent.childPath)).not.toBe(folderRefReadinessKey(other.collectionId, other.folderRefEntryId, other.childPath));
   });
+
+  it("allows a new intent for the same child to finish while the cancelled read is pending", async () => {
+    let finishOldRead!: (value: typeof snapshot) => void;
+    vi.mocked(editorApi.readFolderRefSnapshot)
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOldRead = resolve; }))
+      .mockResolvedValueOnce(snapshot);
+    await requestFolderRefChild(baseIntent);
+    const oldRead = resolveFolderRefIntent(folderRefReadiness.state.activeIntent!);
+    await requestFolderRefChild(baseIntent);
+    const newRead = resolveFolderRefIntent(folderRefReadiness.state.activeIntent!);
+    // Complete the old read too so a failed assertion never leaves work pending.
+    finishOldRead({ ...snapshot, content: "stale content" });
+    await Promise.all([oldRead, newRead]);
+    expect(editorApi.readFolderRefSnapshot).toHaveBeenCalledTimes(2);
+    expect(editorStore.state.currentContent).toBe(snapshot.content);
+    expect(getFolderRefReadiness(baseIntent.collectionId, baseIntent.folderRefEntryId, baseIntent.childPath)?.status).toBe("ready");
+  });
 });

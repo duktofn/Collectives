@@ -42,8 +42,10 @@ fn file_kind(
         .ok_or_else(|| unsupported_error("extension", "File extension is not supported"))
 }
 
-fn decode_document(path: &std::path::Path) -> Result<FileSnapshot, SafetyError> {
-    let kind = file_kind(path)?;
+fn read_document_bytes(path: &std::path::Path) -> Result<Vec<u8>, SafetyError> {
+    use std::io::Read;
+
+    file_kind(path)?;
     let metadata = std::fs::metadata(path).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
             SafetyError::new("stale_read", format!("Failed to read file: {error}")).with_details(
@@ -65,7 +67,13 @@ fn decode_document(path: &std::path::Path) -> Result<FileSnapshot, SafetyError> 
             "Only regular files can be opened",
         ));
     }
-    let bytes = std::fs::read(path).map_err(|error| {
+    if metadata.len() > MAX_DOCUMENT_BYTES {
+        return Err(unsupported_error(
+            "size",
+            "File exceeds the 10 MiB text-source limit",
+        ));
+    }
+    let file = std::fs::File::open(path).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
             SafetyError::new("stale_read", format!("Failed to read file: {error}")).with_details(
                 serde_json::json!({
@@ -77,20 +85,38 @@ fn decode_document(path: &std::path::Path) -> Result<FileSnapshot, SafetyError> 
             unsupported_error("unreadable", &format!("File could not be read: {error}"))
         }
     })?;
+    let mut bytes = Vec::new();
+    // Bound the read too: an external writer can grow the file after metadata.
+    file.take(MAX_DOCUMENT_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| {
+            unsupported_error("unreadable", &format!("File could not be read: {error}"))
+        })?;
     if bytes.len() as u64 > MAX_DOCUMENT_BYTES {
         return Err(unsupported_error(
             "size",
             "File exceeds the 10 MiB text-source limit",
         ));
     }
+    Ok(bytes)
+}
+
+fn decode_document_bytes(
+    path: &std::path::Path,
+    bytes: &[u8],
+) -> Result<FileSnapshot, SafetyError> {
+    let kind = file_kind(path)?;
     if bytes.contains(&0) {
         return Err(unsupported_error("nul", "File contains NUL bytes"));
     }
     let had_bom = bytes.starts_with(&[0xef, 0xbb, 0xbf]);
-    let content_bytes = if had_bom { &bytes[3..] } else { &bytes[..] };
+    let content_bytes = if had_bom { &bytes[3..] } else { bytes };
     let content = String::from_utf8(content_bytes.to_vec())
         .map_err(|_| unsupported_error("encoding", "File is not valid UTF-8"))?;
-    let token = blake3::hash(&bytes).to_hex().to_string();
+    if crate::text_files::has_binary_controls(&content) {
+        return Err(unsupported_error("binary", "File contains binary control characters"));
+    }
+    let token = blake3::hash(bytes).to_hex().to_string();
     Ok(FileSnapshot {
         content,
         version_token: token,
@@ -102,6 +128,10 @@ fn decode_document(path: &std::path::Path) -> Result<FileSnapshot, SafetyError> 
         line_ending: Some(line_ending(content_bytes).into()),
         byte_size: Some(bytes.len() as u64),
     })
+}
+
+fn decode_document(path: &std::path::Path) -> Result<FileSnapshot, SafetyError> {
+    decode_document_bytes(path, &read_document_bytes(path)?)
 }
 
 pub fn read_file(path: String) -> Result<FileSnapshot, SafetyError> {
@@ -287,27 +317,23 @@ pub fn write_file(
     expected_token: Option<String>,
 ) -> Result<DocumentWriteReceipt, SafetyError> {
     let path = std::path::Path::new(&path);
+    file_kind(path)?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             SafetyError::new("save_failed", format!("Failed to create directories: {e}"))
         })?;
     }
-    let original_bytes =
-        if path.exists() {
-            Some(std::fs::read(path).map_err(|e| {
-                SafetyError::new("stale_read", format!("Failed to re-read file: {e}"))
-            })?)
-        } else {
-            None
-        };
-    let original = if original_bytes.is_some() {
-        Some(decode_document(path)?)
+    let original_bytes = if path.exists() {
+        Some(read_document_bytes(path)?)
     } else {
         None
     };
+    let original = original_bytes
+        .as_deref()
+        .map(|bytes| decode_document_bytes(path, bytes))
+        .transpose()?;
     if let Some(expected) = expected_token.as_ref() {
-        let actual = file_version_token(path, "").map_err(SafetyError::from)?;
-        if &actual != expected {
+        if original.as_ref().map(|snapshot| &snapshot.version_token) != Some(expected) {
             return Err(SafetyError::new(
                 "external_change_conflict",
                 "File changed outside the editor; draft was retained",
@@ -321,6 +347,18 @@ pub fn write_file(
         return Ok(DocumentWriteReceipt { version_token });
     }
     let bytes_to_write = encode_document(&content, original.as_ref(), original_bytes.as_deref());
+    if bytes_to_write.len() as u64 > MAX_DOCUMENT_BYTES {
+        return Err(unsupported_error(
+            "size",
+            "Document exceeds the 10 MiB text-source limit",
+        ));
+    }
+    if bytes_to_write.contains(&0) {
+        return Err(unsupported_error("nul", "Document contains NUL bytes"));
+    }
+    if crate::text_files::has_binary_controls(&content) {
+        return Err(unsupported_error("binary", "Document contains binary control characters"));
+    }
     let version_token = blake3::hash(&bytes_to_write).to_hex().to_string();
     let id = uuid::Uuid::new_v4().to_string();
     let tmp_filename = format!(
@@ -330,8 +368,7 @@ pub fn write_file(
     );
     let tmp_path = path.with_file_name(tmp_filename);
     let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(true)
+        .create_new(true)
         .write(true)
         .open(&tmp_path)
         .map_err(|e| SafetyError::new("save_failed", format!("Failed to write temp file: {e}")))?;
@@ -374,6 +411,7 @@ pub fn create_file(path: String, content: String) -> Result<DocumentWriteReceipt
     use std::path::Path;
 
     let destination = Path::new(&path);
+    file_kind(destination)?;
     let parent = destination
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -397,6 +435,12 @@ pub fn create_file(path: String, content: String) -> Result<DocumentWriteReceipt
             "document_too_large",
             "The new document exceeds the 10 MiB limit",
         ));
+    }
+    if bytes.contains(&0) {
+        return Err(unsupported_error("nul", "Document contains NUL bytes"));
+    }
+    if crate::text_files::has_binary_controls(&content) {
+        return Err(unsupported_error("binary", "Document contains binary control characters"));
     }
 
     let stage_path = parent.join(format!(
@@ -588,12 +632,19 @@ pub struct DocumentWriteReceipt {
 pub type FileSnapshot = DocumentSnapshot;
 
 fn file_version_token(path: &std::path::Path, content: &str) -> Result<String, String> {
+    use std::io::Read;
     let _ = content;
-    Ok(
-        blake3::hash(&std::fs::read(path).map_err(|e| e.to_string())?)
-            .to_hex()
-            .to_string(),
-    )
+    let mut file = std::fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut hash = blake3::Hasher::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let count = file.read(&mut buffer).map_err(|error| error.to_string())?;
+        if count == 0 {
+            break;
+        }
+        hash.update(&buffer[..count]);
+    }
+    Ok(hash.finalize().to_hex().to_string())
 }
 
 fn encode_document(

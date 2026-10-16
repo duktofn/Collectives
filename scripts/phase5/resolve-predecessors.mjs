@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /* global console, process, structuredClone */
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -6,7 +5,6 @@ import { pathToFileURL } from "node:url";
 import { dirname, relative, resolve, sep } from "node:path";
 
 const workspace = resolve(import.meta.dirname, "../..");
-const phaseRoot = resolve(workspace, "artifacts/phase5");
 const SAFE_RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 function fail(message) { throw new Error(message); }
@@ -93,6 +91,7 @@ export function comparable(value) {
 }
 
 export function generateBaseline(runId, root = workspace, artifactRoot = resolve(root, "artifacts/phase5")) {
+  if (!SAFE_RUN_ID.test(runId) || runId.includes("..")) fail("unsafe Phase 5 run id");
   if (!pathInside(artifactRoot, resolve(root, "artifacts"))) fail("artifact root escapes workspace artifacts");
   const outputRoot = resolve(artifactRoot, runId);
   const output = resolve(outputRoot, "baseline-source.json");
@@ -103,8 +102,9 @@ export function generateBaseline(runId, root = workspace, artifactRoot = resolve
   return { result, outputRoot, output };
 }
 
-export function main(argv = process.argv.slice(2)) {
+export function main(argv = process.argv.slice(2), root = workspace) {
   const { mode, runId } = parseArgs(argv);
+  const phaseRoot = resolve(root, "artifacts/phase5");
   const outputRoot = resolve(phaseRoot, runId);
   const output = resolve(outputRoot, "baseline-source.json");
   if (!pathInside(outputRoot, phaseRoot)) fail("output path escapes Phase 5 artifact root");
@@ -112,12 +112,12 @@ export function main(argv = process.argv.slice(2)) {
     requiredFile(output, "existing Phase 5 baseline-source.json");
     const baseline = json(output);
     if (baseline.run_id !== runId) fail("baseline run id does not match --run-id");
-    const expected = resolveCurrent(runId, baseline.resolved_at);
+    const expected = resolveCurrent(runId, baseline.resolved_at, root);
     if (JSON.stringify(comparable(baseline)) !== JSON.stringify(comparable(expected))) fail("predecessor identity, status or hash is stale/conflicting");
     console.log(JSON.stringify({ status: "pass", mode, run_id: runId, output: `artifacts/phase5/${runId}/baseline-source.json`, read_only: true }, null, 2));
     return;
   }
-  const generated = generateBaseline(runId);
+  const generated = generateBaseline(runId, root);
   console.log(JSON.stringify({ status: generated.result.status, mode, run_id: runId, output: `artifacts/phase5/${runId}/baseline-source.json`, created_only: "baseline-source.json" }, null, 2));
 }
 

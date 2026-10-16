@@ -13,9 +13,12 @@ import { saveDocumentDialog } from "../../platform";
 import { uiStore } from "../../stores/ui";
 import { searchNoteContent } from "../../features/links";
 import { syntaxTree } from "@codemirror/language";
-import type { ContentSearchResult } from "../../shared/ipc/client";
+import type { ContentSearchResult } from "../../features/links";
 import { insertMarkdownTemplate, registerMarkdownTemplateInsert } from "../../lib/editorCommands";
 import type { MarkdownTemplate } from "../../lib/editorCommands";
+import { registerDocumentFormat } from '../../lib/editorCommands';
+import { canFormatDocument, formatDocumentSource } from '../../lib/documentFormatting';
+import { isolateHistory } from '@codemirror/commands';
 import "./Editor.css";
 
 interface ComparedDiskVersion {
@@ -40,6 +43,7 @@ export function Editor() {
   let unregisterMeasure: (() => void) | undefined;
   let unregisterContentReader: (() => void) | undefined;
   let unregisterTemplateInsert: (() => void) | undefined;
+  let unregisterDocumentFormat: (() => void) | undefined;
   let resizeObserver: ResizeObserver | undefined;
   let documentSessionKey: string | undefined;
   let documentViewStateKey: string | null = null;
@@ -250,7 +254,7 @@ export function Editor() {
   const createEditorState = (doc: string) => EditorState.create({
     doc,
     extensions: [
-      baseCompartment.of(getBaseExtensionsForFile(editorStore.state.fileKind)),
+      baseCompartment.of(getBaseExtensionsForFile(editorStore.state.fileKind, editorStore.state.openFilePath ?? '')),
       contentAttributesCompartment.of(contentAttributes()),
       modeCompartment.of(getExtensionsForMode(editorStore.state.mode, editorStore.state.fileKind)),
       EditorView.updateListener.of((update) => {
@@ -280,6 +284,22 @@ export function Editor() {
     });
     unregisterContentReader = editorStore.registerCurrentContentReader(() => view?.state.doc.toString() ?? "");
     unregisterTemplateInsert = registerMarkdownTemplateInsert((template: MarkdownTemplate) => view ? insertMarkdownTemplate(view, template) : false);
+    unregisterDocumentFormat = registerDocumentFormat(async () => {
+      const path = editorStore.state.openFilePath;
+      if (!view || !path || editorStore.state.isReadOnly || !canFormatDocument(path)) return false;
+      const document = view.state.doc;
+      const generation = editorStore.state.generation;
+      const formatted = await formatDocumentSource(document.toString(), path);
+      if (!view || generation !== editorStore.state.generation || view.state.doc !== document || view.state.readOnly)
+        throw new Error('The document changed while formatting. Try again.');
+      if (formatted !== document.toString()) view.dispatch({
+        changes: { from: 0, to: document.length, insert: formatted },
+        selection: { anchor: Math.min(view.state.selection.main.head, formatted.length) },
+        userEvent: 'input.format', annotations: isolateHistory.of('full'),
+      });
+      view.focus();
+      return true;
+    });
     documentSessionKey = `${editorStore.state.generation}:${editorStore.state.openFilePath ?? ""}`;
     documentViewStateKey = editorStore.state.openFilePath;
 
@@ -299,6 +319,7 @@ export function Editor() {
     unregisterMeasure?.();
     unregisterContentReader?.();
     unregisterTemplateInsert?.();
+    unregisterDocumentFormat?.();
     resizeObserver?.disconnect();
     if (view) {
       saveDocumentViewState(documentViewStateKey);
@@ -324,7 +345,7 @@ export function Editor() {
           const [mode, kind] = modeKey.split(":") as ["view" | "edit-source" | "edit-render", "markdown" | "text-source"];
           view.dispatch({
             effects: [
-              baseCompartment.reconfigure(getBaseExtensionsForFile(kind)),
+              baseCompartment.reconfigure(getBaseExtensionsForFile(kind, editorStore.state.openFilePath ?? '')),
               modeCompartment.reconfigure(getExtensionsForMode(mode, kind)),
             ],
           });

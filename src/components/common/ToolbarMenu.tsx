@@ -4,6 +4,7 @@ interface ToolbarMenuProps {
   label: string;
   trigger: JSX.Element;
   class?: string;
+  onOpen?: () => void;
   items: Array<{ label: string; onSelect: () => void; checked?: boolean }>;
 }
 
@@ -23,6 +24,7 @@ export function ToolbarMenu(props: ToolbarMenuProps) {
   };
   createEffect(() => {
     if (!open()) return;
+    props.onOpen?.();
     document.addEventListener('pointerdown', outside);
     queueMicrotask(() => menu?.querySelector<HTMLButtonElement>('button')?.focus());
     onCleanup(() => document.removeEventListener('pointerdown', outside));
@@ -50,11 +52,14 @@ export function ToolbarMenu(props: ToolbarMenuProps) {
     <div
       class="editor-more-actions-wrap"
       ref={root}
-      onFocusOut={() =>
+      onFocusOut={(event) => {
+        // Focusout runs before focusin. Do not close the menu while focus is
+        // moving between its items, or the clicked item disappears on mousedown.
+        if (event.relatedTarget instanceof Node && root?.contains(event.relatedTarget)) return;
         queueMicrotask(() => {
           if (root && !root.contains(document.activeElement)) close();
-        })
-      }
+        });
+      }}
     >
       <button
         ref={trigger}

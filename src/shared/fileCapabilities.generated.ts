@@ -59,7 +59,8 @@ export function fileExtension(path: string): string {
 export function classifyFilePath(path: string): FileKind | null {
   const extension = fileExtension(path);
   for (const capability of FILE_CAPABILITIES) if (capability.extensions.includes(extension)) return capability.kind;
-  return null;
+  // Unknown names are text candidates; native reads validate their content.
+  return path.trim() ? "text-source" : null;
 }
 
 export function isSupportedFilePath(path: string): boolean { return classifyFilePath(path) !== null; }

@@ -2,6 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
+  testMatch: "phase6.*.spec.ts",
   timeout: 45_000,
   fullyParallel: false,
   workers: 1,

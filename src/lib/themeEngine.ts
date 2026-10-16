@@ -1,6 +1,7 @@
 import { Settings, CustomFont } from "../types";
 import { convertFileSrc } from "../platform";
 import { requestEditorMeasure } from "./editorMeasure";
+import { accentColorVariables } from './themeColors';
 
 const variableMappings: Record<keyof Omit<Settings, "theme" | "customFonts" | "hideUnsupportedFiles">, string> = {
   fontScale: "--font-scale",
@@ -12,6 +13,7 @@ const variableMappings: Record<keyof Omit<Settings, "theme" | "customFonts" | "h
   sizeH4: "--size-h4",
   colorH1: "--color-h1",
   colorBody: "--color-text-primary",
+  colorAccent: "--color-accent",
   colorH2: "--color-h2",
   colorH3: "--color-h3",
   colorH4: "--color-h4",
@@ -54,6 +56,28 @@ export function applyThemeSettings(settings: Settings): void {
       }
     } else {
       root.style.removeProperty(varName);
+    }
+  }
+
+  const accentVariables = accentColorVariables(settings.colorAccent);
+  for (const variable of ['--color-accent', '--color-accent-hover', '--color-accent-bg', '--color-on-accent']) {
+    if (accentVariables) root.style.setProperty(variable, accentVariables[variable]);
+    else root.style.removeProperty(variable);
+  }
+
+  // Heading overrides also color the corresponding syntax roles. With no
+  // override, code keeps its separate default palette in light and dark modes.
+  const syntaxColors = {
+    colorH1: ["--syntax-modifier"],
+    colorH2: ["--syntax-type"],
+    colorH3: ["--syntax-variable", "--syntax-property"],
+    colorCodeText: ["--syntax-string", "--syntax-number"],
+  } as const;
+  for (const [key, variables] of Object.entries(syntaxColors)) {
+    const value = settings[key as keyof typeof syntaxColors];
+    for (const variable of variables) {
+      if (value) root.style.setProperty(variable, value);
+      else root.style.removeProperty(variable);
     }
   }
 
@@ -128,6 +152,7 @@ export function getDefaultThemeValues(isDarkMode: boolean): Record<string, strin
       lineHeight: "1.6",
       colorH1: "#e6e3dd",
       colorBody: "#e6e3dd",
+      colorAccent: "#e57e54",
       colorH2: "#e6e3dd",
       colorH3: "#e6e3dd",
       colorH4: "#a39f96",
@@ -147,6 +172,7 @@ export function getDefaultThemeValues(isDarkMode: boolean): Record<string, strin
       lineHeight: "1.6",
       colorH1: "#191919",
       colorBody: "#191919",
+      colorAccent: "#c44e24",
       colorH2: "#191919",
       colorH3: "#191919",
       colorH4: "#706b64",

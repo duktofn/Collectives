@@ -1,17 +1,24 @@
-#!/usr/bin/env node
+// @vitest-environment node
 /* global process */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { comparable, generateBaseline, resolveCurrent } from "./resolve-predecessors.mjs";
+import { comparable, generateBaseline, main, parseArgs, resolveCurrent } from "./resolve-predecessors.mjs";
 
-const test = process.env.VITEST ? (await import("vitest")).it : (await import("node:test")).default;
+const { it: test, afterEach } = process.env.VITEST ? await import("vitest") : await import("node:test");
 const workspace = resolve(import.meta.dirname, "../..");
 const script = resolve(workspace, "scripts/phase5/resolve-predecessors.mjs");
 const predecessorRun = "phase5-20260824-feature42-final";
-const syntheticParent = resolve(workspace, "artifacts/phase6/phase6-20260825-code3-rev2");
+const fixtureRoots = [];
+afterEach(() => {
+  for (const root of fixtureRoots.splice(0)) {
+    assert.equal(dirname(root), resolve(tmpdir()));
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function inventory(root) {
   const files = [];
@@ -19,7 +26,7 @@ function inventory(root) {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) visit(path);
-      else if (entry.isFile()) files.push({ path: relative(workspace, path).replaceAll("\\", "/"), sha256: createHash("sha256").update(readFileSync(path)).digest("hex"), size: statSync(path).size });
+      else if (entry.isFile()) files.push({ path: relative(root, path).replaceAll("\\", "/"), sha256: createHash("sha256").update(readFileSync(path)).digest("hex"), size: statSync(path).size });
     }
   };
   visit(root);
@@ -33,7 +40,8 @@ function put(root, path, value) {
   writeFileSync(target, `${JSON.stringify(value, null, 2)}\n`, { flag: "wx" });
 }
 function syntheticFixture(options = {}) {
-  const root = mkdtempSync(resolve(syntheticParent, "resolver-fixture-"));
+  const root = mkdtempSync(join(tmpdir(), "collectives-resolver-fixture-"));
+  fixtureRoots.push(root);
   put(root, "artifacts/phase4/approved-manifest.json", { status: "approved", phase: "phase4", run_id: "phase4-synthetic", visual_review: options.escape ? "../../outside.json" : "artifacts/phase4/review.json", after_manifest: "artifacts/phase4/after.json" });
   put(root, "artifacts/phase4/review.json", { status: "approved_independent_review" });
   put(root, "artifacts/phase4/after.json", { status: "pass" });
@@ -48,12 +56,11 @@ function syntheticFixture(options = {}) {
   return root;
 }
 
-test("Phase 6 check mode is byte-read-only across the complete Phase 5 predecessor run", () => {
-  const root = resolve(workspace, "artifacts/phase5", predecessorRun);
+test("check mode is byte-read-only across a complete synthetic predecessor run", () => {
+  const root = syntheticFixture();
+  generateBaseline(predecessorRun, root);
   const before = inventory(root);
-  const result = run("--check", "--run-id", predecessorRun);
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /"read_only": true/);
+  main(["--check", "--run-id", predecessorRun], root);
   assert.deepEqual(inventory(root), before);
 });
 
@@ -63,12 +70,11 @@ test("parser rejects extra positional tokens and mixed/unsafe modes", () => {
     ["--check", "--generate", "--run-id", predecessorRun],
     ["--check"],
     ["--check", "--run-id", "../escape"],
-    ["--check", "--run-id", "missing-phase6-run"],
-    ["--generate", "--run-id", predecessorRun],
   ]) {
-    const result = run(...args);
-    assert.notEqual(result.status, 0, `${args.join(" ")} unexpectedly passed`);
+    assert.throws(() => parseArgs(args), /usage|unsafe/);
   }
+  const result = run("--check", "--run-id", "missing-phase6-run");
+  assert.notEqual(result.status, 0, result.stderr);
 });
 
 test("synthetic generate succeeds with wx output and never touches a real predecessor", () => {
@@ -77,6 +83,8 @@ test("synthetic generate succeeds with wx output and never touches a real predec
   assert.equal(existsSync(generated.output), true);
   assert.equal(JSON.parse(readFileSync(generated.output, "utf8")).status, "pass");
   assert.throws(() => generateBaseline("phase6-synthetic-success", root, resolve(root, "artifacts/phase5")), /existing/);
+  assert.throws(() => generateBaseline("../escape", root), /unsafe/);
+  assert.throws(() => main(["--check", "--run-id", "missing-run"], root), /missing/);
 });
 
 test("synthetic missing, failed, escaped and ambiguous predecessor cases fail closed", () => {

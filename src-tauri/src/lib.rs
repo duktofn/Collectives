@@ -12,6 +12,7 @@ pub mod repositories;
 pub mod safety_error;
 pub mod settings;
 pub mod theme_io;
+pub mod text_files;
 
 use tauri::Manager;
 

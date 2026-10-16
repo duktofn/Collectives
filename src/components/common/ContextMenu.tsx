@@ -133,10 +133,13 @@ export function ContextMenu(props: ContextMenuProps) {
         style={getPositionStyles()}
         onKeyDown={handleMenuKeyDown}
         onFocusOut={(event) => {
+          event.stopPropagation();
+          // Focus leaves the old item before the browser focuses the new one.
+          // Keep the menu mounted so that the following click can activate it.
+          if (event.relatedTarget instanceof Node && menuRef?.contains(event.relatedTarget)) return;
           queueMicrotask(() => {
             if (menuRef && !menuRef.contains(document.activeElement)) props.onClose();
           });
-          event.stopPropagation();
         }}
       >
         <For each={props.items}>

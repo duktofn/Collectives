@@ -375,6 +375,7 @@ pub struct FsEntryDto {
     pub path: String,
     pub is_dir: bool,
     pub size: Option<u64>,
+    pub is_text: Option<bool>,
 }
 impl From<FsEntry> for FsEntryDto {
     fn from(value: FsEntry) -> Self {
@@ -383,6 +384,7 @@ impl From<FsEntry> for FsEntryDto {
             path: value.path,
             is_dir: value.is_dir,
             size: value.size,
+            is_text: value.is_text,
         }
     }
 }
@@ -494,6 +496,8 @@ pub struct SettingsDto {
     pub size_h4: Option<f32>,
     pub color_h1: Option<String>,
     pub color_body: Option<String>,
+    #[serde(default)]
+    pub color_accent: Option<String>,
     pub color_h2: Option<String>,
     pub color_h3: Option<String>,
     pub color_h4: Option<String>,
@@ -519,6 +523,7 @@ impl From<Settings> for SettingsDto {
             size_h4: value.size_h4,
             color_h1: value.color_h1,
             color_body: value.color_body,
+            color_accent: value.color_accent,
             color_h2: value.color_h2,
             color_h3: value.color_h3,
             color_h4: value.color_h4,
@@ -548,6 +553,7 @@ impl From<SettingsDto> for Settings {
             size_h4: value.size_h4,
             color_h1: value.color_h1,
             color_body: value.color_body,
+            color_accent: value.color_accent,
             color_h2: value.color_h2,
             color_h3: value.color_h3,
             color_h4: value.color_h4,

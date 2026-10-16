@@ -227,6 +227,92 @@ describe("Phase 1 committed selection", () => {
     expect(editorStore.state.isDirty).toBe(true);
   });
 
+  it("saves edits made while close is waiting for an earlier write", async () => {
+    const api = await import("../features/editor");
+    await editorStore.openFile("a.md");
+    editorStore.updateContent("first draft");
+    let finishWrite!: (receipt: { versionToken: string }) => void;
+    vi.mocked(api.writeFile).mockImplementationOnce(() => new Promise((resolve) => { finishWrite = resolve; }));
+    const closing = editorStore.closeFile();
+    editorStore.updateContent("typed while closing");
+    finishWrite({ versionToken: "first-commit" });
+    expect(await closing).toBe(true);
+    expect(vi.mocked(api.writeFile).mock.calls.map((call) => call[1])).toEqual(["first draft", "typed while closing"]);
+    expect(vi.mocked(api.writeFile).mock.calls[1]?.[2]).toBe("first-commit");
+  });
+
+  it("coalesces intermediate revisions while a write is in flight", async () => {
+    const api = await import("../features/editor");
+    await editorStore.openFile("a.md");
+    editorStore.updateContent("first");
+    let finishWrite!: (receipt: { versionToken: string }) => void;
+    vi.mocked(api.writeFile).mockImplementationOnce(() => new Promise((resolve) => { finishWrite = resolve; }));
+    const first = editorStore.saveFile();
+    editorStore.updateContent("intermediate");
+    const intermediate = editorStore.saveFile();
+    editorStore.updateContent("latest");
+    const latest = editorStore.saveFile();
+    finishWrite({ versionToken: "first-commit" });
+    await Promise.all([first, intermediate, latest]);
+    expect(vi.mocked(api.writeFile).mock.calls.map((call) => call[1])).toEqual(["first", "latest"]);
+  });
+
+  it("keeps the current session while the next file is loading and saves late edits", async () => {
+    const api = await import("../features/editor");
+    await editorStore.openFile("a.md");
+    const generation = editorStore.state.generation;
+    let finishRead!: (snapshot: { content: string; versionToken: string }) => void;
+    vi.mocked(api.readFile).mockImplementationOnce(() => new Promise((resolve) => { finishRead = resolve; }));
+    const opening = editorStore.openFile("b.md");
+    expect(editorStore.state.generation).toBe(generation);
+    editorStore.updateContent("typed while loading B");
+    finishRead({ content: "B", versionToken: "B-token" });
+    await opening;
+    expect(api.writeFile).toHaveBeenCalledWith("a.md", "typed while loading B", "token:a.md");
+    expect(editorStore.state.openFilePath).toBe("b.md");
+  });
+
+  it("ignores an older failed read after a newer note has opened", async () => {
+    const api = await import("../features/editor");
+    let failRead!: (error: Error) => void;
+    vi.mocked(api.readFile).mockImplementationOnce(() => new Promise((_resolve, reject) => { failRead = reject; }));
+    const older = editorStore.openFile("a.md");
+    await editorStore.openFile("b.md");
+    failRead(new Error("old read failed"));
+    await older.catch(() => {});
+    expect(editorStore.state.openFilePath).toBe("b.md");
+    expect(editorStore.state.error).toBeNull();
+  });
+
+  it("does not reopen a file after close cancels a switch waiting for a save", async () => {
+    const api = await import("../features/editor");
+    await editorStore.openFile("a.md");
+    editorStore.updateContent("draft");
+    let finishWrite!: (receipt: { versionToken: string }) => void;
+    vi.mocked(api.writeFile).mockImplementationOnce(() => new Promise((resolve) => { finishWrite = resolve; }));
+    const opening = editorStore.openFile("b.md");
+    await editorStore.closeFile(true);
+    finishWrite({ versionToken: "saved" });
+    await opening;
+    expect(api.readFile).not.toHaveBeenCalledWith("b.md");
+    expect(editorStore.state.openFilePath).toBeNull();
+  });
+
+  it("keeps a failed current draft when another recovery draft is requested", async () => {
+    const api = await import("../features/editor");
+    await editorStore.openFile("a.md");
+    editorStore.updateContent("keep this unsaved draft");
+    vi.mocked(api.writeFile).mockRejectedValueOnce(new Error("save unavailable"));
+    expect(await editorStore.restoreRecoveredDraft({
+      id: "recover-b", collectionId: "collection", entryId: "b", path: "b.md",
+      baseVersionToken: "b-token", content: "recovered B", revision: 1,
+      sessionId: "recover-b", updatedAt: Date.now(),
+    })).toBe(false);
+    expect(editorStore.state.openFilePath).toBe("a.md");
+    expect(editorStore.state.currentContent).toBe("keep this unsaved draft");
+    expect(api.readFile).not.toHaveBeenCalledWith("b.md");
+  });
+
   it("does not overwrite disk changes that arrived after comparison", async () => {
     const api = await import("../features/editor");
     await editorStore.openFile("a.md");

@@ -224,6 +224,15 @@ impl LinkRepository for SqliteLinkRepository {
 pub struct DocumentFileRepository;
 
 impl DocumentRepository for DocumentFileRepository {
+    fn search_content(
+        &self,
+        indexed: Vec<crate::link_index::IndexEntry>,
+        query: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<crate::application::domain::ContentSearchPage, String> {
+        crate::repositories::content_search::search_note_content(indexed, query, offset, limit)
+    }
     fn read(&self, path: &str) -> Result<DocumentSnapshot, SafetyError> {
         crate::repositories::documents::read_file(path.to_string())
     }
