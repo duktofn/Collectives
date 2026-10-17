@@ -11,6 +11,7 @@ import { isMarkdownPath, isSupportedFilePath } from "../../shared/fileCapabiliti
 import { treeItemIdentity } from "./treeAccessibility";
 import { MoveTargetRadioGroup } from "../common/MoveTargetRadioGroup";
 import "./Tree.css";
+import { copyFilePath } from '../../lib/clipboard';
 
 interface FileNodeProps {
   entry: Extract<Entry, { type: "file" }>;
@@ -40,7 +41,6 @@ export function FileNode(props: FileNodeProps) {
   const treeId = () => treeItemIdentity(["entry", props.entry.id]);
 
   const handleContextMenu = (e: MouseEvent) => {
-    if (!isSupported()) return;
     e.preventDefault();
     e.stopPropagation();
     (e.currentTarget as HTMLElement).focus();
@@ -132,6 +132,7 @@ export function FileNode(props: FileNodeProps) {
       });
     }
     items.push(
+      { label: 'Copy path', icon: 'copy', onClick: () => void copyFilePath(props.entry.path) },
       {
         label: "Move to...",
         icon: "chevron-right",
@@ -152,7 +153,6 @@ export function FileNode(props: FileNodeProps) {
   };
 
   return (
-    <Show when={!uiStore.state.hideUnsupportedFiles || isSupported()}>
     <>
       <div
         class="tree-node"
@@ -205,6 +205,5 @@ export function FileNode(props: FileNodeProps) {
         />
       </Dialog>
     </>
-    </Show>
   );
 }

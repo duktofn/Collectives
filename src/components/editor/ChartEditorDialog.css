@@ -1,13 +1,13 @@
 .modal-layer-content.chart-config-dialog {
   width: min(740px, calc(100vw - 32px));
   max-width: min(740px, calc(100vw - 32px));
-  max-height: calc(100dvh - 32px);
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--bg-primary);
   color: var(--color-text-primary);
   border: 1px solid var(--color-border);
-  border-radius: 14px;
+  border-radius: 10px;
   box-shadow: 0 24px 80px #0005;
 }
 .chart-config-header {

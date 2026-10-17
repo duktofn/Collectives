@@ -32,7 +32,7 @@ vi.mock("../../platform", () => ({
 }));
 
 describe("ThemePanel settings draft", () => {
-  const initial: Settings = { theme: "dark", fontScale: 1, customFonts: [], hideUnsupportedFiles: false };
+  const initial: Settings = { theme: "dark", fontScale: 1, customFonts: [] };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -42,6 +42,7 @@ describe("ThemePanel settings draft", () => {
 
   it("saves a custom accent only on Apply and restores the theme default", async () => {
     render(() => <ThemePanel isOpen onClose={vi.fn()} settings={initial} onSettingsChange={vi.fn()} />);
+    await fireEvent.click(screen.getByRole("button", { name: "Edit colors" }));
     await fireEvent.input(screen.getByLabelText("Accent color hex"), { target: { value: "#2563eb" } });
     expect(settingsApi.saveSettings).not.toHaveBeenCalled();
     await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
@@ -53,6 +54,7 @@ describe("ThemePanel settings draft", () => {
 
   it("rejects an invalid accent without saving", async () => {
     render(() => <ThemePanel isOpen onClose={vi.fn()} settings={initial} onSettingsChange={vi.fn()} />);
+    await fireEvent.click(screen.getByRole("button", { name: "Edit colors" }));
     await fireEvent.input(screen.getByLabelText("Accent color hex"), { target: { value: "#nope" } });
     expect(screen.getByRole("status").textContent).toContain("Accent color must be a hex color");
     await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
@@ -64,6 +66,7 @@ describe("ThemePanel settings draft", () => {
       ...initial, lineHeight: null, sizeH1: null, sizeH2: null, sizeH3: null, sizeH4: null,
     }));
     render(() => <ThemePanel isOpen onClose={vi.fn()} settings={persisted} onSettingsChange={vi.fn()} />);
+    await fireEvent.click(screen.getByRole("button", { name: "Edit colors" }));
     await fireEvent.click(screen.getByRole("button", { name: "Light" }));
     expect(screen.queryByRole("alert")).toBeNull();
     await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
@@ -74,6 +77,7 @@ describe("ThemePanel settings draft", () => {
     const onClose = vi.fn();
     const onSettingsChange = vi.fn();
     render(() => <ThemePanel isOpen={true} onClose={onClose} settings={initial} onSettingsChange={onSettingsChange} />);
+    await fireEvent.click(screen.getByRole("button", { name: "Edit colors" }));
 
     await fireEvent.click(screen.getByRole("button", { name: "Light" }));
     expect(onSettingsChange).not.toHaveBeenCalled();
@@ -96,6 +100,7 @@ describe("ThemePanel settings draft", () => {
     settingsApi.saveSettings.mockRejectedValueOnce(new Error("disk full"));
     const onSettingsChange = vi.fn();
     render(() => <ThemePanel isOpen={true} onClose={vi.fn()} settings={initial} onSettingsChange={onSettingsChange} />);
+    await fireEvent.click(screen.getByRole("button", { name: "Edit colors" }));
 
     await fireEvent.click(screen.getByRole("button", { name: "Light" }));
     await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
@@ -108,6 +113,7 @@ describe("ThemePanel settings draft", () => {
 
   it("does not mark Reset dirty when defaults already match the applied settings", async () => {
     render(() => <ThemePanel isOpen={true} onClose={vi.fn()} settings={initial} onSettingsChange={vi.fn()} />);
+    await fireEvent.click(screen.getByRole("button", { name: "Edit colors" }));
 
     await fireEvent.click(screen.getByRole("button", { name: "Reset to default settings" }));
 
@@ -119,6 +125,7 @@ describe("ThemePanel settings draft", () => {
     const onClose = vi.fn();
     const onSettingsChange = vi.fn();
     render(() => <ThemePanel isOpen={true} onClose={onClose} settings={initial} onSettingsChange={onSettingsChange} />);
+    await fireEvent.click(screen.getByRole("button", { name: "Edit colors" }));
     await fireEvent.click(screen.getByRole("button", { name: "Light" }));
 
     if (closePath === "Cancel") {
@@ -144,6 +151,7 @@ describe("ThemePanel settings draft", () => {
     settingsApi.saveSettings.mockImplementationOnce(() => new Promise<void>((resolve) => { finishSave = resolve; }));
     const onClose = vi.fn();
     render(() => <ThemePanel isOpen={true} onClose={onClose} settings={initial} onSettingsChange={vi.fn()} />);
+    await fireEvent.click(screen.getByRole("button", { name: "Edit colors" }));
 
     await fireEvent.click(screen.getByRole("button", { name: "Light" }));
     await fireEvent.click(screen.getByRole("button", { name: "Apply" }));

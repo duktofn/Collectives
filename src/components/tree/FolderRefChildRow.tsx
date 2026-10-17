@@ -8,6 +8,8 @@ import { isMarkdownPath, isSupportedFilePath } from "../../shared/fileCapabiliti
 import { uiStore } from "../../stores/ui";
 import { editorStore } from "../../stores/editor";
 import { treeItemIdentity } from "./treeAccessibility";
+import { ContextMenu } from '../common/ContextMenu';
+import { copyFilePath } from '../../lib/clipboard';
 
 interface FolderRefChildRowProps {
   item: FsEntry;
@@ -24,6 +26,7 @@ export function isFolderRefChildOpen(path: string, selectedEntryId: string | nul
 }
 
 export function FolderRefChildRow(props: FolderRefChildRowProps) {
+  const [menu, setMenu] = createSignal<{ x: number; y: number } | null>(null);
   const [children, setChildren] = createSignal<FsEntry[]>([]);
   const [isExpanded, setIsExpanded] = createSignal(false);
   const [loading, setLoading] = createSignal(false);
@@ -77,7 +80,6 @@ export function FolderRefChildRow(props: FolderRefChildRowProps) {
   };
 
   return (
-    <Show when={props.item.isDir || !uiStore.state.hideUnsupportedFiles || isSupported()}>
     <div class="tree-node-wrapper" data-folderref-child={props.item.path}>
       <div
         class="tree-node"
@@ -100,6 +102,11 @@ export function FolderRefChildRow(props: FolderRefChildRowProps) {
         data-tree-parent-id={props.parentTreeId}
         data-tree-label={displayName()}
         onClick={handleClick}
+        onContextMenu={event => {
+          event.preventDefault(); event.stopPropagation();
+          event.currentTarget.focus();
+          setMenu({ x: event.clientX, y: event.clientY });
+        }}
         title={!isSupported() ? "Unsupported file type: opening is disabled" : props.item.path}
       >
         <div class="tree-node-icon">
@@ -124,7 +131,9 @@ export function FolderRefChildRow(props: FolderRefChildRowProps) {
           </For>
         </div>
       </Show>
+      <ContextMenu x={menu()?.x ?? 0} y={menu()?.y ?? 0} isOpen={Boolean(menu())}
+        items={[{ label: 'Copy path', icon: 'copy', onClick: () => void copyFilePath(props.item.path) }]}
+        onClose={() => setMenu(null)} />
     </div>
-    </Show>
   );
 }

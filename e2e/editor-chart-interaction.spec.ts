@@ -52,8 +52,8 @@ test('Insert chart creates a visible preview with sample data and an editable so
   page,
 }) => {
   await openNote(page);
-  await page.getByRole('button', { name: 'Insert Markdown template', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Chart block', exact: true }).click();
+  await page.keyboard.press('Shift+F10');
+  await page.getByRole('menuitem', { name: 'Chart', exact: true }).click();
   await expect(page.locator('.cm-chart-widget-container')).toHaveCount(1);
   await expect(page.locator('.cm-chart-wrapper canvas')).toBeVisible();
   const source = await page.evaluate(async () => {
@@ -203,8 +203,8 @@ test('saving resolves the current chart position after text is inserted before i
 
 async function createChart(page: Page) {
   await openNote(page);
-  await page.getByRole('button', { name: 'Insert Markdown template', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Chart block', exact: true }).click();
+  await page.keyboard.press('Shift+F10');
+  await page.getByRole('menuitem', { name: 'Chart', exact: true }).click();
   await expectChartData(page, [3, 7, 5]);
 }
 

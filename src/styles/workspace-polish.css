@@ -754,22 +754,31 @@
 /* Islands keep navigation, tools and writing as distinct, calm surfaces. */
 .island-layout {
   --island-gap: 12px;
+  --island-edge: color-mix(in srgb, var(--ds-border) 35%, var(--ds-canvas));
+  --island-surface-edge: color-mix(in srgb, var(--ds-border) 30%, var(--ds-surface));
+  --island-shadow: 0 8px 24px -12px rgb(0 0 0 / 48%), 0 1px 3px rgb(0 0 0 / 12%);
   padding: var(--island-gap);
   gap: var(--island-gap);
   background: color-mix(in srgb, var(--ds-canvas) 86%, var(--ds-color-black));
 }
 :root[data-theme='light'] .island-layout {
-  background: var(--ds-surface);
+  --island-shadow:
+    0 8px 26px -14px color-mix(in srgb, var(--ds-text-primary) 28%, transparent),
+    0 1px 3px rgb(0 0 0 / 4%);
+  background: color-mix(in srgb, var(--ds-surface) 70%, var(--ds-canvas));
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']) .island-layout {
-    background: var(--ds-surface);
+    --island-shadow:
+      0 8px 26px -14px color-mix(in srgb, var(--ds-text-primary) 28%, transparent),
+      0 1px 3px rgb(0 0 0 / 4%);
+    background: color-mix(in srgb, var(--ds-surface) 70%, var(--ds-canvas));
   }
 }
 .island-layout .sidebar {
-  border: 1px solid var(--ds-border);
-  border-radius: 16px;
-  box-shadow: 0 8px 24px -20px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--island-surface-edge);
+  border-radius: 10px;
+  box-shadow: var(--island-shadow);
 }
 .island-layout .sidebar.collapsed {
   border-width: 0;
@@ -780,10 +789,10 @@
 }
 .island-layout .app-shell-header,
 .island-layout .app-shell-body {
-  border: 1px solid var(--ds-border);
-  border-radius: 16px;
+  border: 1px solid var(--island-edge);
+  border-radius: 10px;
   background: var(--ds-canvas);
-  box-shadow: 0 8px 24px -20px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--island-shadow);
 }
 .island-layout .app-shell-header {
   position: relative;
@@ -791,7 +800,7 @@
 }
 .island-layout .workspace-header,
 .island-layout .editor-toolbar {
-  border-radius: 15px;
+  border-radius: 9px;
 }
 .island-layout .app-shell-body {
   overflow: hidden;
@@ -799,7 +808,7 @@
 .island-layout .app-shell-activity {
   align-self: flex-end;
   width: fit-content;
-  border: 1px solid var(--ds-border);
+  border: 1px solid var(--island-edge);
   border-radius: 999px;
   background: var(--ds-canvas);
 }
@@ -816,9 +825,10 @@
 }
 .island-layout .editor-reference-panel {
   margin: 12px;
-  border: 1px solid var(--ds-border);
-  border-radius: 12px;
+  border: 1px solid var(--island-surface-edge);
+  border-radius: 8px;
   background: var(--ds-surface);
+  box-shadow: var(--island-shadow);
 }
 .island-layout .editor-reference-tabs {
   background: var(--ds-canvas);
@@ -827,7 +837,7 @@
   background: var(--ds-surface);
 }
 .island-layout .editor-container {
-  border-radius: 16px;
+  border-radius: 10px;
   overflow: hidden;
 }
 .island-layout .app-shell-notice-layer {
@@ -879,8 +889,9 @@
   animation: settings-backdrop-in 220ms ease-out both;
 }
 .theme-panel {
-  border: 1px solid var(--ds-border);
-  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--ds-border) 25%, var(--ds-canvas));
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
   height: 100%;
   max-height: 100%;
   animation: settings-island-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -944,17 +955,17 @@
 
 @container workspace (max-width: 680px) {
   .editor-toolbar {
-    flex-wrap: wrap;
-    gap: 10px;
+    flex-wrap: nowrap;
+    gap: 8px;
     padding: 12px 16px;
   }
 
   .editor-document-context {
-    flex-basis: 100%;
+    flex-basis: 0;
   }
   .editor-actions {
-    width: 100%;
-    justify-content: space-between;
+    width: auto;
+    justify-content: flex-end;
     gap: 8px;
   }
   .editor-reference-panel {
@@ -1000,15 +1011,12 @@
   }
 }
 
-.app-shell-sidebar-slot.is-collapsed {
-  display: none;
-}
 .island-layout .app-shell-sidebar-expand {
   position: static;
   inset: auto;
   z-index: auto;
   width: 32px;
   height: 32px;
-  margin: 0 0 0 12px;
+  margin: 0 calc(var(--ds-focus-width) + var(--ds-focus-offset)) 0 12px;
   box-shadow: none;
 }

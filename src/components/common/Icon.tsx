@@ -27,7 +27,8 @@ interface IconProps extends JSX.SvgSVGAttributes<SVGSVGElement> {
     | "chevron-left"
     | "list"
     | "more"
-    | "clock";
+    | "clock"
+    | "copy";
   size?: number;
 }
 
@@ -175,6 +176,9 @@ export function Icon(props: IconProps) {
           <polyline points="17 8 12 3 7 8" />
           <line x1="12" y1="3" x2="12" y2="15" />
         </>
+      )}
+      {props.name === "copy" && (
+        <><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>
       )}
     </svg>
   );

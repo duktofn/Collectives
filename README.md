@@ -27,7 +27,11 @@ Giống như Obsidian hay Logseq, Collectives giúp bạn liên kết các ý t�
 * Phần backend viết bằng Rust sử dụng cơ chế lắng nghe sự kiện của hệ điều hành để phát hiện lập tức bất kỳ sự thay đổi nào (thêm mới, chỉnh sửa, xóa, đổi tên file) diễn ra trong các thư mục được tham chiếu, sau đó đồng bộ hóa ngay lập tức lên giao diện sidebar mà không cần tải lại trang.
 
 ### 5. Quản Lý Giao Diện & Font Chữ Linh Hoạt
-* **Công cụ tùy chỉnh giao diện chuyên sâu (Theme Engine):** Cho phép bạn tự cấu hình màu sắc văn bản, màu tiêu đề, kích thước font chữ, màu nền khối code, và xuất/nhập theme dưới dạng tệp YAML.
+* **Công cụ tùy chỉnh giao diện chuyên sâu (Theme Engine):** Settings gồm Appearance, Behavior và Shortcuts. Appearance chia thành Theme và Typography; quản lý font nằm trong Typography, còn bố cục note nằm trong Behavior. Các tab có hiệu ứng chuyển, dropdown dùng chung kiểu chọn theme, Line height và Font scale nhập trực tiếp bằng số. Theme gộp màu Interface, Note và Code, có theme mặc định chỉ đọc và thư viện custom theme với Save new / Replace. Khi trùng toàn bộ màu, ứng dụng cho chọn ghi đè custom theme trùng hoặc vẫn lưu mới. Có bản xem trước Java, C#, C++, Rust và Python, khôi phục từng nhóm màu và xuất/nhập theme JSON.
+* **Theme có sẵn:** Pastel Light, Cerulean, Ice & Butter, Holst dùng nền sáng; Pastel Dark, Blues, Sicily, Desert Nights, Viola, Luigi, Cove, Pinheiro, Embers, Luna, Sunset, Violet Dusk, Ocean và Marple dùng nền tối. Mỗi preset có đầy đủ màu giao diện, nội dung và syntax; có thể lưu thành custom theme để chỉnh sửa. Các panel dùng viền hòa màu và bóng nhẹ để tạo hiệu ứng đảo nổi.
+* **Khung cửa sổ:** Thanh tiêu đề và viền theo theme, hỗ trợ kéo cửa sổ, nhấp đúp để phóng to/khôi phục, thu nhỏ và đóng qua luồng lưu bản nháp hiện có.
+* **Bố cục và tương tác:** Typography cho chọn cột nội dung ở giữa với độ rộng tùy chỉnh hoặc toàn chiều rộng. Sidebar có hiệu ứng mở/đóng, tự hiện khi rê chuột sát mép trái và tùy chọn tắt trong Behavior. Hai checkbox Code và Markdown bật/tắt riêng việc tô nền mờ các từ trùng với từ tại con trỏ.
+* **Điều khiển editor:** Editor kéo dài ngang đáy sidebar; Read/Write/Source dùng cụm icon nổi ở góc dưới phải. Chấm cạnh tên file báo thay đổi chưa lưu và biến mất sau khi lưu. Menu chuột phải có Search in notes (điền sẵn chữ đang chọn), Copy/Cut/Paste (disable khi không dùng được), Select All, Heading 1–3, Table và Chart với Bar/Line/Area/Pie/Doughnut; bấm trực tiếp Chart tạo Bar. Copy path nằm trong menu file ở sidebar.
 * **Quản lý Font chữ hệ thống & Custom Fonts:** Bạn có thể nhập trực tiếp các file font chữ cá nhân (`.ttf`, `.otf`, `.woff`, `.woff2`) vào ứng dụng để cá nhân hóa toàn diện trải nghiệm đọc/viết của mình.
 
 ### 6. Nhập/Xuất & Giải Quyết Xung Đột An Toàn
@@ -85,6 +89,10 @@ Collectives/
 
 ### Đóng gói bản phát hành
 
+Mỗi bản phát hành có file `release/x.y.z/changelog.md`, lấy riêng mục `## [x.y.z]` trong [CHANGELOG.md](CHANGELOG.md). Bổ sung mục changelog đúng phiên bản trước khi build; quy trình sẽ dừng nếu thiếu mục này.
+
+Changelog viết bằng tiếng Anh, theo thứ tự **Version**, **Release date**, **Major changes**, **Feature changes**, **Bug fixes**. Thay đổi chưa phát hành được ghi tạm trong **Unreleased**, với ngày phát hành **TBD**; khi phát hành mới chuyển sang phiên bản và ngày cụ thể.
+
 Tạo bộ cài và tệp chạy bằng `npm run release:build`. Các tệp phát hành được đưa vào thư mục riêng `release/x.y.z/` ở thư mục gốc, với tên bắt đầu bằng `Collective-x.y.z`; ví dụ `release/0.2.0/Collective-0.2.0.exe`. Phiên bản dùng quy ước SemVer: tăng `x` cho thay đổi lớn toàn ứng dụng, tăng `y` cho tính năng mới, và tăng `z` cho sửa lỗi hoặc cải thiện hiệu năng. Cập nhật đồng bộ phiên bản trong `package.json`, `src-tauri/tauri.conf.json` và `src-tauri/Cargo.toml` trước mỗi lần phát hành.
 
 ### Yêu cầu hệ thống
@@ -114,9 +122,9 @@ Tạo bộ cài và tệp chạy bằng `npm run release:build`. Các tệp phá
 
 4. **Biên dịch ứng dụng bản Production (Release Build):**
    ```bash
-   npm run tauri build
+   npm run release:build
    ```
-   Sau khi hoàn tất, file cài đặt (`.exe` trên Windows, `.dmg` / `.app` trên macOS, hoặc `.deb` trên Linux) sẽ nằm trong thư mục `src-tauri/target/release/bundle/`.
+   Sau khi hoàn tất, tệp chạy, bộ cài và `changelog.md` của phiên bản nằm trong thư mục `release/x.y.z/`. Các bộ cài gốc cũng nằm trong `src-tauri/target/release/bundle/`.
 
 ---
 

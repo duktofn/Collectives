@@ -4,6 +4,57 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri::Manager;
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ThemePalette {
+    pub mode: String,
+    pub accent: String,
+    pub selection: String,
+    pub note: std::collections::BTreeMap<String, String>,
+    pub code: CodeColors,
+    pub interface: ThemeColors,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomTheme {
+    pub id: String,
+    pub name: String,
+    pub palette: ThemePalette,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct CodeColors {
+    pub text: Option<String>,
+    pub background: Option<String>,
+    pub keyword: Option<String>,
+    pub modifier: Option<String>,
+    pub r#type: Option<String>,
+    pub function: Option<String>,
+    pub variable: Option<String>,
+    pub property: Option<String>,
+    pub string: Option<String>,
+    pub number: Option<String>,
+    pub comment: Option<String>,
+    pub annotation: Option<String>,
+    pub r#macro: Option<String>,
+    pub line_number: Option<String>,
+    pub active_line_number: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ThemeColors {
+    pub background: Option<String>,
+    pub surface: Option<String>,
+    pub border: Option<String>,
+    pub text: Option<String>,
+    pub secondary_text: Option<String>,
+    pub hover: Option<String>,
+    pub active: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomFont {
@@ -16,6 +67,20 @@ pub struct CustomFont {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
+    #[serde(default)]
+    pub sidebar_hover_reveal: Option<bool>,
+    #[serde(default)]
+    pub note_layout: Option<String>,
+    #[serde(default)]
+    pub note_width: Option<f32>,
+    #[serde(default)]
+    pub highlight_code_occurrences: Option<bool>,
+    #[serde(default)]
+    pub highlight_markdown_occurrences: Option<bool>,
+    #[serde(default)]
+    pub custom_themes: Option<Vec<CustomTheme>>,
+    #[serde(default)]
+    pub active_theme_id: Option<String>,
     pub theme: String,
     pub font_body: Option<String>,
     pub font_mono: Option<String>,
@@ -33,6 +98,10 @@ pub struct Settings {
     pub color_body: Option<String>,
     #[serde(default)]
     pub color_accent: Option<String>,
+    #[serde(default)]
+    pub code_colors: Option<CodeColors>,
+    #[serde(default)]
+    pub theme_colors: Option<ThemeColors>,
     pub color_h2: Option<String>,
     pub color_h3: Option<String>,
     pub color_h4: Option<String>,
@@ -49,15 +118,18 @@ pub struct Settings {
 
     // Imported custom fonts registry
     pub custom_fonts: Option<Vec<CustomFont>>,
-    // None means this setting has not been written yet and allows the frontend
-    // to migrate the former localStorage preference.
-    #[serde(default)]
-    pub hide_unsupported_files: Option<bool>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            sidebar_hover_reveal: None,
+            note_layout: None,
+            note_width: None,
+            highlight_code_occurrences: None,
+            highlight_markdown_occurrences: None,
+            custom_themes: None,
+            active_theme_id: None,
             theme: "dark".to_string(),
             font_body: None,
             font_mono: None,
@@ -69,6 +141,8 @@ impl Default for Settings {
             color_h1: None,
             color_body: None,
             color_accent: None,
+            code_colors: None,
+            theme_colors: None,
             color_h2: None,
             color_h3: None,
             color_h4: None,
@@ -79,7 +153,6 @@ impl Default for Settings {
             color_link_hover: None,
             line_height: None,
             custom_fonts: None,
-            hide_unsupported_files: None,
         }
     }
 }
@@ -186,7 +259,6 @@ mod tests {
         let settings = Settings {
             theme: "light".to_string(),
             font_scale: 1.25,
-            hide_unsupported_files: Some(true),
             ..Default::default()
         };
         save_settings_to_path(&file_path, &settings).unwrap();
@@ -194,7 +266,6 @@ mod tests {
         let loaded = load_settings_from_path(&file_path);
         assert_eq!(loaded.theme, "light");
         assert_eq!(loaded.font_scale, 1.25);
-        assert_eq!(loaded.hide_unsupported_files, Some(true));
         assert!(!temp_dir.path().read_dir().unwrap().any(|entry| {
             entry
                 .unwrap()
@@ -205,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_settings_leave_visibility_preference_unset_for_migration() {
+    fn legacy_settings_load_without_optional_preferences() {
         let temp_dir = tempfile::tempdir().unwrap();
         let file_path = temp_dir.path().join("settings.json");
         fs::write(&file_path, r#"{"theme":"light","fontScale":1.2}"#).unwrap();
@@ -213,6 +284,56 @@ mod tests {
         let loaded = load_settings_from_path(&file_path);
 
         assert_eq!(loaded.theme, "light");
-        assert_eq!(loaded.hide_unsupported_files, None);
+    }
+
+    #[test]
+    fn independent_palettes_survive_ipc_and_settings_storage() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("settings.json");
+        let settings = Settings {
+            sidebar_hover_reveal: Some(false),
+            highlight_code_occurrences: Some(false),
+            highlight_markdown_occurrences: Some(true),
+            note_layout: Some("centered".into()),
+            note_width: Some(640.0),
+            active_theme_id: Some("custom-1".into()),
+            custom_themes: Some(vec![CustomTheme {
+                id: "custom-1".into(),
+                name: "Breeze".into(),
+                palette: ThemePalette {
+                    mode: "dark".into(),
+                    accent: "#aabbcc".into(),
+                    ..Default::default()
+                },
+            }]),
+            color_h1: Some("#ff6688".into()),
+            code_colors: Some(CodeColors {
+                r#type: Some("#55bbff".into()),
+                r#macro: Some("#76c7ba".into()),
+                active_line_number: Some("#ffffff".into()),
+                ..Default::default()
+            }),
+            theme_colors: Some(ThemeColors {
+                background: Some("#101820".into()),
+                surface: Some("#182832".into()),
+                border: Some("#405060".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let dto: crate::ipc::dto::SettingsDto = settings.clone().into();
+        let wire = serde_json::to_value(dto).unwrap();
+        assert_eq!(wire["customThemes"][0]["palette"]["accent"], "#aabbcc");
+        assert_eq!(wire["sidebarHoverReveal"], false);
+        assert_eq!(wire["highlightMarkdownOccurrences"], true);
+        assert_eq!(wire["noteWidth"], 640.0);
+        assert_eq!(wire["codeColors"]["type"], "#55bbff");
+        assert_eq!(wire["codeColors"]["macro"], "#76c7ba");
+        assert_eq!(wire["codeColors"]["activeLineNumber"], "#ffffff");
+        let dto: crate::ipc::dto::SettingsDto = serde_json::from_value(wire).unwrap();
+        let restored: Settings = dto.into();
+        assert_eq!(restored, settings);
+        save_settings_to_path(&path, &restored).unwrap();
+        assert_eq!(load_settings_from_path(&path), settings);
     }
 }

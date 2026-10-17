@@ -78,22 +78,23 @@ for (const theme of ['dark', 'light'])
 
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
-    await dialog.getByRole('button', { name: 'Advanced color overrides', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Edit colors', exact: true }).click();
+    await dialog.getByRole('tab', { name: 'Code', exact: true }).click();
     const values =
       theme === 'dark'
         ? {
-            'Normal Text': '#e3e3e3',
-            'H1 Color': '#ff6688',
-            'H2 Color': '#55bbff',
-            'H3 Color': '#bb99ff',
-            'Code Text': '#77cc66',
+            'Keywords': '#e3e3e3',
+            'Modifiers': '#ff6688',
+            'Types': '#55bbff',
+            'Variables / Parameters': '#bb99ff',
+            'Strings / Characters': '#77cc66',
           }
         : {
-            'Normal Text': '#18181b',
-            'H1 Color': '#9e1745',
-            'H2 Color': '#075985',
-            'H3 Color': '#6b21a8',
-            'Code Text': '#166534',
+            'Keywords': '#18181b',
+            'Modifiers': '#9e1745',
+            'Types': '#075985',
+            'Variables / Parameters': '#6b21a8',
+            'Strings / Characters': '#166534',
           };
     for (const [label, value] of Object.entries(values))
       await dialog
@@ -102,13 +103,13 @@ for (const theme of ['dark', 'light'])
         .locator('input[type="text"]')
         .fill(value);
     await dialog.getByRole('button', { name: 'Apply', exact: true }).click();
-    await expect(modifier).toHaveCSS('color', await rgb(page, values['H1 Color']));
-    await expect(type).toHaveCSS('color', await rgb(page, values['H2 Color']));
-    await expect(variable).toHaveCSS('color', await rgb(page, values['H3 Color']));
-    await expect(keyword).toHaveCSS('color', await rgb(page, values['Normal Text']));
-    await expect(page.locator('.cm-token-string')).toHaveCSS(
+    await expect(modifier).toHaveCSS('color', await rgb(page, values['Modifiers']));
+    await expect(type).toHaveCSS('color', await rgb(page, values['Types']));
+    await expect(variable).toHaveCSS('color', await rgb(page, values['Variables / Parameters']));
+    await expect(keyword).toHaveCSS('color', await rgb(page, values['Keywords']));
+    await expect(page.locator('.editor-workspace .cm-token-string')).toHaveCSS(
       'color',
-      await rgb(page, values['Code Text'])
+      await rgb(page, values['Strings / Characters'])
     );
     await dialog.getByRole('button', { name: 'Close settings', exact: true }).click();
     await expect(dialog).toHaveCount(0);

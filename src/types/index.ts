@@ -42,6 +42,34 @@ export interface ImportedTheme {
   fonts: ImportedThemeFont[];
 }
 
+export interface CodeColors {
+  text?: string;
+  background?: string;
+  keyword?: string;
+  modifier?: string;
+  type?: string;
+  function?: string;
+  variable?: string;
+  property?: string;
+  string?: string;
+  number?: string;
+  comment?: string;
+  annotation?: string;
+  macro?: string;
+  lineNumber?: string;
+  activeLineNumber?: string;
+}
+
+export interface ThemeColors {
+  background?: string;
+  surface?: string;
+  border?: string;
+  text?: string;
+  secondaryText?: string;
+  hover?: string;
+  active?: string;
+}
+
 export interface Settings {
   theme: string;
   fontBody?: string;
@@ -54,6 +82,8 @@ export interface Settings {
   colorH1?: string;
   colorBody?: string;
   colorAccent?: string;
+  codeColors?: CodeColors;
+  themeColors?: ThemeColors;
   colorH2?: string;
   colorH3?: string;
   colorH4?: string;
@@ -63,8 +93,29 @@ export interface Settings {
   colorLink?: string;
   colorLinkHover?: string;
   lineHeight?: number;
-  hideUnsupportedFiles?: boolean;
   customFonts?: CustomFont[];
+  sidebarHoverReveal?: boolean;
+  noteLayout?: 'centered' | 'wide';
+  noteWidth?: number;
+  highlightCodeOccurrences?: boolean;
+  highlightMarkdownOccurrences?: boolean;
+  customThemes?: CustomTheme[];
+  activeThemeId?: string;
+}
+
+export interface ThemePalette {
+  mode: 'dark' | 'light';
+  accent: string;
+  selection: string;
+  note: Record<string, string>;
+  code: CodeColors;
+  interface: ThemeColors;
+}
+
+export interface CustomTheme {
+  id: string;
+  name: string;
+  palette: ThemePalette;
 }
 
 export type EditorMode = "view" | "edit-source" | "edit-render";

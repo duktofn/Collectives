@@ -1,40 +1,73 @@
 :root {
+  --syntax-text: #e6e3dd;
+  --syntax-background: #22201e;
+  --syntax-keyword: #d798c6;
   --syntax-modifier: #e891bd;
+  --syntax-type: #7fbfdf;
+  --syntax-function: #e5c07b;
   --syntax-variable: #c2a7ec;
+  --syntax-property: #b5c5ec;
   --syntax-string: #a8c97b;
   --syntax-number: #e8b86e;
   --syntax-comment: #a4a098;
-  --syntax-type: #7fbfdf;
-  --syntax-property: #c2a7ec;
+  --syntax-annotation: #d6bc80;
+  --syntax-macro: #76c7ba;
+  --syntax-line-number: #a39f96;
+  --syntax-active-line-number: var(--color-accent);
 }
 :root[data-theme='light'] {
+  --syntax-text: #191919;
+  --syntax-background: #f4f1ea;
+  --syntax-keyword: #8a286b;
   --syntax-modifier: #813994;
+  --syntax-type: #185c88;
+  --syntax-function: #795514;
   --syntax-variable: #6b3999;
+  --syntax-property: #355b96;
   --syntax-string: #3b6622;
   --syntax-number: #8f540f;
   --syntax-comment: #6d6a65;
-  --syntax-type: #185c88;
-  --syntax-property: #6b3999;
+  --syntax-annotation: #806015;
+  --syntax-macro: #17695e;
+  --syntax-line-number: #706b64;
+  --syntax-active-line-number: var(--color-accent);
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']) {
+    --syntax-text: #191919;
+    --syntax-background: #f4f1ea;
+    --syntax-keyword: #8a286b;
     --syntax-modifier: #813994;
+    --syntax-type: #185c88;
+    --syntax-function: #795514;
     --syntax-variable: #6b3999;
+    --syntax-property: #355b96;
     --syntax-string: #3b6622;
     --syntax-number: #8f540f;
     --syntax-comment: #6d6a65;
-    --syntax-type: #185c88;
-    --syntax-property: #6b3999;
+    --syntax-annotation: #806015;
+    --syntax-macro: #17695e;
+    --syntax-line-number: #706b64;
+    --syntax-active-line-number: var(--color-accent);
   }
 }
 :is(.cm-codeblock-line, .cm-source-editor) .cm-token-keyword {
-  color: var(--color-text-primary);
+  color: var(--syntax-keyword);
 }
 :is(.cm-codeblock-line, .cm-source-editor) .cm-token-modifier {
   color: var(--syntax-modifier);
 }
+:is(.cm-codeblock-line, .cm-source-editor) .cm-token-type {
+  color: var(--syntax-type);
+}
+:is(.cm-codeblock-line, .cm-source-editor) .cm-token-function {
+  color: var(--syntax-function);
+}
 :is(.cm-codeblock-line, .cm-source-editor) .cm-token-variable {
   color: var(--syntax-variable);
+}
+:is(.cm-codeblock-line, .cm-source-editor) .cm-token-property {
+  color: var(--syntax-property);
 }
 :is(.cm-codeblock-line, .cm-source-editor) .cm-token-string {
   color: var(--syntax-string);
@@ -44,41 +77,58 @@
 }
 :is(.cm-codeblock-line, .cm-source-editor) .cm-token-comment {
   color: var(--syntax-comment);
+}
+:is(.cm-codeblock-line, .cm-source-editor) .cm-token-annotation {
+  color: var(--syntax-annotation);
+}
+:is(.cm-codeblock-line, .cm-source-editor) .cm-token-macro {
+  color: var(--syntax-macro);
+}
+.cm-token-comment {
   font-style: italic;
 }
-:is(.cm-codeblock-line, .cm-source-editor) .cm-token-type {
+:is(.cm-codeblock-line, .cm-source-editor) .cm-code-role-type,
+:is(.cm-codeblock-line, .cm-source-editor) .cm-code-role-type [class*='cm-token'] {
   color: var(--syntax-type);
 }
-:is(.cm-codeblock-line, .cm-source-editor) .cm-token-property {
-  color: var(--syntax-property);
+:is(.cm-codeblock-line, .cm-source-editor) .cm-code-role-function,
+:is(.cm-codeblock-line, .cm-source-editor) .cm-code-role-function [class*='cm-token'] {
+  color: var(--syntax-function);
 }
-:is(.cm-codeblock-line, .cm-source-editor) .cm-token-function {
-  color: var(--color-text-primary);
+:is(.cm-codeblock-line, .cm-source-editor) .cm-code-role-annotation,
+:is(.cm-codeblock-line, .cm-source-editor) .cm-code-role-annotation [class*='cm-token'] {
+  color: var(--syntax-annotation);
+}
+:is(.cm-codeblock-line, .cm-source-editor) .cm-code-role-macro,
+:is(.cm-codeblock-line, .cm-source-editor) .cm-code-role-macro [class*='cm-token'] {
+  color: var(--syntax-macro);
 }
 :is(.cm-codeblock-line, .cm-source-editor) .cm-token-invalid {
   text-decoration: underline wavy var(--color-danger);
 }
 .editor-workspace .cm-editor .cm-codeblock-line {
-  color: var(--color-text-primary);
+  color: var(--syntax-text);
 }
 .editor-workspace .cm-editor .cm-codeblock-fence-edit {
-  color: var(--color-text-secondary);
+  color: var(--syntax-comment);
 }
 .editor-workspace .cm-editor.cm-source-editor {
   font-family: var(--font-mono);
-  background: var(--bg-primary);
+  color: var(--syntax-text);
+  background: var(--syntax-background);
 }
 .editor-workspace .cm-source-editor .cm-content {
-  max-width: none;
-  margin: 0;
+  color: var(--syntax-text);
+  max-width: var(--note-column-width, 760px);
+  margin: 0 auto;
   padding: 12px 8px 64px;
 }
 .editor-workspace .cm-source-editor .cm-scroller {
   padding: 0;
 }
 .cm-source-editor .cm-gutters {
-  background: var(--bg-primary);
-  color: var(--color-text-muted);
+  background: var(--syntax-background);
+  color: var(--syntax-line-number);
   border: none;
 }
 .cm-source-editor .cm-lineNumbers .cm-gutterElement {
@@ -90,14 +140,14 @@
   background: transparent;
 }
 .cm-source-editor .cm-lineNumbers .cm-activeLineGutter {
-  color: var(--color-accent);
+  color: var(--syntax-active-line-number);
 }
 .cm-source-editor .cm-matchingBracket {
   background: var(--bg-active);
   outline: 1px solid var(--color-border-hover);
 }
 .cm-source-editor .cm-foldPlaceholder {
-  background: var(--bg-active);
-  color: var(--color-text-secondary);
+  background: var(--syntax-background);
+  color: var(--syntax-comment);
   border-color: var(--color-border);
 }

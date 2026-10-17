@@ -1,10 +1,12 @@
 import {
   LanguageDescription,
+  LRLanguage,
   LanguageSupport,
   StreamLanguage,
   type StreamParser,
 } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
+import { styleTags, tags } from '@lezer/highlight';
 
 const modifiers = new Set(
   'public private protected internal static readonly const abstract sealed override virtual partial async extern unsafe volatile required file scoped ref out in params'.split(
@@ -29,9 +31,8 @@ async function loadCSharp() {
       if (style !== 'variable' && style !== 'def' && style !== 'builtin') return style;
       const before = stream.string.slice(0, stream.start);
       const after = stream.string.slice(stream.pos);
-      // Attributes and namespaces keep normal text, while declarations expose their types.
-      if (/^\s*\[[\w.\s,]*$/.test(before) || /^\s*(?:using|namespace)\s/.test(before))
-        return 'meta';
+      if (/^\s*\[[\w.\s,]*$/.test(before)) return 'annotation';
+      if (/^\s*(?:using|namespace)\s/.test(before)) return 'namespace';
       if (
         builtInTypes.has(word) ||
         /\b(?:class|struct|interface|enum|record|new|as|is)\s+(?:[\w]+\.)*$/.test(before)
@@ -45,20 +46,56 @@ async function loadCSharp() {
       )
         return 'type';
       if (/^\s*\(/.test(after)) return 'variableName.function';
+      if (/\.\s*$/.test(before)) return 'propertyName';
       return 'variable';
     },
   };
   return new LanguageSupport(StreamLanguage.define(parser));
 }
 
-/** Use the same language support for standalone files and Markdown fences. */
-export const codeLanguages = languages.map((description) =>
-  description.name === 'C#'
-    ? LanguageDescription.of({
-        name: 'C#',
-        alias: ['csharp', 'cs'],
-        extensions: ['cs'],
-        load: loadCSharp,
-      })
-    : description
-);
+const languageRoles = {
+  Java: {
+    'MarkerAnnotation/Identifier NormalAnnotation/Identifier': tags.annotation,
+    'ClassDeclaration/Definition InterfaceDeclaration/Definition EnumDeclaration/Definition':
+      tags.definition(tags.typeName),
+    'MethodDeclaration/Definition ConstructorDeclaration/Definition': tags.function(
+      tags.definition(tags.variableName)
+    ),
+  },
+  Rust: {
+    'MacroInvocation/Identifier MacroDefinition/Identifier': tags.macroName,
+    'MetaItem/Identifier Attribute/MetaItem/ParenthesizedTokens/Identifier': tags.annotation,
+  },
+  Python: {
+    'Decorator/VariableName Decorator/MemberExpression/PropertyName': tags.annotation,
+    'TypeDef/VariableName': tags.typeName,
+  },
+  'C++': { 'AttributeName/Identifier': tags.annotation },
+};
+
+/** Use the same language support for standalone files, previews and Markdown fences. */
+export const codeLanguages = languages.map((description) => {
+  if (description.name === 'C#')
+    return LanguageDescription.of({
+      name: 'C#',
+      alias: ['csharp', 'cs'],
+      extensions: ['cs'],
+      load: loadCSharp,
+    });
+  const roles = languageRoles[description.name as keyof typeof languageRoles];
+  if (!roles) return description;
+  return LanguageDescription.of({
+    name: description.name,
+    alias: description.alias,
+    extensions: description.extensions,
+    filename: description.filename,
+    load: async () => {
+      const support = await description.load();
+      if (!(support.language instanceof LRLanguage)) return support;
+      return new LanguageSupport(
+        support.language.configure({ props: [styleTags(roles)] }),
+        support.support
+      );
+    },
+  });
+});

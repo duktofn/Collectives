@@ -483,9 +483,123 @@ impl From<CustomFont> for CustomFontDto {
     }
 }
 
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct CodeColorsDto {
+    pub text: Option<String>,
+    pub background: Option<String>,
+    pub keyword: Option<String>,
+    pub modifier: Option<String>,
+    pub r#type: Option<String>,
+    pub function: Option<String>,
+    pub variable: Option<String>,
+    pub property: Option<String>,
+    pub string: Option<String>,
+    pub number: Option<String>,
+    pub comment: Option<String>,
+    pub annotation: Option<String>,
+    pub r#macro: Option<String>,
+    pub line_number: Option<String>,
+    pub active_line_number: Option<String>,
+}
+impl From<crate::settings::CodeColors> for CodeColorsDto {
+    fn from(value: crate::settings::CodeColors) -> Self {
+        Self {
+            text: value.text,
+            background: value.background,
+            keyword: value.keyword,
+            modifier: value.modifier,
+            r#type: value.r#type,
+            function: value.function,
+            variable: value.variable,
+            property: value.property,
+            string: value.string,
+            number: value.number,
+            comment: value.comment,
+            annotation: value.annotation,
+            r#macro: value.r#macro,
+            line_number: value.line_number,
+            active_line_number: value.active_line_number,
+        }
+    }
+}
+impl From<CodeColorsDto> for crate::settings::CodeColors {
+    fn from(value: CodeColorsDto) -> Self {
+        Self {
+            text: value.text,
+            background: value.background,
+            keyword: value.keyword,
+            modifier: value.modifier,
+            r#type: value.r#type,
+            function: value.function,
+            variable: value.variable,
+            property: value.property,
+            string: value.string,
+            number: value.number,
+            comment: value.comment,
+            annotation: value.annotation,
+            r#macro: value.r#macro,
+            line_number: value.line_number,
+            active_line_number: value.active_line_number,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ThemeColorsDto {
+    pub background: Option<String>,
+    pub surface: Option<String>,
+    pub border: Option<String>,
+    pub text: Option<String>,
+    pub secondary_text: Option<String>,
+    pub hover: Option<String>,
+    pub active: Option<String>,
+}
+impl From<crate::settings::ThemeColors> for ThemeColorsDto {
+    fn from(value: crate::settings::ThemeColors) -> Self {
+        Self {
+            background: value.background,
+            surface: value.surface,
+            border: value.border,
+            text: value.text,
+            secondary_text: value.secondary_text,
+            hover: value.hover,
+            active: value.active,
+        }
+    }
+}
+impl From<ThemeColorsDto> for crate::settings::ThemeColors {
+    fn from(value: ThemeColorsDto) -> Self {
+        Self {
+            background: value.background,
+            surface: value.surface,
+            border: value.border,
+            text: value.text,
+            secondary_text: value.secondary_text,
+            hover: value.hover,
+            active: value.active,
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsDto {
+    #[serde(default)]
+    pub sidebar_hover_reveal: Option<bool>,
+    #[serde(default)]
+    pub note_layout: Option<String>,
+    #[serde(default)]
+    pub note_width: Option<f32>,
+    #[serde(default)]
+    pub highlight_code_occurrences: Option<bool>,
+    #[serde(default)]
+    pub highlight_markdown_occurrences: Option<bool>,
+    #[serde(default)]
+    pub custom_themes: Option<Vec<crate::settings::CustomTheme>>,
+    #[serde(default)]
+    pub active_theme_id: Option<String>,
     pub theme: String,
     pub font_body: Option<String>,
     pub font_mono: Option<String>,
@@ -498,6 +612,10 @@ pub struct SettingsDto {
     pub color_body: Option<String>,
     #[serde(default)]
     pub color_accent: Option<String>,
+    #[serde(default)]
+    pub code_colors: Option<CodeColorsDto>,
+    #[serde(default)]
+    pub theme_colors: Option<ThemeColorsDto>,
     pub color_h2: Option<String>,
     pub color_h3: Option<String>,
     pub color_h4: Option<String>,
@@ -508,11 +626,17 @@ pub struct SettingsDto {
     pub color_link_hover: Option<String>,
     pub line_height: Option<f32>,
     pub custom_fonts: Option<Vec<CustomFontDto>>,
-    pub hide_unsupported_files: Option<bool>,
 }
 impl From<Settings> for SettingsDto {
     fn from(value: Settings) -> Self {
         Self {
+            sidebar_hover_reveal: value.sidebar_hover_reveal,
+            note_layout: value.note_layout,
+            note_width: value.note_width,
+            highlight_code_occurrences: value.highlight_code_occurrences,
+            highlight_markdown_occurrences: value.highlight_markdown_occurrences,
+            custom_themes: value.custom_themes,
+            active_theme_id: value.active_theme_id,
             theme: value.theme,
             font_body: value.font_body,
             font_mono: value.font_mono,
@@ -524,6 +648,8 @@ impl From<Settings> for SettingsDto {
             color_h1: value.color_h1,
             color_body: value.color_body,
             color_accent: value.color_accent,
+            code_colors: value.code_colors.map(Into::into),
+            theme_colors: value.theme_colors.map(Into::into),
             color_h2: value.color_h2,
             color_h3: value.color_h3,
             color_h4: value.color_h4,
@@ -533,7 +659,6 @@ impl From<Settings> for SettingsDto {
             color_link: value.color_link,
             color_link_hover: value.color_link_hover,
             line_height: value.line_height,
-            hide_unsupported_files: value.hide_unsupported_files,
             custom_fonts: value
                 .custom_fonts
                 .map(|fonts| fonts.into_iter().map(Into::into).collect()),
@@ -543,6 +668,13 @@ impl From<Settings> for SettingsDto {
 impl From<SettingsDto> for Settings {
     fn from(value: SettingsDto) -> Self {
         Self {
+            sidebar_hover_reveal: value.sidebar_hover_reveal,
+            note_layout: value.note_layout,
+            note_width: value.note_width,
+            highlight_code_occurrences: value.highlight_code_occurrences,
+            highlight_markdown_occurrences: value.highlight_markdown_occurrences,
+            custom_themes: value.custom_themes,
+            active_theme_id: value.active_theme_id,
             theme: value.theme,
             font_body: value.font_body,
             font_mono: value.font_mono,
@@ -554,6 +686,8 @@ impl From<SettingsDto> for Settings {
             color_h1: value.color_h1,
             color_body: value.color_body,
             color_accent: value.color_accent,
+            code_colors: value.code_colors.map(Into::into),
+            theme_colors: value.theme_colors.map(Into::into),
             color_h2: value.color_h2,
             color_h3: value.color_h3,
             color_h4: value.color_h4,
@@ -563,7 +697,6 @@ impl From<SettingsDto> for Settings {
             color_link: value.color_link,
             color_link_hover: value.color_link_hover,
             line_height: value.line_height,
-            hide_unsupported_files: value.hide_unsupported_files,
             custom_fonts: value.custom_fonts.map(|fonts| {
                 fonts
                     .into_iter()

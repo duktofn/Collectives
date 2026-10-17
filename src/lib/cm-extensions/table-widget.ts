@@ -1,6 +1,7 @@
 import { EditorState, Extension, RangeSetBuilder, StateField, Transaction } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import { isolateHistory, redo, undo } from "@codemirror/commands";
+import { syntaxTree } from "@codemirror/language";
 import { findTables, serializeTable, type InlineTableNode, type TableCellModel, type TableModel, type TableSource } from "./table-model";
 import { getDelimiterEdit } from "./delimiter-pairs";
 
@@ -795,7 +796,9 @@ function buildTableDecorations(state: EditorState): DecorationSet {
 const tableWidgetField = StateField.define<DecorationSet>({
   create: buildTableDecorations,
   update(decorations, transaction) {
+    // Parsing may finish after a file is opened without changing its text.
     return transaction.docChanged || transaction.reconfigured
+      || syntaxTree(transaction.startState) !== syntaxTree(transaction.state)
       ? buildTableDecorations(transaction.state)
       : decorations;
   },

@@ -11,6 +11,27 @@ afterEach(() => {
 });
 
 describe('custom accent', () => {
+  it('keeps note, code and interface colors independent and clears palette overrides on reset', () => {
+    const root = document.documentElement;
+    applyThemeSettings({ theme: 'dark', fontScale: 1, colorH1: '#ff6688', colorH2: '#ff0000', colorH3: '#0000ff', colorBody: '#dddddd', colorCodeText: '#00ff00' });
+    expect(root.style.getPropertyValue('--syntax-modifier')).toBe('');
+    expect(root.style.getPropertyValue('--syntax-type')).toBe('');
+    expect(root.style.getPropertyValue('--syntax-variable')).toBe('');
+    expect(root.style.getPropertyValue('--syntax-string')).toBe('');
+    expect(root.style.getPropertyValue('--color-text-primary')).toBe('');
+    expect(root.style.getPropertyValue('--color-note-text')).toBe('#dddddd');
+    applyThemeSettings({ theme: 'dark', fontScale: 1, colorH1: '#ff6688', codeColors: { modifier: '#ee99aa', text: '#ffffff' }, themeColors: { background: '#101820', surface: '#182832', border: '#405060', text: '#cccccc' } });
+    expect(root.style.getPropertyValue('--syntax-modifier')).toBe('#ee99aa');
+    expect(root.style.getPropertyValue('--syntax-text')).toBe('#ffffff');
+    expect(root.style.getPropertyValue('--color-h1')).toBe('#ff6688');
+    expect(root.style.getPropertyValue('--color-text-primary')).toBe('#cccccc');
+    expect(root.style.getPropertyValue('--bg-primary')).toBe('#101820');
+    expect(root.style.getPropertyValue('--bg-secondary')).toBe('#182832');
+    applyThemeSettings({ theme: 'light', fontScale: 1 });
+    for (const variable of ['--syntax-modifier', '--syntax-text', '--color-h1', '--color-text-primary', '--bg-primary', '--bg-secondary', '--bg-modal', '--color-border-hover']) {
+      expect(root.style.getPropertyValue(variable)).toBe('');
+    }
+  });
   it('accepts picker hex colors and expands shorthand', () => {
     expect(normalizeAccentColor(' #AbC ')).toBe('#aabbcc');
     expect(normalizeAccentColor('#2563EB')).toBe('#2563eb');

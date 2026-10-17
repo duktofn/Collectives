@@ -2,14 +2,31 @@ import { syntaxTree } from '@codemirror/language';
 import { EditorView } from '@codemirror/view';
 import type { SyntaxNode } from '@lezer/common';
 
-export type MarkdownTemplate = 'heading' | 'checklist' | 'table' | 'code' | 'chart';
+type BaseMarkdownTemplate = 'heading' | 'checklist' | 'table' | 'code' | 'chart';
+export type MarkdownTemplate =
+  | BaseMarkdownTemplate
+  | `chart-${import('./charts/chartModel').ChartKind}`;
 
 let templateInsertHandler: ((template: MarkdownTemplate) => boolean) | null = null;
 let documentFormatHandler: (() => Promise<boolean>) | null = null;
+let noteSearchHandler: ((query: string) => void) | null = null;
+
+export function registerNoteContentSearch(handler: (query: string) => void): () => void {
+  noteSearchHandler = handler;
+  return () => {
+    if (noteSearchHandler === handler) noteSearchHandler = null;
+  };
+}
+
+export function requestNoteContentSearch(query = ''): void {
+  noteSearchHandler?.(query);
+}
 
 export function registerDocumentFormat(handler: () => Promise<boolean>): () => void {
   documentFormatHandler = handler;
-  return () => { if (documentFormatHandler === handler) documentFormatHandler = null; };
+  return () => {
+    if (documentFormatHandler === handler) documentFormatHandler = null;
+  };
 }
 
 export function requestDocumentFormat(): Promise<boolean> {
@@ -38,23 +55,24 @@ export function buildMarkdownTemplateTransaction(
   selection: { anchor: number };
   effects: ReturnType<typeof EditorView.scrollIntoView>;
 } | null {
-  if (!view.state.facet(EditorView.editable)) return null;
+  if (view.state.readOnly || !view.state.facet(EditorView.editable)) return null;
+  const chartKind = template.startsWith('chart-') ? template.slice(6) : 'bar';
+  const base = template.startsWith('chart-') ? 'chart' : (template as BaseMarkdownTemplate);
   let current: SyntaxNode | null = syntaxTree(view.state).resolveInner(replacementRange.from, -1);
   while (current) {
     if (['FencedCode', 'IndentedCode', 'InlineCode'].includes(current.name)) return null;
     current = current.parent;
   }
 
-  const templates: Record<MarkdownTemplate, string> = {
+  const templates: Record<BaseMarkdownTemplate, string> = {
     heading: '## ',
     checklist: '- [ ] ',
     table: '| Column 1 | Column 2 |\n| --- | --- |\n|  |  |',
     code: '```text\n\n```',
-    chart:
-      '```chart\ntype: bar\ndata:\n  labels: [A, B, C]\n  datasets:\n    - label: Series\n      data: [3, 7, 5]\n```',
+    chart: `\`\`\`chart\ntype: ${chartKind}\ndata:\n  labels: [A, B, C]\n  datasets:\n    - label: Series\n      data: [3, 7, 5]\n\`\`\``,
   };
-  const insertion = templates[template];
-  const isBlock = template === 'table' || template === 'code' || template === 'chart';
+  const insertion = templates[base];
+  const isBlock = base === 'table' || base === 'code' || base === 'chart';
   const before =
     isBlock &&
     replacementRange.from > 0 &&
@@ -67,7 +85,7 @@ export function buildMarkdownTemplateTransaction(
     view.state.doc.sliceString(replacementRange.to, replacementRange.to + 1) !== '\n'
       ? '\n'
       : '';
-  if (template === 'chart') {
+  if (base === 'chart') {
     const following = view.state.doc.sliceString(replacementRange.to, replacementRange.to + 2);
     after = following.startsWith('\n\n') ? '' : following.startsWith('\n') ? '\n' : '\n\n';
   }
@@ -76,7 +94,7 @@ export function buildMarkdownTemplateTransaction(
   if (template === 'heading') cursorOffset = before.length + insertion.length;
   if (template === 'checklist') cursorOffset = before.length + insertion.length;
   if (template === 'code') cursorOffset = before.length + insertion.indexOf('\n\n') + 1;
-  if (template === 'chart') cursorOffset = before.length + insertion.length + 2;
+  if (base === 'chart') cursorOffset = before.length + insertion.length + 2;
   if (template === 'table') cursorOffset = before.length + insertion.length - 3;
 
   const cursor = replacementRange.from + cursorOffset;
@@ -91,6 +109,38 @@ export function insertMarkdownTemplate(view: EditorView, template: MarkdownTempl
   const transaction = buildMarkdownTemplateTransaction(view, template);
   if (!transaction) return false;
   view.dispatch(transaction);
+  view.focus();
+  return true;
+}
+
+export function setMarkdownHeading(view: EditorView, level: 1 | 2 | 3): boolean {
+  if (!buildMarkdownTemplateTransaction(view, 'heading')) return false;
+  const selection = view.state.selection.main;
+  const first = view.state.doc.lineAt(selection.from);
+  const last = view.state.doc.lineAt(
+    selection.to > selection.from ? selection.to - 1 : selection.to
+  );
+  const changes = [];
+  for (let number = first.number; number <= last.number; number++) {
+    const line = view.state.doc.line(number);
+    if (!buildMarkdownTemplateTransaction(view, 'heading', { from: line.from, to: line.from }))
+      return false;
+    const prefix = line.text.match(/^#{1,6}(?:[ \t]+|$)/)?.[0] ?? '';
+    changes.push({
+      from: line.from,
+      to: line.from + prefix.length,
+      insert: '#'.repeat(level) + ' ',
+    });
+  }
+  const changeSet = view.state.changes(changes);
+  view.dispatch({
+    changes: changeSet,
+    selection: {
+      anchor: changeSet.mapPos(selection.anchor, 1),
+      head: changeSet.mapPos(selection.head, 1),
+    },
+    userEvent: 'input.heading',
+  });
   view.focus();
   return true;
 }

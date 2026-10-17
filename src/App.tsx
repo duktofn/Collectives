@@ -7,8 +7,8 @@ import { Entry, ZipConflict, Settings, ResolveCandidate } from "./types";
 import { editorStore } from "./stores/editor";
 import { EditorToolbar } from "./components/editor/EditorToolbar";
 import { AppShell } from "./components/shell/AppShell";
+import { WindowFrame } from './components/shell/WindowFrame';
 import { WorkspaceHeader } from "./components/shell/WorkspaceHeader";
-import { ActivityStatus } from "./components/shell/ActivityStatus";
 import { EmptyWorkspace } from "./components/shell/EmptyWorkspace";
 import { WorkspaceHome } from "./components/shell/WorkspaceHome";
 import * as settingsApi from "./features/settings";
@@ -30,11 +30,13 @@ import { announcementKey, announcer, mountAnnouncer } from "./a11y/announcer";
 import { flushPendingRecoveryDraft, listRecoveryDrafts, removeRecoveryDraft, type RecoveryDraft } from "./features/editor/recovery";
 import { canNavigateBack, canNavigateForward, cancelHistoryNavigation, peekHistoryTarget, recordNavigation } from "./features/editor/navigationHistory";
 import type { ContentSearchResult } from "./features/links";
+import { QuickOpenDialog } from './components/search/QuickOpenDialog';
+import { ContentSearchDialog } from './components/search/ContentSearchDialog';
+import { registerNoteContentSearch } from './lib/editorCommands';
+import { installReleaseGuards } from './lib/releaseGuards';
 import "./App.css";
 import "./styles/workspace-polish.css";
 
-const QuickOpenDialog = lazy(() => import("./components/search/QuickOpenDialog").then((module) => ({ default: module.QuickOpenDialog })));
-const ContentSearchDialog = lazy(() => import("./components/search/ContentSearchDialog").then((module) => ({ default: module.ContentSearchDialog })));
 const RecoveryDialog = lazy(() => import("./components/editor/RecoveryDialog").then((module) => ({ default: module.RecoveryDialog })));
 
 interface WikiLinkPreviewState {
@@ -87,6 +89,9 @@ export function createAppCloseTransactionHandler(
 
 
 export default function App() {
+  onMount(() => {
+    if (import.meta.env.PROD) onCleanup(installReleaseGuards());
+  });
   const operationLeaseRegistry = createOperationLeaseRegistry();
   const [isNewCollectionOpen, setIsNewCollectionOpen] = createSignal(false);
   const [newCollectionError, setNewCollectionError] = createSignal("");
@@ -101,6 +106,13 @@ export default function App() {
   const [createdNewNote, setCreatedNewNote] = createSignal<{ name: string; path: string } | null>(null);
   const [isQuickOpen, setIsQuickOpen] = createSignal(false);
   const [isContentSearchOpen, setIsContentSearchOpen] = createSignal(false);
+  const [contentSearchQuery, setContentSearchQuery] = createSignal('');
+  const openContentSearch = (query = '') => {
+    if (!collectionsStore.state.activeCollectionId) return;
+    setContentSearchQuery(query);
+    setIsContentSearchOpen(true);
+  };
+  onCleanup(registerNoteContentSearch(openContentSearch));
   const [recoveryDrafts, setRecoveryDrafts] = createSignal<RecoveryDraft[]>([]);
   const [isRecoveryReviewOpen, setIsRecoveryReviewOpen] = createSignal(false);
   const [isRecoveryRestorePending, setIsRecoveryRestorePending] = createSignal(false);
@@ -217,7 +229,7 @@ export default function App() {
         else showAppNotice("Choose a collection first", "Quick Open searches the active collection.");
       } else if (key === "f" && event.shiftKey) {
         event.preventDefault();
-        if (collectionsStore.state.activeCollectionId) setIsContentSearchOpen(true);
+        if (collectionsStore.state.activeCollectionId) openContentSearch();
         else showAppNotice("Choose a collection first", "Content search searches the active collection.");
       } else if (key === "n" && !event.shiftKey) {
         event.preventDefault();
@@ -358,12 +370,8 @@ export default function App() {
     try {
       unlisten = await collectionsStore.initializeListeners();
       const loaded = await settingsApi.loadSettings();
-      const effectiveSettings = {
-        ...loaded,
-        hideUnsupportedFiles: loaded.hideUnsupportedFiles ?? uiStore.state.hideUnsupportedFiles,
-      };
+      const effectiveSettings = loaded;
       setSettings(effectiveSettings);
-      uiStore.setHideUnsupportedFiles(effectiveSettings.hideUnsupportedFiles);
       applyThemeSettings(effectiveSettings);
       
       const fontsDir = await settingsApi.getFontsDir();
@@ -643,16 +651,6 @@ export default function App() {
     return intent ? getFolderRefReadiness(intent.collectionId, intent.folderRefEntryId, intent.childPath) : null;
   };
 
-  const getActivityStatus = () => {
-    if (globalError()) return { label: "Application error", tone: "danger" as const };
-    if (editorStore.state.conflictKind) return { label: "Conflict", tone: "danger" as const };
-    if (editorStore.state.error) return { label: "Save needs attention", tone: "danger" as const };
-    if (editorStore.state.isSaving) return { label: "Saving", tone: "warning" as const };
-    if (editorStore.state.isDirty) return { label: "Unsaved changes", tone: "warning" as const };
-    if (editorStore.state.openFilePath) return { label: "Saved", tone: "success" as const };
-    if (collectionsStore.activeCollection()) return { label: "Collection ready", tone: "neutral" as const };
-    return { label: "No collection selected", tone: "neutral" as const };
-  };
 
   const selectedParentGroupId = () => {
     const selectedId = uiStore.state.selectedEntryId;
@@ -833,13 +831,13 @@ export default function App() {
   };
 
   return (
-    <>
+    <WindowFrame title={editorStore.currentFileName ? `${editorStore.currentFileName} — Collectives` : 'Collectives'} onError={error => showAppNotice('Window action failed', error)}>
       <AppShell
       sidebar={
         <TreeWorkspace
           onNewNoteClick={handleNewNoteStart}
           onQuickOpen={() => setIsQuickOpen(true)}
-          onContentSearch={() => setIsContentSearchOpen(true)}
+          onContentSearch={() => openContentSearch()}
           recoveryDraftCount={recoveryDrafts().length}
           onReviewRecovery={() => setIsRecoveryReviewOpen(true)}
           onNewCollectionClick={() => {
@@ -876,7 +874,6 @@ export default function App() {
           </Show>
         </WorkspaceHeader>
       }
-      activityStatus={<ActivityStatus label={getActivityStatus().label} tone={getActivityStatus().tone} />}
       workspaceBody={
         <CollectionWorkspace>
           <FolderRefReadinessNotice
@@ -952,6 +949,7 @@ export default function App() {
         </CollectionWorkspace>
       }
       sidebarCollapsed={!uiStore.state.isSidebarOpen}
+      sidebarHoverEnabled={settings().sidebarHoverReveal ?? true}
       onExpandSidebar={() => uiStore.toggleSidebar()}
       notice={
         <>
@@ -1157,6 +1155,7 @@ export default function App() {
       <Show when={isContentSearchOpen()}>
         <ContentSearchDialog
           isOpen={true}
+          initialQuery={contentSearchQuery()}
           collectionId={collectionsStore.state.activeCollectionId}
           onClose={() => setIsContentSearchOpen(false)}
           onOpen={openContentResult}
@@ -1172,6 +1171,6 @@ export default function App() {
           onDiscard={handleDiscardRecoveryDraft}
         />
       </Show>
-    </>
+    </WindowFrame>
   );
 }

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import console from 'node:console';
-import { copyFile, mkdir, readdir, readFile, stat } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +20,17 @@ if (!/^\d+\.\d+\.\d+$/.test(version)) {
 if (packageJson.version !== version || !new RegExp(`^version = "${version.replaceAll('.', '\\.')}"$`, 'm').test(cargoManifest)) {
   throw new Error('App versions do not match. Sync package.json, tauri.conf.json, and Cargo.toml before building.');
 }
+
+const changelog = await readFile(path.join(root, 'CHANGELOG.md'), 'utf8');
+const sections = Array.from(changelog.matchAll(/^## \[([^\]]+)\].*$/gm));
+const sectionIndex = sections.findIndex((section) => section[1] === version);
+if (sectionIndex < 0) {
+  throw new Error(`Add a ## [${version}] entry to CHANGELOG.md before building this release.`);
+}
+const releaseChangelog = '# Changelog\n\n' + changelog.slice(
+  sections[sectionIndex].index,
+  sections[sectionIndex + 1]?.index ?? changelog.length,
+).trim() + '\n';
 
 const tauriCli = path.join(root, 'node_modules', '@tauri-apps', 'cli', 'tauri.js');
 const build = spawn(process.execPath, [tauriCli, 'build'], {
@@ -77,4 +88,5 @@ for (const source of bundleFiles) {
   await copyFile(source, path.join(releaseDir, `Collective-${version}${suffix}${extension}`));
 }
 
+await writeFile(path.join(releaseDir, 'changelog.md'), releaseChangelog, 'utf8');
 console.log(`Release files for Collective ${version} are in ${releaseDir}`);

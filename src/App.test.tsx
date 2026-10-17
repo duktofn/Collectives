@@ -53,10 +53,10 @@ describe('App Component', () => {
     
     const { container, queryByTitle } = render(() => <App />);
     
-    // Find sidebar element
-    const sidebar = container.querySelector('.sidebar');
-    expect(sidebar).not.toBeNull();
-    expect(sidebar!.classList.contains('collapsed')).toBe(false);
+    // Find sidebar slot element
+    const sidebarSlot = container.querySelector('.app-shell-sidebar-slot');
+    expect(sidebarSlot).not.toBeNull();
+    expect(sidebarSlot!.classList.contains('is-collapsed')).toBe(false);
     
     // Find collapse button
     const collapseBtn = queryByTitle('Collapse sidebar');
@@ -65,8 +65,8 @@ describe('App Component', () => {
     // Click collapse button
     fireEvent.click(collapseBtn!);
     
-    // Sidebar should have collapsed class
-    expect(sidebar!.classList.contains('collapsed')).toBe(true);
+    // Sidebar slot should have is-collapsed class
+    expect(sidebarSlot!.classList.contains('is-collapsed')).toBe(true);
     
     // The welcome screen expand button should be visible
     const expandBtn = queryByTitle('Expand sidebar');
@@ -75,8 +75,8 @@ describe('App Component', () => {
     // Click expand button
     fireEvent.click(expandBtn!);
     
-    // Sidebar should be open again
-    expect(sidebar!.classList.contains('collapsed')).toBe(false);
+    // Sidebar slot should be open again
+    expect(sidebarSlot!.classList.contains('is-collapsed')).toBe(false);
   });
 
   it('renders sidebar resizer handle', () => {

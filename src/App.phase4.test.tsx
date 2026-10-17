@@ -37,8 +37,7 @@ describe("Phase 4 App shell integration", () => {
 
     expect(container.querySelectorAll("main")).toHaveLength(1);
     expect(container.querySelector("aside[aria-label='Collection navigation']")).not.toBeNull();
-    expect(container.querySelectorAll("[data-shell-slot]")).toHaveLength(4);
-    expect(getByRole("status")).toBeDefined();
+    expect(container.querySelectorAll("[data-shell-slot]")).toHaveLength(3);
     expect(getByText("Welcome to Collectives")).toBeDefined();
     expect(container.querySelectorAll(".empty-workspace .btn-primary")).toHaveLength(1);
     expect(document.body.querySelector("[data-modal-layer='true']")).toBeNull();

@@ -1,0 +1,95 @@
+.app-window-frame {
+  --window-titlebar-height: 34px;
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+.app-window-frame.is-maximized {
+  border-radius: 0;
+}
+.window-titlebar {
+  height: var(--window-titlebar-height);
+  flex: 0 0 var(--window-titlebar-height);
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  user-select: none;
+}
+.window-drag-region {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 9px;
+  padding: 0 12px;
+}
+.window-brand-icon {
+  display: flex;
+  color: var(--color-accent);
+}
+.window-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+  pointer-events: none;
+}
+.window-controls {
+  display: flex;
+  flex: 0 0 auto;
+}
+.window-controls button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: default;
+}
+.window-controls button svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+}
+.window-controls button:hover {
+  background: var(--bg-hover);
+}
+.window-controls button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -3px;
+}
+.window-controls button.window-close:hover {
+  background: #c42b1c;
+  color: #ffffff;
+}
+.window-controls button:disabled {
+  opacity: 0.4;
+}
+.app-window-content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.app-window-content > .app-shell {
+  width: 100%;
+  height: 100%;
+}
+:root[data-window-frame='custom'] .modal-layer-overlay {
+  top: 35px;
+}
+:root[data-window-frame='custom'] .app-notice {
+  top: 50px;
+}

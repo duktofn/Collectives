@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { forceParsing, syntaxTree } from "@codemirror/language";
 import { baseEditorExtensions, getExtensionsForMode } from "./markdown-mode";
 import { findTables, serializeTable } from "./table-model";
 
@@ -61,6 +62,34 @@ describe("Markdown table widget", () => {
       view.destroy();
       parent.remove();
     }
+  });
+
+  it("renders a table discovered after switching to a partially parsed document", () => {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    const extensions = [...baseEditorExtensions, ...getExtensionsForMode("edit-render")];
+    const view = new EditorView({ state: EditorState.create({ doc: "First file", extensions }), parent });
+    mounted.push({ view, parent });
+    const table = "| API | Behavior |\n| --- | --- |\n| `Tick()` | Update state |";
+    const source = "Paragraph before the table.\n\n".repeat(500) + table;
+    view.setState(EditorState.create({ doc: source, extensions }));
+    expect(findTables(view.state)).toHaveLength(0);
+    const initialTree = syntaxTree(view.state);
+    const initialDocument = view.state.doc;
+
+    // Background parsing publishes a new tree without editing the document.
+    expect(forceParsing(view, source.length, 1000)).toBe(true);
+    expect(syntaxTree(view.state)).not.toBe(initialTree);
+    expect(view.state.doc).toBe(initialDocument);
+    expect(findTables(view.state)).toHaveLength(1);
+    const tableRanges: { from: number; to: number }[] = [];
+    for (const decorations of view.state.facet(EditorView.decorations)) {
+      const ranges = typeof decorations === "function" ? decorations(view) : decorations;
+      ranges.between(0, source.length, (from, to, decoration) => {
+        if (decoration.spec.widget?.table) tableRanges.push({ from, to });
+      });
+    }
+    expect(tableRanges).toEqual([{ from: source.indexOf(table), to: source.length }]);
   });
 
   it("renders inline markdown safely and switches focused cells to source text", () => {

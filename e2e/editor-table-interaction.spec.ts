@@ -1,4 +1,35 @@
 import { expect, test, type Page } from "@playwright/test";
+import { installWorkspaceMock } from "./helpers/workspaceMock";
+
+test("Write renders a late table after file switches without toggling modes", async ({ page }) => {
+  const table = [
+    "| API | Hành vi |",
+    "| --- | --- |",
+    "| `Tick()` / `FixedTick()` | Kiểm tra transition |",
+    "| `SetState(IState<TContext>)` | Enter state mới |",
+  ].join("\n");
+  await installWorkspaceMock(page, "dark", false, false, undefined, undefined, {
+    "First.md": "# First file\n\nA short note.",
+    "Long table.md": "Paragraph before the table.\n\n".repeat(500) + table + "\n\nEnd of note.",
+  });
+  await page.goto("/e2e/workspace.html");
+  await expect(page.locator(".cm-content")).toContainText("A short note.");
+  for (let visit = 0; visit < 3; visit++) {
+    await page.getByRole("treeitem", { name: /^Long table/ }).click();
+    const content = page.locator(".cm-content");
+    await expect(content).toContainText("Paragraph before the table.");
+    await content.focus();
+    await page.keyboard.press("Control+End");
+    const rendered = page.locator(".cm-table-widget");
+    await expect(rendered).toBeVisible();
+    await expect(rendered.locator("th")).toHaveText(["API", "Hành vi"]);
+    await expect(rendered.locator("tbody tr")).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Write", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("treeitem", { name: /^First/ }).click();
+    await expect(content).toContainText("A short note.");
+    await expect(rendered).toHaveCount(0);
+  }
+});
 
 async function mountTableEditor(page: Page) {
   await page.evaluate(async () => {
@@ -132,6 +163,44 @@ test("row and column controls delete the active index and preserve a valid table
   await expect(deleteLastColumn.nth(1)).toBeDisabled();
   await deleteLastColumn.nth(1).click({ force: true });
   await expect(table.locator("thead th")).toHaveCount(1);
+});
+
+test("plus inserts below or right and minus deletes the indicated row or column", async ({ page }) => {
+  await page.goto("/e2e/editor-interaction.html", { waitUntil: "commit" });
+  await mountTableEditor(page);
+  await page.evaluate(() => {
+    const view = (window as any).__tableInteractionView;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert:
+      "Table operations.\n\n| A | B | C |\n| --- | --- | --- |\n| a1 | b1 | c1 |\n| a2 | b2 | c2 |\n| a3 | b3 | c3 |" } });
+  });
+  const host = page.locator("#table-interaction-host");
+  const rows = host.locator("tbody tr");
+  const headers = host.locator("thead th");
+  const cell = (row: number, column: number) => host.locator(`[data-row-index="${row}"][data-column-index="${column}"]`);
+  const columnButton = (column: number, edge: "top" | "bottom", name: string) =>
+    host.locator(`[data-column-controls="${column}"][data-edge="${edge}"]`).getByRole("button", { name, exact: true });
+
+  await cell(1, 1).click();
+  await host.getByRole("button", { name: "+ Add row below row 2", exact: true }).click();
+  await expect(rows).toHaveCount(4);
+  await expect(rows.nth(0).locator("td")).toHaveText(["a1", "b1", "c1"]);
+  await expect(rows.nth(1).locator("td")).toHaveText(["a2", "b2", "c2"]);
+  await expect(rows.nth(2).locator("td")).toHaveText(["", "", ""]);
+  await expect(rows.nth(3).locator("td")).toHaveText(["a3", "b3", "c3"]);
+  await cell(1, 1).click();
+  await host.getByRole("button", { name: "− Delete row 2", exact: true }).click();
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(1).locator("td")).toHaveText(["", "", ""]);
+  await expect(rows.nth(2).locator("td")).toHaveText(["a3", "b3", "c3"]);
+
+  await cell(0, 1).click();
+  await columnButton(1, "top", "+ Add column right of column 2").click();
+  await expect(headers).toHaveText(["A", "B", "Column 3", "C"]);
+  await expect(rows.nth(0).locator("td")).toHaveText(["a1", "b1", "", "c1"]);
+  await cell(0, 1).click();
+  await columnButton(1, "bottom", "− Delete column 2").click();
+  await expect(headers).toHaveText(["A", "Column 3", "C"]);
+  await expect(rows.nth(0).locator("td")).toHaveText(["a1", "", "c1"]);
 });
 
 test("table cell input pairs Markdown delimiters without duplicating closers", async ({ page }) => {

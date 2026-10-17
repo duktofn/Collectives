@@ -9,6 +9,7 @@ for (const theme of ['dark', 'light']) {
     await expect(activeNumber).toBeVisible();
     const original = await activeNumber.evaluate(el => getComputedStyle(el).color);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit colors', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
     const color = theme === 'dark' ? '#2563eb' : '#facc15';
     const rgb = theme === 'dark' ? 'rgb(37, 99, 235)' : 'rgb(250, 204, 21)';
@@ -20,6 +21,7 @@ for (const theme of ['dark', 'light']) {
     await dialog.getByRole('button', { name: 'Close settings', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit colors', exact: true }).click();
     await expect(dialog.getByLabel('Accent color hex', { exact: true })).toHaveValue(color);
     await dialog.screenshot({ path: `test-results/accent-settings-${theme}.png` });
     await dialog.getByRole('button', { name: 'Use theme default', exact: true }).click();

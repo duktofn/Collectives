@@ -291,16 +291,16 @@ export function Sidebar(props: SidebarProps) {
     <aside
       ref={sidebarRef}
       aria-label="Collection navigation"
-      class={`sidebar ${!uiStore.state.isSidebarOpen ? "collapsed" : ""} ${isResizing() ? "resizing" : ""}`}
+      class={`sidebar ${isResizing() ? "resizing" : ""}`}
     >
       {/* Header with App Brand and toggle button */}
       <div class="sidebar-header">
         <span class="app-brand"><span class="app-brand-mark" aria-hidden="true"><Icon name="virtual-folder" size={17} /></span>Collectives</span>
         <button
           class="btn btn-text btn-icon sidebar-toggle-btn"
-          onClick={() => uiStore.toggleSidebar()}
-          aria-label="Collapse sidebar"
-          title="Collapse sidebar"
+          onClick={() => { const open = uiStore.state.isSidebarOpen; uiStore.toggleSidebar(); if (open) queueMicrotask(() => document.querySelector<HTMLButtonElement>('[aria-label="Expand sidebar"]')?.focus()); }}
+          aria-label={uiStore.state.isSidebarOpen ? "Collapse sidebar" : "Pin sidebar"}
+          title={uiStore.state.isSidebarOpen ? "Collapse sidebar" : "Pin sidebar"}
         >
           <Icon name="menu" size={16} />
         </button>

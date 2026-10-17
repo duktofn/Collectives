@@ -20,6 +20,8 @@ import { registerDocumentFormat } from '../../lib/editorCommands';
 import { canFormatDocument, formatDocumentSource } from '../../lib/documentFormatting';
 import { isolateHistory } from '@codemirror/commands';
 import "./Editor.css";
+import { createPanelPresence } from '../../lib/panelPresence';
+import { EditorSurface } from './EditorSurface';
 
 interface ComparedDiskVersion {
   content: string;
@@ -36,8 +38,10 @@ interface OutlineHeading {
 const externalContentSync = Annotation.define<boolean>();
 
 export function Editor() {
+  const referencePanel = createPanelPresence(() => uiStore.state.isReferencePanelOpen);
   let editorRef: HTMLDivElement | undefined;
   let view: EditorView | undefined;
+  const [activeView, setActiveView] = createSignal<EditorView>();
   let autoSaveTimeout: ReturnType<typeof setTimeout> | null = null;
   let forceSaveTimeout: ReturnType<typeof setTimeout> | null = null;
   let unregisterMeasure: (() => void) | undefined;
@@ -215,6 +219,7 @@ export function Editor() {
   };
 
   const contentAttributes = () => EditorView.contentAttributes.of({
+    "tabindex": "0",
     "aria-label": `${fileName()} — ${modeDescription()}`,
     "aria-readonly": editorStore.state.isReadOnly ? "true" : "false",
     "aria-describedby": helpId,
@@ -282,6 +287,7 @@ export function Editor() {
       state: createEditorState(editorStore.state.currentContent),
       parent: editorRef,
     });
+    setActiveView(view);
     unregisterContentReader = editorStore.registerCurrentContentReader(() => view?.state.doc.toString() ?? "");
     unregisterTemplateInsert = registerMarkdownTemplateInsert((template: MarkdownTemplate) => view ? insertMarkdownTemplate(view, template) : false);
     unregisterDocumentFormat = registerDocumentFormat(async () => {
@@ -316,6 +322,7 @@ export function Editor() {
   });
 
   onCleanup(() => {
+    setActiveView(undefined);
     unregisterMeasure?.();
     unregisterContentReader?.();
     unregisterTemplateInsert?.();
@@ -532,9 +539,9 @@ export function Editor() {
         {editorStore.state.isReadOnly ? "Read-only document." : "Editable document."} Use standard text editing keys. {modeDescription()} preserves Markdown and text-source source positions.
       </p>
       <div class="editor-main-layout">
-        <div class="editor-workspace" ref={editorRef} />
-        <Show when={uiStore.state.isReferencePanelOpen}>
-          <aside class="editor-reference-panel" aria-label="Outline and backlinks">
+        <EditorSurface view={activeView}><div class="editor-workspace" ref={editorRef} /></EditorSurface>
+        <Show when={referencePanel.mounted()}>
+          <aside class="editor-reference-panel" classList={{ 'is-panel-hidden': !referencePanel.visible() }} inert={!referencePanel.visible() || !uiStore.state.isReferencePanelOpen} aria-hidden={!referencePanel.visible() || !uiStore.state.isReferencePanelOpen} onTransitionEnd={() => view?.requestMeasure()} aria-label="Outline and backlinks">
             <div class="editor-reference-header">
               <strong>This note</strong>
               <button class="btn btn-text" aria-label="Close note tools" onClick={() => { uiStore.setReferencePanelOpen(false); document.querySelector<HTMLButtonElement>('button[aria-label="Outline and backlinks"]')?.focus(); }}><Icon name="close" size={16} /></button>

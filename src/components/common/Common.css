@@ -6,13 +6,17 @@
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
   padding: 6px;
-  min-width: 160px;
+  width: 192px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   z-index: 1000;
   display: flex;
   flex-direction: column;
   gap: 2px;
   animation: contextMenuFadeIn 0.1s ease-out;
 }
+
+.context-menu-chevron { margin-left: auto; flex: none; }
 
 @keyframes contextMenuFadeIn {
   from {

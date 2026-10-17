@@ -23,6 +23,7 @@ class RenderPlugin {
     const shouldRebuild =
       update.docChanged ||
       update.viewportChanged ||
+      syntaxTree(update.startState) !== syntaxTree(update.state) ||
       update.transactions.some((tr) => tr.reconfigured);
 
     if (shouldRebuild) {

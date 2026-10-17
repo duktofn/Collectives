@@ -2,8 +2,10 @@ import { Settings, CustomFont } from "../types";
 import { convertFileSrc } from "../platform";
 import { requestEditorMeasure } from "./editorMeasure";
 import { accentColorVariables } from './themeColors';
+import { codeColorFields, themeColorFields } from './appearanceColors';
 
-const variableMappings: Record<keyof Omit<Settings, "theme" | "customFonts" | "hideUnsupportedFiles">, string> = {
+type ScalarSettings = Omit<Settings, "theme" | "customFonts" | "codeColors" | "themeColors" | "sidebarHoverReveal" | "noteLayout" | "noteWidth" | "highlightCodeOccurrences" | "highlightMarkdownOccurrences" | "customThemes" | "activeThemeId">;
+const variableMappings: Record<keyof ScalarSettings, string> = {
   fontScale: "--font-scale",
   fontBody: "--font-body",
   fontMono: "--font-mono",
@@ -12,7 +14,7 @@ const variableMappings: Record<keyof Omit<Settings, "theme" | "customFonts" | "h
   sizeH3: "--size-h3",
   sizeH4: "--size-h4",
   colorH1: "--color-h1",
-  colorBody: "--color-text-primary",
+  colorBody: "--color-note-text",
   colorAccent: "--color-accent",
   colorH2: "--color-h2",
   colorH3: "--color-h3",
@@ -30,6 +32,10 @@ const variableMappings: Record<keyof Omit<Settings, "theme" | "customFonts" | "h
  */
 export function applyThemeSettings(settings: Settings): void {
   const root = document.documentElement;
+  root.dataset.noteLayout = settings.noteLayout === 'wide' ? 'wide' : 'centered';
+  root.style.setProperty('--note-column-width', `${Math.max(480, Math.min(1200, settings.noteWidth || 760))}px`);
+  root.dataset.highlightCode = String(settings.highlightCodeOccurrences ?? true);
+  root.dataset.highlightMarkdown = String(settings.highlightMarkdownOccurrences ?? true);
 
   // 1. Apply theme attribute (dark / light / system)
   if (settings.theme === "dark" || settings.theme === "light") {
@@ -39,7 +45,7 @@ export function applyThemeSettings(settings: Settings): void {
   }
 
   // 2. Apply all variables
-  for (const [key, varName] of Object.entries(variableMappings) as [keyof Omit<Settings, "theme" | "customFonts" | "hideUnsupportedFiles">, string][]) {
+  for (const [key, varName] of Object.entries(variableMappings) as [keyof ScalarSettings, string][]) {
     const value = settings[key];
     if (value !== undefined && value !== null && value !== "") {
       if (typeof value === "number") {
@@ -65,20 +71,25 @@ export function applyThemeSettings(settings: Settings): void {
     else root.style.removeProperty(variable);
   }
 
-  // Heading overrides also color the corresponding syntax roles. With no
-  // override, code keeps its separate default palette in light and dark modes.
-  const syntaxColors = {
-    colorH1: ["--syntax-modifier"],
-    colorH2: ["--syntax-type"],
-    colorH3: ["--syntax-variable", "--syntax-property"],
-    colorCodeText: ["--syntax-string", "--syntax-number"],
-  } as const;
-  for (const [key, variables] of Object.entries(syntaxColors)) {
-    const value = settings[key as keyof typeof syntaxColors];
-    for (const variable of variables) {
-      if (value) root.style.setProperty(variable, value);
-      else root.style.removeProperty(variable);
-    }
+  for (const field of codeColorFields) {
+    const value = settings.codeColors?.[field.key];
+    if (value) root.style.setProperty(field.variable, value);
+    else root.style.removeProperty(field.variable);
+  }
+  for (const field of themeColorFields) {
+    const value = settings.themeColors?.[field.key];
+    if (value) root.style.setProperty(field.variable, value);
+    else root.style.removeProperty(field.variable);
+  }
+  const themeDerived = {
+    '--bg-modal': settings.themeColors?.background ? 'color-mix(in srgb, var(--bg-primary) 95%, transparent)' : undefined,
+    '--color-text-muted': settings.themeColors?.secondaryText,
+    '--color-border-hover': settings.themeColors?.border ? 'color-mix(in srgb, var(--color-border) 80%, var(--color-text-primary))' : undefined,
+    '--color-border-subtle': settings.themeColors?.border ? 'color-mix(in srgb, var(--color-border) 55%, transparent)' : undefined,
+  };
+  for (const [variable, value] of Object.entries(themeDerived)) {
+    if (value) root.style.setProperty(variable, value);
+    else root.style.removeProperty(variable);
   }
 
   requestEditorMeasure();
@@ -159,8 +170,8 @@ export function getDefaultThemeValues(isDarkMode: boolean): Record<string, strin
       colorCodeBg: "#22201e",
       colorCodeText: "#e57e54",
       colorSelection: "#d7d4f0",
-      colorLink: "#6366f1",
-      colorLinkHover: "#4f46e5",
+      colorLink: "#7278f0",
+      colorLinkHover: "#6366f1",
     };
   } else {
     return {
@@ -179,8 +190,8 @@ export function getDefaultThemeValues(isDarkMode: boolean): Record<string, strin
       colorCodeBg: "#f4f1ea",
       colorCodeText: "#d96236",
       colorSelection: "#d7d4f0",
-      colorLink: "#6366f1",
-      colorLinkHover: "#4f46e5",
+      colorLink: "#4f46e5",
+      colorLinkHover: "#4338ca",
     };
   }
 }

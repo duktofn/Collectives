@@ -37,9 +37,10 @@
   --size-h4: 1.15em;
   --line-height: 1.6;
   
-  --color-h1: var(--color-text-primary);
-  --color-h2: var(--color-text-primary);
-  --color-h3: var(--color-text-primary);
+  --color-note-text: #e6e3dd;
+  --color-h1: var(--color-note-text);
+  --color-h2: var(--color-note-text);
+  --color-h3: var(--color-note-text);
   --color-h4: var(--color-text-secondary);
   
   --color-code-bg: var(--bg-secondary);
@@ -54,9 +55,9 @@
 
   --sidebar-width: 280px;
   
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
   
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
   --shadow-md: 0 8px 24px -4px rgba(0, 0, 0, 0.3), 0 4px 12px -2px rgba(0, 0, 0, 0.2);
@@ -67,6 +68,7 @@
 }
 
 :root[data-theme="light"] {
+  --color-note-text: #191919;
   /* Light mode - Claude-inspired premium warm sand tones */
   --bg-primary: #fbfaf8;
   --bg-secondary: #f4f1ea;
@@ -105,6 +107,7 @@
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
+    --color-note-text: #191919;
     --bg-primary: #fbfaf8;
     --bg-secondary: #f4f1ea;
     --bg-active: #eae6db;

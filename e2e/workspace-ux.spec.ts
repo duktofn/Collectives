@@ -14,8 +14,9 @@ for (const theme of ['dark', 'light']) {
       'aria-pressed',
       'true'
     );
-    const status = await page.locator('.app-shell-activity').boundingBox();
-    expect(status!.y).toBeGreaterThan(850);
+    await expect(page.locator('.app-shell-activity')).toHaveCount(0);
+    const modes = await page.locator('.editor-mode-island').boundingBox();
+    expect(modes!.y).toBeGreaterThan(800);
     await page.getByRole('button', { name: 'Read', exact: true }).click();
     await expect(page.locator('.cm-heading-1')).toHaveText('Product direction');
     await page.screenshot({ path: `artifacts/ux-polish/after-${theme}.png` });
@@ -45,7 +46,7 @@ test('small workspace keeps toolbar and all files reachable', async ({ page }) =
   const context = await page.locator('.editor-document-context').boundingBox();
   const actions = await page.locator('.editor-actions').boundingBox();
   expect(actions!.x + actions!.width).toBeLessThanOrEqual(801);
-  expect(actions!.y).toBeGreaterThanOrEqual(context!.y + context!.height);
+  expect(actions!.x).toBeGreaterThanOrEqual(context!.x + context!.width);
   await page.locator('.tree-content-container').evaluate((el) => {
     el.scrollTop = el.scrollHeight;
   });
@@ -53,6 +54,7 @@ test('small workspace keeps toolbar and all files reachable', async ({ page }) =
   await page.screenshot({ path: 'artifacts/ux-polish/after-compact.png' });
   await page.getByRole('button', { name: 'Outline and backlinks', exact: true }).click();
   await expect(page.getByRole('tabpanel', { name: 'Outline' })).toBeVisible();
+  await expect(page.locator('.editor-reference-panel')).toHaveCSS('transform', 'none');
   const panel = await page.locator('.editor-reference-panel').boundingBox();
   expect(panel!.x + panel!.width).toBeLessThanOrEqual(801);
   await page.getByRole('button', { name: 'Close note tools', exact: true }).click();
@@ -123,25 +125,22 @@ test('new note proposes the current folder and exposes an explicit change action
   ).toBe(false);
 });
 
-test('toolbar menus support keyboard dismissal and search can be opened by a button', async ({
+test('file menus support keyboard dismissal and search can be opened by a button', async ({
   page,
 }) => {
   await installWorkspaceMock(page);
   await page.goto('/e2e/workspace.html');
-  const more = page.getByRole('button', { name: 'More note actions', exact: true });
-  await more.click();
+  const file = page.getByRole('treeitem', { name: 'Product direction', exact: true });
+  await file.click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: 'Copy path' })).toBeFocused();
   await page.keyboard.press('ArrowDown');
-  await expect(page.getByRole('menuitem', { name: 'Copy WikiLink' })).toBeFocused();
+  await expect(page.getByRole('menuitem', { name: 'Move to...' })).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(more).toBeFocused();
-  await more.click();
+  await expect(file).toBeFocused();
+  await file.click({ button: 'right' });
   await page.keyboard.press('Tab');
   await expect(page.getByRole('menu')).toHaveCount(0);
-  expect(
-    await page.evaluate(() => Boolean(document.activeElement?.closest('.app-shell-main')))
-  ).toBe(true);
-  await more.click();
+  await file.click({ button: 'right' });
   await page.locator('.cm-content').click();
   await expect(page.getByRole('menu')).toHaveCount(0);
   await page.getByRole('button', { name: 'Search note contents', exact: true }).click();
@@ -211,12 +210,22 @@ test('settings island animates in and out and honors reduced motion', async ({ p
   expect(await dialog.evaluate((el) => getComputedStyle(el).animationName)).toBe(
     'settings-island-in'
   );
-  await dialog.evaluate(el => Promise.all(el.parentElement!.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {}))));
+  await dialog.evaluate((el) =>
+    Promise.all(
+      el
+        .parentElement!.getAnimations({ subtree: true })
+        .map((animation) => animation.finished.catch(() => {}))
+    )
+  );
   await page.screenshot({ path: 'artifacts/ux-islands/settings-light.png' });
-  await page.locator('#settings-appearance-panel select').first().selectOption('Georgia');
+  await dialog.getByRole('button', { name: 'Typography', exact: true }).click();
+  await dialog.getByRole('combobox', { name: 'Body font', exact: true }).click();
+  await dialog.getByRole('option', { name: 'Georgia', exact: true }).click();
   await page.getByRole('button', { name: 'Cancel', exact: true }).dispatchEvent('click');
   const exitSafety = await page.evaluate(() => {
-    const apply = Array.from(document.querySelectorAll<HTMLButtonElement>('.theme-panel-footer button')).find(button => button.textContent?.trim() === 'Apply');
+    const apply = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.theme-panel-footer button')
+    ).find((button) => button.textContent?.trim() === 'Apply');
     const disabled = apply?.disabled;
     apply?.click();
     return { disabled, saved: (window as any).__workspaceCommands.includes('save_settings') };

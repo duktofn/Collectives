@@ -35,6 +35,66 @@ async function pointAtText(page: Page, exactLine: string, offset: number) {
   }, { exactLine, offset });
 }
 
+for (const mode of ["edit-render", "view"] as const) {
+  test(`long code stays inside its background in ${mode} mode`, async ({ page }) => {
+    await page.goto("/e2e/editor-interaction.html", { waitUntil: "commit" });
+    await mountEditor(page, mode);
+    const code = [
+      "private void OnEnable()",
+      "{",
+      "    Session.Combat.ProjectilesEnabled = Session.Phase == PlayPhase.Combat || Session.Combat.Projectiles.Count > 0;",
+      `    var identifier = "${"abcdefghijklmnopqrstuvwxyz".repeat(12)}";`,
+      "}",
+    ];
+    const source = ["```csharp", ...code, "```"].join("\n");
+    await page.evaluate(({ source, mode }) => {
+      const host = document.querySelector<HTMLElement>("#code-block-interaction-host")!;
+      host.classList.add("editor-workspace");
+      const view = (window as any).__codeBlockInteractionView;
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: source },
+        selection: { anchor: mode === "edit-render" ? source.indexOf("Session") : 0 },
+      });
+    }, { source, mode });
+
+    for (const width of [760, 360]) {
+      await page.locator("#code-block-interaction-host").evaluate((host, width) => {
+        host.style.width = `${width}px`;
+      }, width);
+      await expect(async () => {
+        const geometry = await page.locator(".cm-codeblock-line").evaluateAll((lines) =>
+          lines.filter((line) => line.textContent!.length > 100).map((line) => {
+            const bounds = line.getBoundingClientRect();
+            const range = document.createRange();
+            range.selectNodeContents(line);
+            return {
+              wrapped: bounds.height > parseFloat(getComputedStyle(line).lineHeight) * 1.5,
+              contained: Array.from(range.getClientRects()).every((rect) =>
+                rect.left >= bounds.left && rect.right <= bounds.right + 1),
+            };
+          })
+        );
+        expect(geometry).toHaveLength(2);
+        expect(geometry.every((line) => line.wrapped && line.contained)).toBe(true);
+      }).toPass({ timeout: 5000 });
+    }
+
+    if (mode === "edit-render") {
+      const offset = code[2].indexOf("Projectiles.Count");
+      const point = await pointAtText(page, code[2], offset);
+      await page.mouse.click(point.x, point.y);
+      const head = await page.evaluate(() =>
+        (window as any).__codeBlockInteractionView.state.selection.main.head);
+      expect(head).toBe(source.indexOf(code[2]) + offset);
+    }
+    expect(await page.evaluate(() =>
+      (window as any).__codeBlockInteractionView.state.doc.toString())).toBe(source);
+    await page.locator("#code-block-interaction-host").screenshot({
+      path: `artifacts/ux-islands/long-code-${mode}.png`,
+    });
+  });
+}
+
 test("click, vertical movement, and drag use CodeMirror source geometry", async ({ page }) => {
   await page.goto("/e2e/editor-interaction.html", { waitUntil: "commit" });
   await mountEditor(page);

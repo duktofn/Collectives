@@ -10,6 +10,7 @@ import "./SearchDialogs.css";
 
 interface ContentSearchDialogProps {
   isOpen: boolean;
+  initialQuery?: string;
   collectionId: string | null;
   onClose: () => void;
   onOpen: (result: ContentSearchResult) => Promise<boolean>;
@@ -55,7 +56,7 @@ export function ContentSearchDialog(props: ContentSearchDialogProps) {
 
   createEffect(on(() => props.isOpen, (open) => {
     if (!open) return;
-    setQuery("");
+    setQuery(props.initialQuery ?? '');
     setPage(null);
     setError("");
     setOffset(0);
