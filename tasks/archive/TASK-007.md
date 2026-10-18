@@ -1,7 +1,7 @@
 ## TASK-007 — Sửa benchmark Rust để compile trên Windows, Linux và macOS
 
-**State:** Paused
-**Current Step:** Step 3 — Chờ cargo check trên Linux và macOS với toolchain ghim
+**State:** Done
+**Current Step:** Step 3 — Complete trên Windows; phần Linux/macOS chuyển TASK-086
 **Phase:** Phase 0
 **Source ID:** 0.2
 
@@ -21,29 +21,29 @@
 Không có phụ thuộc kỹ thuật để sửa code. CI ba OS sẽ được đối chiếu với matrix ở TASK-015; DEC-003 đã Accepted.
 
 ### Requirements
-- [ ] `phase0_bench.rs` compile trên mọi OS: bỏ `#[cfg(windows)]` khỏi `use std::process::Command` (là std, dùng được mọi nền tảng); sửa closure ở khối `#[cfg(unix)]` để parse ngay trong closure hoặc `to_owned()` trước khi trả.
+- [x] Sửa hai lỗi compile trong `phase0_bench.rs` và nghiệm thu trên Windows theo phạm vi mới: bỏ `#[cfg(windows)]` khỏi `use std::process::Command` (là std, dùng được mọi nền tảng); sửa closure ở khối `#[cfg(unix)]` để parse ngay trong closure hoặc `to_owned()` trước khi trả.
 
 - [x] Command được import trên mọi target.
 - [x] Parse giá trị RSS trước khi closure sở hữu status kết thúc; probe trước đỏ/sau xanh.
 - [x] cargo check --locked --all-targets pass trên Windows với compiler đang cài.
-- [ ] Toàn project pass trên Windows/Linux/macOS với Rust 1.97.0 theo acceptance.
+- [x] Phần kiểm chứng native Linux/macOS và đối chiếu CI Rust 1.97.0 được chuyển sang [TASK-086](./TASK-086.md), vẫn Pending ở task đó.
 
 ### Acceptance / Verification plan
-`cargo check --all-targets` pass trên ubuntu-latest, windows-latest và macos-latest.
+Theo yêu cầu mới: cargo check --locked --all-targets pass trên Windows với compiler đang cài đủ để Done task này. Kiểm chứng Linux/macOS và toolchain CI ghim thuộc TASK-086.
 
 Các lệnh và phép kiểm tra ở đây dành cho lúc task được duyệt và thực hiện. Ngưỡng nào được nguồn ghi là đề xuất thì cần chốt theo baseline. Nếu claim đã hết đúng, ghi bằng chứng và điều chỉnh task trước khi sửa.
 
 ### Steps
 - [x] Step 1 — Đối chiếu mục 0.2 với hiện trạng; kiểm tra phụ thuộc → verify: ghi file/log/fixture hoặc quyết định còn thiếu.
 - [x] Step 2 — Thực hiện phạm vi đã được duyệt → verify: đạt Requirements và các ràng buộc chung.
-- [ ] Step 3 — Nghiệm thu và cập nhật ledger → verify: đáp ứng Acceptance bằng bằng chứng thực chạy hoặc xác nhận được ghi rõ.
+- [x] Step 3 — Nghiệm thu và cập nhật ledger → verify: đáp ứng Acceptance bằng bằng chứng thực chạy hoặc xác nhận được ghi rõ.
 
 ### Handoff
 - Branch: `main`
 - Base commit: `7a7eb7f`
 - Uncommitted files: src-tauri/src/bin/phase0_bench.rs và entry TASK-007 được chọn cho commit riêng; phần plan Pending khác không đưa vào commit.
-- Next action: Sau khi TASK-015 bổ sung macos-latest, chạy cargo check --locked --all-targets bằng Rust 1.97.0 trên Windows/Linux/macOS; bổ sung bằng chứng CI rồi mới đánh dấu Done.
-- Blockers: CI macOS chưa có trong matrix hiện tại; toolchain cài trên máy là Rust 1.99.0 thay vì bản ghim 1.97.0.
+- Next action: none cho TASK-007; TASK-086 giữ các kiểm chứng ngoài Windows.
+- Blockers: none trong phạm vi Windows; các giới hạn môi trường chuyển TASK-086.
 
 ### Verification
 Đã chạy trên Windows với Rust 1.99.0:
@@ -52,7 +52,7 @@ Các lệnh và phép kiểm tra ở đây dành cho lúc task được duyệt 
 - Sau sửa: cargo check --locked --all-targets exit 0; probe nhánh unix từ source đã sửa compile thành công.
 - git diff --check pass. Diff chỉ bỏ gate import Command và chuyển parse RSS vào closure sở hữu String; không đổi thuật toán đo.
 
-Chưa chạy cargo check toàn project trên Linux/macOS hoặc bằng Rust 1.97.0. Probe kiểm chứng borrow-check của code trích xuất, không thay thế kiểm tra native trên từng OS. Vì vậy chưa đủ tiêu chí Done.
+Chưa chạy cargo check toàn project trên Linux/macOS hoặc bằng Rust 1.97.0. Probe kiểm chứng borrow-check của code trích xuất, không thay thế kiểm tra native trên từng OS. Theo yêu cầu mới, phần này chuyển TASK-086 và không chặn Done của TASK-007 đã đạt Windows.
 
 Phát hiện để TASK-036 xử lý khi chạy harness macOS: nhánh cfg(unix) hiện đọc /proc/self/status, vốn không có trên macOS; đây là vấn đề runtime baseline khác với hai lỗi compile của TASK-007.
 
@@ -64,3 +64,4 @@ Phát hiện để TASK-036 xử lý khi chạy harness macOS: nhánh cfg(unix) 
 
 - 2026-10-18 — Step 1 hoàn tất: Windows all-targets pass ở baseline; probe nhánh Unix trích nguyên từ source báo E0515. Step 2: bỏ gate import Command và parse số bên trong closure sở hữu status.
 - 2026-10-18 — Step 2 hoàn tất, kiểm tra Windows và probe Unix pass; chuẩn bị commit riêng thay đổi đã kiểm chứng. Step 3 còn thiếu CI native ba OS/toolchain ghim; Paused khi bàn giao, không đánh dấu Done. Hash commit ghi trong task.md → Commit log.
+- 2026-10-18 — Người dùng tách Linux/macOS sang TASK-086 và chấp nhận Windows trước. Source không đổi từ ac0236a, cargo check Windows đã pass; nghiệm thu TASK-007 Done theo phạm vi mới, không tuyên bố Linux/macOS đã pass.
