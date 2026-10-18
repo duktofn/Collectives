@@ -5,7 +5,6 @@ use std::env;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-#[cfg(windows)]
 use std::process::Command;
 use std::time::Instant;
 use tauri_app_lib::collection::{archive, manager, Collection, Entry};
@@ -173,9 +172,13 @@ fn peak_rss_bytes() -> u64 {
     {
         fs::read_to_string("/proc/self/status")
             .ok()
-            .and_then(|status| status.lines().find(|line| line.starts_with("VmHWM:")))
-            .and_then(|line| line.split_whitespace().nth(1))
-            .and_then(|value| value.parse::<u64>().ok())
+            .and_then(|status| {
+                status
+                    .lines()
+                    .find(|line| line.starts_with("VmHWM:"))
+                    .and_then(|line| line.split_whitespace().nth(1))
+                    .and_then(|value| value.parse::<u64>().ok())
+            })
             .map(|kilobytes| kilobytes * 1024)
             .unwrap_or(0)
     }
