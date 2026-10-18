@@ -87,6 +87,37 @@ test('Quick Open scrolls keyboard selection and restores trigger focus', async (
   await expect(page.locator('.editor-file-name')).toHaveText(rowName);
 });
 
+test('Quick Open opens the selected content through one file read', async ({ page }) => {
+  await installWorkspaceMock(page, 'dark', false, false, undefined, undefined, {
+    'First.md': '# First unique content',
+    'Second.md': '# Second unique content',
+    'Third.md': '# Third unique content',
+  });
+  await page.goto('/e2e/workspace.html');
+  await expect(page.locator('.cm-content')).toContainText('First unique content');
+  await page.evaluate(() => {
+    const state = window as unknown as {
+      __task011Reads: string[];
+      __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> };
+    };
+    state.__task011Reads = [];
+    const invoke = state.__TAURI_INTERNALS__.invoke;
+    state.__TAURI_INTERNALS__.invoke = (command, args) => {
+      if (command === 'read_file') state.__task011Reads.push(String(args?.path));
+      return invoke(command, args);
+    };
+  });
+  await page.getByRole('button', { name: 'Quick Open', exact: true }).click();
+  await expect(page.getByRole('option')).toHaveCount(3);
+  await page.getByRole('option').filter({ hasText: 'Third.md' }).dispatchEvent('click');
+  await expect.poll(() => page.evaluate(() =>
+    (window as unknown as { __task011Reads: string[] }).__task011Reads
+  )).toEqual(['D:/Sample/Knowledge/Third.md']);
+  await expect(page.locator('.editor-file-name')).toHaveText('Third');
+  await expect(page.locator('.cm-content')).toContainText('Third unique content');
+  await expect(page.getByRole('dialog', { name: 'Quick Open', exact: true })).toHaveCount(0);
+});
+
 test('new note proposes the current folder and exposes an explicit change action', async ({
   page,
 }) => {

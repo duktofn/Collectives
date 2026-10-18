@@ -768,8 +768,13 @@ export default function App() {
   };
 
   const openQuickCandidate = async (candidate: ResolveCandidate): Promise<boolean> => {
+    const collectionId = collectionsStore.state.activeCollectionId;
     const selected = await editorStore.selectEntry(candidate.entryId);
     if (!selected) return false;
+    // Selection already queues a file open; let it settle before any fallback read.
+    await selectionTransition;
+    if (uiStore.state.selectedEntryId !== candidate.entryId
+      || collectionsStore.state.activeCollectionId !== collectionId) return false;
     if (editorStore.state.openFilePath !== candidate.path) await editorStore.openFile(candidate.path);
     return editorStore.state.openFilePath === candidate.path;
   };
