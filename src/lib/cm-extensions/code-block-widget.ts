@@ -9,6 +9,9 @@ import {
 import { Decoration, DecorationSet, EditorView, ViewPlugin, WidgetType } from '@codemirror/view';
 import type { SyntaxNode } from '@lezer/common';
 import { editorModeFacet } from './facet';
+import { announcer } from '../../a11y/announcer';
+
+const languageCopyTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
 
 export function isChartFencedCode(state: EditorState, nodeFrom: number): boolean {
   return /^ {0,3}(?:`{3,}|~{3,})chart\s*$/.test(state.doc.lineAt(nodeFrom).text);
@@ -75,10 +78,10 @@ class CodeLanguageWidget extends WidgetType {
   }
 
   get estimatedHeight() {
-    return 26;
+    return 28;
   }
 
-  toDOM() {
+  toDOM(view: EditorView) {
     const names: Record<string, string> = {
       cpp: 'C++',
       'c++': 'C++',
@@ -121,11 +124,65 @@ class CodeLanguageWidget extends WidgetType {
     const header = document.createElement('div');
     header.className = 'cm-codeblock-language-header';
     header.dataset.language = this.language || 'text';
-    const badge = document.createElement('span');
+    const badge = document.createElement('button');
+    badge.type = 'button';
     badge.className = 'cm-codeblock-language-name';
     badge.textContent = label;
+    badge.title = 'Copy code';
+    badge.setAttribute('aria-label', `Copy ${label} code to clipboard`);
+    badge.addEventListener('pointerdown', (event) => event.stopPropagation());
+    badge.addEventListener('mousedown', (event) => event.preventDefault());
+    let attempts = 0;
+    badge.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (badge.disabled) return;
+      const timer = languageCopyTimers.get(header);
+      if (timer !== undefined) clearTimeout(timer);
+      badge.disabled = true;
+      void (async () => {
+        try {
+          // Resolve the live widget position: preceding edits can move or reuse it.
+          const block = fencedCodeAt(view.state, view.posAtDOM(header));
+          if (!block || !header.isConnected) throw new Error('Code block is no longer available.');
+          const opening = view.state.doc.lineAt(block.from);
+          const last = view.state.doc.lineAt(block.to);
+          const marker = opening.text.match(/^ {0,3}(`{3,}|~{3,})/)?.[1];
+          if (!marker) throw new Error('Code block fence is no longer available.');
+          const from = Math.min(opening.to + 1, view.state.doc.length);
+          const to = last.number > opening.number && closingFence(last.text, marker)
+            ? Math.max(from, last.from - 1) : last.to;
+          await navigator.clipboard.writeText(view.state.doc.sliceString(from, Math.max(from, to)));
+          if (!header.isConnected) return;
+          badge.textContent = 'Copied!';
+          badge.title = 'Code copied';
+          badge.dataset.copyState = 'success';
+          announcer.polite('Code copied to clipboard.', `code-copy:${block.from}:${++attempts}`);
+        } catch {
+          if (!header.isConnected) return;
+          badge.textContent = 'Copy failed';
+          badge.title = 'Could not copy code. Click to retry.';
+          badge.dataset.copyState = 'error';
+          announcer.alert('Could not copy code to the clipboard.', `code-copy-error:${++attempts}`);
+        } finally {
+          badge.disabled = false;
+          if (header.isConnected) languageCopyTimers.set(header, setTimeout(() => {
+            badge.textContent = label;
+            badge.title = 'Copy code';
+            delete badge.dataset.copyState;
+            languageCopyTimers.delete(header);
+          }, 1500));
+        }
+      })();
+    });
     header.appendChild(badge);
     return header;
+  }
+
+  destroy(dom: HTMLElement) {
+    const timer = languageCopyTimers.get(dom);
+    if (timer !== undefined) clearTimeout(timer);
+    languageCopyTimers.delete(dom);
   }
 }
 
@@ -269,6 +326,6 @@ const codePointerTracker = ViewPlugin.define(
  * Fenced code stays as ordinary CodeMirror text. These line decorations style
  * the body and replace the inactive opening fence with a language label. Write exposes the full
  * fence, including its language, for the block under selection. Pointer,
- * keyboard, selection, and copy behavior to CodeMirror itself.
+ * keyboard and selection stay native to CodeMirror; language buttons copy the block body.
  */
 export const codeBlockWidgetExtension: Extension = [codeBlockDecorationField, codePointerTracker];

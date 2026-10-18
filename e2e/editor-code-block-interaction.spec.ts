@@ -12,6 +12,103 @@ async function mountEditor(page: Page, mode: "edit-render" | "view" = "edit-rend
   await expect(page.locator("#code-block-interaction-host .cm-editor")).toBeVisible();
 }
 
+async function clipboardText(page: Page) {
+  // The Windows clipboard represents line breaks as CRLF.
+  return page.evaluate(async () => (await navigator.clipboard.readText()).replace(/\r\n/g, '\n'));
+}
+
+for (const mode of ['edit-render', 'view'] as const) {
+  test(`language label copies its code in ${mode} without changing the document or selection`, async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto('/e2e/editor-interaction.html');
+    await mountEditor(page, mode);
+    const before = await page.evaluate(() => {
+      const view = (window as any).__codeBlockInteractionView;
+      return { doc: view.state.doc.toString(), selection: view.state.selection.toJSON() };
+    });
+    const copy = page.getByRole('button', { name: 'Copy TypeScript code to clipboard' });
+    await copy.click();
+    const expected = [
+      'const greeting = "Xin chào 🌱";',
+      '\tconsole.log(greeting);',
+      'const longLine = "0123456789abcdefghijklmnopqrstuvwxyz".repeat(8);',
+    ].join('\n');
+    await expect.poll(() => clipboardText(page)).toBe(expected);
+    await expect(copy).toHaveText('Copied!');
+    await expect(page.locator('.cm-codeblock-fence-edit')).toHaveCount(0);
+    const after = await page.evaluate(() => {
+      const view = (window as any).__codeBlockInteractionView;
+      return { doc: view.state.doc.toString(), selection: view.state.selection.toJSON() };
+    });
+    expect(after).toEqual(before);
+  });
+}
+
+test('copy uses the current body after earlier edits and supports Enter and Space', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/e2e/editor-interaction.html');
+  await mountEditor(page);
+  await page.evaluate(() => {
+    const view = (window as any).__codeBlockInteractionView;
+    const doc = ['Before', '', '```text', 'first', '```', '', '```text', '\tsecond 🌱', '', '```'].join('\n');
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: doc }, selection: { anchor: 0 } });
+  });
+  const copies = page.getByRole('button', { name: 'Copy Text code to clipboard' });
+  await expect(copies).toHaveCount(2);
+  await page.evaluate(() => {
+    const view = (window as any).__codeBlockInteractionView;
+    const from = view.state.doc.toString().indexOf('second');
+    view.dispatch({ changes: [{ from: 0, insert: 'Added before both blocks.\n\n' },
+      { from, to: from + 'second'.length, insert: 'updated' }], selection: { anchor: 0 } });
+  });
+  await copies.nth(1).focus();
+  await page.keyboard.press('Enter');
+  await expect.poll(() => clipboardText(page)).toBe('\tupdated 🌱\n');
+  await copies.nth(0).focus();
+  await page.keyboard.press('Space');
+  await expect.poll(() => clipboardText(page)).toBe('first');
+  await expect(page.locator('.cm-codeblock-fence-edit')).toHaveCount(0);
+});
+
+for (const { source, expected } of [
+  { source: ['Before', '', '```text', '```'].join('\n'), expected: '' },
+  { source: ['Before', '', '~~~text', '  unclosed 🌱', '', ''].join('\n'), expected: '  unclosed 🌱\n\n' },
+  { source: ['Before', '', '````text', '```', '\tvalue', '````'].join('\n'), expected: '```\n\tvalue' },
+]) {
+  test(`copy preserves code from empty, unterminated, and longer-fenced blocks: ${JSON.stringify(expected)}`, async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto('/e2e/editor-interaction.html');
+    await mountEditor(page, 'view');
+    await page.evaluate((source) => {
+      const view = (window as any).__codeBlockInteractionView;
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: source } });
+    }, source);
+    await page.getByRole('button', { name: 'Copy Text code to clipboard' }).click();
+    await expect.poll(() => clipboardText(page)).toBe(expected);
+  });
+}
+
+test('clipboard failure shows feedback and permits retry, then restores the language label', async ({ page }) => {
+  await page.goto('/e2e/editor-interaction.html');
+  await mountEditor(page, 'view');
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: async () => { throw new Error('Clipboard unavailable'); },
+    } });
+  });
+  const copy = page.getByRole('button', { name: 'Copy Text code to clipboard' });
+  await copy.click();
+  await expect(copy).toHaveText('Copy failed');
+  await expect(copy).toBeEnabled();
+  await page.evaluate(() => {
+    (navigator.clipboard as any).writeText = async (text: string) => { (window as any).__copiedCode = text; };
+  });
+  await copy.click();
+  await expect(copy).toHaveText('Copied!');
+  expect(await page.evaluate(() => (window as any).__copiedCode)).toBe('last line in the second block');
+  await expect(copy).toHaveText('Text');
+});
+
 async function pointAtText(page: Page, exactLine: string, offset: number) {
   return page.evaluate(({ exactLine: lineText, offset: charOffset }) => {
     const line = Array.from(document.querySelectorAll<HTMLElement>("#code-block-interaction-host .cm-line"))
