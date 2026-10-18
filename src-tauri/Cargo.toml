@@ -37,3 +37,8 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 
 [dev-dependencies]
 tempfile = "3.10"
+
+# CMake Debug links zlib-ng to MSVCRTD; Rust's MSVC builds use MSVCRT.
+# The test profile inherits this package override from dev.
+[profile.dev.package.libz-ng-sys]
+opt-level = 1
