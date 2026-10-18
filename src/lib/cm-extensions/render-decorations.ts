@@ -2,6 +2,7 @@ import { syntaxTree } from '@codemirror/language';
 import { RangeSetBuilder, Extension } from '@codemirror/state';
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
 import { EmptyWidget } from './empty-widget';
+import { inlineClasses, inlineFormattingAt } from './inline-formatting';
 
 interface DecSpec {
   from: number;
@@ -22,6 +23,7 @@ class RenderPlugin {
   update(update: ViewUpdate) {
     const shouldRebuild =
       update.docChanged ||
+      update.selectionSet ||
       update.viewportChanged ||
       syntaxTree(update.startState) !== syntaxTree(update.state) ||
       update.transactions.some((tr) => tr.reconfigured);
@@ -37,7 +39,25 @@ class RenderPlugin {
     const decs: DecSpec[] = [];
     const atomicDecs: DecSpec[] = [];
     const tree = syntaxTree(view.state);
-    // Keep Write geometry stable on pointer selection. Raw syntax is edited in Source.
+    const editable = view.state.facet(EditorView.editable) && !view.state.readOnly;
+    const isActive = (from: number, to: number) => editable &&
+      view.state.selection.ranges.some((range) => range.empty
+        // Keep the closing boundary visible so native input has a real DOM
+        // position after the delimiter, including at the end of the document.
+        ? range.head > from && range.head <= to
+        : range.from < to && range.to > from);
+
+    if (editable) {
+      const drafts = new Set<string>();
+      for (const range of view.state.selection.ranges) {
+        for (const span of inlineFormattingAt(view.state, range.head)) {
+          const key = `${span.name}:${span.from}:${span.to}`;
+          if (!span.draft || drafts.has(key)) continue;
+          drafts.add(key);
+          decs.push({ from: span.from, to: span.to, value: Decoration.mark({ class: inlineClasses[span.name] }) });
+        }
+      }
+    }
 
     for (const { from, to } of view.visibleRanges) {
       tree.iterate({
@@ -84,115 +104,28 @@ class RenderPlugin {
             });
           }
 
-          // Strong Emphasis (Bold)
-          if (name === 'StrongEmphasis') {
+          // Keep inline styling while exposing the active span's real delimiters.
+          const inlineClass = inlineClasses[name];
+          if (inlineClass) {
             decs.push({
               from: nodeFrom,
               to: nodeTo,
-              value: Decoration.mark({
-                class: 'cm-strong',
-              }),
+              value: Decoration.mark({ class: inlineClass }),
             });
 
-            // Hide the ** markers
-            const val1 = Decoration.replace({ widget: new EmptyWidget() });
-            const val2 = Decoration.replace({ widget: new EmptyWidget() });
-
-            decs.push({
-              from: nodeFrom,
-              to: nodeFrom + 2,
-              value: val1,
-            });
-            decs.push({
-              from: nodeTo - 2,
-              to: nodeTo,
-              value: val2,
-            });
-
-            atomicDecs.push({
-              from: nodeFrom,
-              to: nodeFrom + 2,
-              value: val1,
-            });
-            atomicDecs.push({
-              from: nodeTo - 2,
-              to: nodeTo,
-              value: val2,
-            });
-          }
-
-          // Emphasis (Italic)
-          if (name === 'Emphasis') {
-            decs.push({
-              from: nodeFrom,
-              to: nodeTo,
-              value: Decoration.mark({
-                class: 'cm-emphasis',
-              }),
-            });
-
-            // Hide the * markers
-            const val1 = Decoration.replace({ widget: new EmptyWidget() });
-            const val2 = Decoration.replace({ widget: new EmptyWidget() });
-
-            decs.push({
-              from: nodeFrom,
-              to: nodeFrom + 1,
-              value: val1,
-            });
-            decs.push({
-              from: nodeTo - 1,
-              to: nodeTo,
-              value: val2,
-            });
-
-            atomicDecs.push({
-              from: nodeFrom,
-              to: nodeFrom + 1,
-              value: val1,
-            });
-            atomicDecs.push({
-              from: nodeTo - 1,
-              to: nodeTo,
-              value: val2,
-            });
-          }
-
-          // Inline Code
-          if (name === 'InlineCode') {
-            decs.push({
-              from: nodeFrom,
-              to: nodeTo,
-              value: Decoration.mark({
-                class: 'cm-inline-code',
-              }),
-            });
-
-            // Hide backticks
-            const val1 = Decoration.replace({ widget: new EmptyWidget() });
-            const val2 = Decoration.replace({ widget: new EmptyWidget() });
-
-            decs.push({
-              from: nodeFrom,
-              to: nodeFrom + 1,
-              value: val1,
-            });
-            decs.push({
-              from: nodeTo - 1,
-              to: nodeTo,
-              value: val2,
-            });
-
-            atomicDecs.push({
-              from: nodeFrom,
-              to: nodeFrom + 1,
-              value: val1,
-            });
-            atomicDecs.push({
-              from: nodeTo - 1,
-              to: nodeTo,
-              value: val2,
-            });
+            if (!isActive(nodeFrom, nodeTo)) {
+              // Parser marks also cover __bold__, nested emphasis, and multi-backtick code.
+              for (let child = node.node.firstChild; child; child = child.nextSibling) {
+                if (!['EmphasisMark', 'CodeMark', 'StrikethroughMark'].includes(child.name)) continue;
+                const dec = {
+                  from: child.from,
+                  to: child.to,
+                  value: Decoration.replace({ widget: new EmptyWidget() }),
+                };
+                decs.push(dec);
+                atomicDecs.push(dec);
+              }
+            }
           }
 
           // Link styling
@@ -268,6 +201,11 @@ class RenderPlugin {
 
           // Horizontal Rule
           if (name === 'HorizontalRule') {
+            // Empty **|** / __|__ pairs parse as rules, but must remain editable.
+            if (isActive(nodeFrom, nodeTo) && /^([*_])(?:[\t ]*\1){3,}[\t ]*$/.test(view.state.doc.sliceString(nodeFrom, nodeTo))) {
+              decs.push({ from: nodeFrom, to: nodeTo, value: Decoration.mark({ class: 'cm-strong' }) });
+              return;
+            }
             decs.push({
               from: nodeFrom,
               to: nodeTo,

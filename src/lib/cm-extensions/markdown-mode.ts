@@ -1,12 +1,14 @@
 import { Compartment, Extension, EditorState } from "@codemirror/state";
 import { autocompletion } from "@codemirror/autocomplete";
 import { markdown } from "@codemirror/lang-markdown";
+import { Strikethrough } from "@lezer/markdown";
 import { tableMarkdownExtension } from "./table-markdown-extension";
 import { codeLanguages } from './code-languages';
 import { indentOnInput } from "@codemirror/language";
 import { EditorView, drawSelection, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, standardKeymap } from "@codemirror/commands";
 import { renderDecorationsExtension } from "./render-decorations";
+import { inlineFormattingExitExtension } from './inline-formatting';
 import { codeBlockWidgetExtension } from "./code-block-widget";
 import { tableWidgetExtension } from "./table-widget";
 import { chartWidgetExtension } from "./chart-widget";
@@ -32,7 +34,7 @@ const renderMarkdownAutocomplete = autocompletion({ override: [wikilinkCompletio
 export const baseEditorExtensions: Extension[] = [
   wordOccurrenceHighlighting('markdown'),
   editorLayoutExtension,
-  markdown({ codeLanguages, extensions: [tableMarkdownExtension] }),
+  markdown({ codeLanguages, extensions: [tableMarkdownExtension, Strikethrough] }),
   codeSyntaxHighlighting,
   history(),
   drawSelection(),
@@ -79,6 +81,7 @@ export function getExtensionsForMode(mode: "view" | "edit-source" | "edit-render
         EditorView.editable.of(true),
         EditorState.readOnly.of(false),
         renderDecorationsExtension,
+        inlineFormattingExitExtension,
         codeBlockWidgetExtension,
         tableWidgetExtension,
         chartWidgetExtension,
