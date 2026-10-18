@@ -154,7 +154,7 @@ describe("ThemePanel settings draft", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Edit colors" }));
 
     await fireEvent.click(screen.getByRole("button", { name: "Light" }));
-    await fireEvent.click(screen.getByRole("button", { name: "Typography", exact: true }));
+    await fireEvent.click(screen.getByRole("button", { name: "Typography" }));
     await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Applying…" })).toBeTruthy());
     expect(screen.getByLabelText("Line height", { exact: true }).matches(':disabled')).toBe(true);

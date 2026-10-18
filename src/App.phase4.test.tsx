@@ -33,7 +33,7 @@ Object.defineProperty(window, "matchMedia", {
 describe("Phase 4 App shell integration", () => {
   it("keeps presentation rerendering inside the four-slot shell", () => {
     uiStore.setSidebarOpen(true);
-    const { container, getByRole, getByText } = render(() => <App />);
+    const { container, getByText } = render(() => <App />);
 
     expect(container.querySelectorAll("main")).toHaveLength(1);
     expect(container.querySelector("aside[aria-label='Collection navigation']")).not.toBeNull();
