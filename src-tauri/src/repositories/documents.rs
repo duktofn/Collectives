@@ -114,7 +114,10 @@ fn decode_document_bytes(
     let content = String::from_utf8(content_bytes.to_vec())
         .map_err(|_| unsupported_error("encoding", "File is not valid UTF-8"))?;
     if crate::text_files::has_binary_controls(&content) {
-        return Err(unsupported_error("binary", "File contains binary control characters"));
+        return Err(unsupported_error(
+            "binary",
+            "File contains binary control characters",
+        ));
     }
     let token = blake3::hash(bytes).to_hex().to_string();
     Ok(FileSnapshot {
@@ -357,7 +360,10 @@ pub fn write_file(
         return Err(unsupported_error("nul", "Document contains NUL bytes"));
     }
     if crate::text_files::has_binary_controls(&content) {
-        return Err(unsupported_error("binary", "Document contains binary control characters"));
+        return Err(unsupported_error(
+            "binary",
+            "Document contains binary control characters",
+        ));
     }
     let version_token = blake3::hash(&bytes_to_write).to_hex().to_string();
     let id = uuid::Uuid::new_v4().to_string();
@@ -440,7 +446,10 @@ pub fn create_file(path: String, content: String) -> Result<DocumentWriteReceipt
         return Err(unsupported_error("nul", "Document contains NUL bytes"));
     }
     if crate::text_files::has_binary_controls(&content) {
-        return Err(unsupported_error("binary", "Document contains binary control characters"));
+        return Err(unsupported_error(
+            "binary",
+            "Document contains binary control characters",
+        ));
     }
 
     let stage_path = parent.join(format!(

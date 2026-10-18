@@ -11,8 +11,8 @@ pub mod metadata;
 pub mod repositories;
 pub mod safety_error;
 pub mod settings;
-pub mod theme_io;
 pub mod text_files;
+pub mod theme_io;
 
 use tauri::Manager;
 
