@@ -26,6 +26,7 @@ TASK-015 bổ sung runner macOS; bản sửa TASK-007 và TASK-008 đã commit.
 - [ ] Theo dõi các kiểm tra Linux/macOS được chuyển từ task sau, thu đủ log trước nghiệm thu toàn kế hoạch.
 - [ ] Xác minh profile native libz-ng-sys của TASK-087 trên Linux/macOS cùng các gate Rust.
 - [ ] Chạy ba spec code-block interaction, code-click-drift và editor-layout interaction của TASK-009 trên Linux/macOS; ghi kết quả caret/layout native.
+- [ ] Chạy editor-floating-controls E2E và ContextMenu.a11y unit của TASK-010 trên Linux/macOS; xác minh clipboard, menu con, phím điều hướng và focus.
 - [ ] Phân loại lỗi nền tảng, sửa trong task sở hữu hoặc tạo task sửa riêng; giữ yêu cầu hỗ trợ cả ba OS.
 
 ### Steps
@@ -46,3 +47,4 @@ Chưa chạy Linux/macOS. TASK-007 đã có cargo check trên Windows Rust 1.99.
 ### Log
 - 2026-10-18 — Người dùng yêu cầu tạo task mới cho Linux/macOS, chạy Windows trước và đánh Done nếu Windows đạt. Tạo Pending để giữ phần kiểm chứng còn lại.
 - 2026-10-18 — Bổ sung follow-up profile native TASK-087 và hồi quy trình duyệt TASK-009; các kiểm tra Linux/macOS chưa chạy.
+- 2026-10-18 — TASK-010 đã pass Windows: 6 E2E, 3 unit, 9 lượt lặp; bổ sung phần kiểm chứng tương ứng trên Linux/macOS, vẫn Pending.
