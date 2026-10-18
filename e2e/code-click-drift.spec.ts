@@ -88,11 +88,20 @@ for (const [collapsed, fontScale] of [
     if (collapsed) await page.getByRole('button', { name: 'Collapse sidebar' }).click();
     if (collapsed) {
       const menu = page.getByRole('button', { name: 'Expand sidebar' });
-      const header = await page.locator('.app-shell-header').boundingBox();
-      const rect = await menu.boundingBox();
-      expect(rect!.x).toBeGreaterThan(header!.x);
-      expect(rect!.y).toBeGreaterThan(header!.y);
-      expect(await menu.evaluate((element) => getComputedStyle(element).position)).toBe('static');
+      // Wait for the collapse animation, then measure both boxes in one layout frame.
+      await menu.click({ trial: true });
+      const geometry = await menu.evaluate((element) => {
+        const header = element.closest('.app-shell-header')!.getBoundingClientRect();
+        const button = element.getBoundingClientRect();
+        return {
+          headerX: header.x, headerY: header.y,
+          buttonX: button.x, buttonY: button.y,
+          position: getComputedStyle(element).position,
+        };
+      });
+      expect(geometry.buttonX).toBeGreaterThan(geometry.headerX);
+      expect(geometry.buttonY).toBeGreaterThan(geometry.headerY);
+      expect(geometry.position).toBe('static');
     }
     for (const block of [0, 2, 8, 18, 30, 48, 59, 8, 0]) {
       const phrase = `const block_${block}_line_2 = 2;`;
