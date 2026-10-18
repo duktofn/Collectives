@@ -15,6 +15,7 @@ import { normalizeAccentColor } from '../../lib/themeColors';
 import { ContentColorControls, ThemePaletteControls } from './AppearanceColors';
 import { ThemeManager } from './ThemeManager';
 import { SettingsSelect } from './SettingsSelect';
+import { SettingsNumberInput } from './SettingsNumberInput';
 
 interface ThemePanelProps {
   isOpen: boolean;
@@ -85,7 +86,7 @@ function stableSettingsKey(value: unknown): string {
 export function ThemePanel(props: ThemePanelProps) {
   const titleId = `theme-panel-title-${createUniqueId()}`;
   const [activeSettingsTab, setActiveSettingsTab] = createSignal<
-    'appearance' | 'behavior' | 'shortcuts'
+    'appearance' | 'behavior'
   >('appearance');
   const [appearanceSection, setAppearanceSection] = createSignal<'Theme' | 'Typography'>('Theme');
   const [baseline, setBaseline] = createSignal<Settings>({ ...props.settings });
@@ -477,16 +478,6 @@ export function ThemePanel(props: ThemePanelProps) {
           >
             Behavior
           </button>
-          <button
-            role="tab"
-            id="settings-tab-shortcuts"
-            aria-controls="settings-shortcuts-panel"
-            aria-selected={activeSettingsTab() === 'shortcuts' ? 'true' : 'false'}
-            classList={{ active: activeSettingsTab() === 'shortcuts' }}
-            onClick={() => setActiveSettingsTab('shortcuts')}
-          >
-            Shortcuts
-          </button>
         </div>
         <Show when={activeSettingsTab()} keyed>
           {(tab) => (
@@ -497,47 +488,6 @@ export function ThemePanel(props: ThemePanelProps) {
               aria-labelledby={`settings-tab-${tab}`}
               aria-busy={isApplying() ? 'true' : 'false'}
             >
-              <Show when={tab === 'shortcuts'}>
-                <h4>Keyboard shortcuts</h4>
-                <dl class="settings-shortcut-list">
-                  <div>
-                    <dt>
-                      <kbd>Ctrl/⌘ N</kbd>
-                    </dt>
-                    <dd>Create a note. Review or change its save folder before creating.</dd>
-                  </div>
-                  <div>
-                    <dt>
-                      <kbd>Ctrl/⌘ P</kbd>
-                    </dt>
-                    <dd>Open a note by name in the active collection.</dd>
-                  </div>
-                  <div>
-                    <dt>
-                      <kbd>Ctrl/⌘ Shift F</kbd>
-                    </dt>
-                    <dd>Search Markdown note contents in the active collection.</dd>
-                  </div>
-                  <div>
-                    <dt>
-                      <kbd>Ctrl/⌘ S</kbd>
-                    </dt>
-                    <dd>Save the current draft.</dd>
-                  </div>
-                  <div>
-                    <dt>
-                      <kbd>Alt ←</kbd>
-                    </dt>
-                    <dd>Go back when focus is outside an editor or text field.</dd>
-                  </div>
-                  <div>
-                    <dt>
-                      <kbd>Alt →</kbd>
-                    </dt>
-                    <dd>Go forward when focus is outside an editor or text field.</dd>
-                  </div>
-                </dl>
-              </Show>
               <Show when={tab === 'appearance'}>
                 <nav class="appearance-navigation" aria-label="Appearance sections">
                   <For each={['Theme', 'Typography'] as const}>
@@ -690,32 +640,24 @@ export function ThemePanel(props: ThemePanelProps) {
                             onChange={(value) => updateSetting('fontMono', value || undefined)}
                           />
                           <div class="form-row">
-                            <div class="input-group">
-                              <label for="line-height">Line height</label>
-                              <input
-                                id="line-height"
-                                type="number"
-                                min="0.1"
-                                step="0.1"
-                                value={draft().lineHeight ?? 1.6}
-                                onInput={(event) =>
-                                  updateSetting('lineHeight', event.currentTarget.valueAsNumber)
-                                }
-                              />
-                            </div>
-                            <div class="input-group">
-                              <label for="font-scale">Font scale</label>
-                              <input
-                                id="font-scale"
-                                type="number"
-                                min="0.1"
-                                step="0.05"
-                                value={draft().fontScale}
-                                onInput={(event) =>
-                                  updateSetting('fontScale', event.currentTarget.valueAsNumber)
-                                }
-                              />
-                            </div>
+                            <SettingsNumberInput
+                              id="line-height"
+                              label="Line height"
+                              value={draft().lineHeight ?? 1.6}
+                              defaultValue={1.6}
+                              min={0.1}
+                              step={0.1}
+                              onChange={(value) => updateSetting('lineHeight', value)}
+                            />
+                            <SettingsNumberInput
+                              id="font-scale"
+                              label="Font scale"
+                              value={draft().fontScale}
+                              defaultValue={1}
+                              min={0.1}
+                              step={0.05}
+                              onChange={(value) => updateSetting('fontScale', value)}
+                            />
                           </div>
 
                           <div class="heading-sizes-grid">

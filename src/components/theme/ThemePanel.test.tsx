@@ -154,8 +154,12 @@ describe("ThemePanel settings draft", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Edit colors" }));
 
     await fireEvent.click(screen.getByRole("button", { name: "Light" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Typography", exact: true }));
     await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Applying…" })).toBeTruthy());
+    expect(screen.getByLabelText("Line height", { exact: true }).matches(':disabled')).toBe(true);
+    expect(screen.getByRole("button", { name: "Increase line height" }).matches(':disabled')).toBe(true);
+    expect(screen.getByRole("button", { name: "Decrease font scale" }).matches(':disabled')).toBe(true);
 
     await fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     await fireEvent.click(document.querySelector(".theme-panel-backdrop") as HTMLElement);

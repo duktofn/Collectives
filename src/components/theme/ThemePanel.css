@@ -140,40 +140,6 @@
   line-height: 1.5;
 }
 
-.settings-shortcut-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  margin-top: 8px;
-}
-
-.settings-shortcut-list > div {
-  display: grid;
-  grid-template-columns: minmax(120px, 0.8fr) minmax(0, 1.5fr);
-  align-items: center;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--color-border-subtle);
-}
-
-.settings-shortcut-list dt {
-  color: var(--color-text-primary);
-}
-
-.settings-shortcut-list kbd {
-  padding: 3px 6px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-secondary);
-  font-family: var(--font-mono);
-  font-size: 11px;
-}
-
-.settings-shortcut-list dd {
-  color: var(--color-text-secondary);
-  font-size: 12px;
-}
-
 .theme-advanced-toggle {
   width: 100%;
   padding: 9px 10px;
@@ -412,6 +378,85 @@
 .input-group select:focus,
 .input-group input[type='text']:focus {
   border-color: var(--color-border-hover);
+}
+
+.settings-number-input {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.settings-number-input:hover {
+  border-color: var(--color-border-hover);
+}
+
+.settings-number-input:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-bg);
+}
+
+.theme-panel .settings-number-input input[type='number'] {
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  appearance: textfield;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-number-input input::-webkit-inner-spin-button,
+.settings-number-input input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.settings-number-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  padding: 5px;
+}
+
+.settings-number-actions button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--color-text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.settings-number-actions button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--color-text-primary);
+}
+
+.settings-number-actions button:active:not(:disabled) {
+  background: var(--color-accent-bg);
+  color: var(--color-accent);
+}
+
+.settings-number-actions button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.settings-number-actions button:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .value-display {
