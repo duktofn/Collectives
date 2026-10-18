@@ -7,6 +7,8 @@
 
 - Commit each task as a focused commit referencing its task ID after completing its required checks, and commit completed work before starting the next task. Record the commit hash in task.md. If a task pauses with coherent verified changes, commit those changes and record the remaining verification honestly; do not mark it Done before its acceptance criteria pass. Keep unrelated tasks and changes out of that commit.
 
+- For the current rebuild, run task checks on Windows first and mark the task Done when its Windows acceptance passes. Track the deferred native Linux/macOS checks and pinned-CI-toolchain comparisons separately in TASK-086. Record the compiler used and do not imply that Windows results prove other platforms; the overall release still supports all three systems.
+
 # Changelog and release conventions
 
 - Write all changelog entries in English.
