@@ -14,8 +14,8 @@ const remote = join(scratch, 'remote.git');
 const clone = join(scratch, 'clone');
 mkdirSync(work);
 
-function run(command, args, cwd = work) {
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8', shell: false });
+function run(command, args, cwd = work, env = process.env) {
+  const result = spawnSync(command, args, { cwd, encoding: 'utf8', shell: false, env });
   if (result.error) throw result.error;
   return result;
 }
@@ -62,8 +62,21 @@ writeFileSync(join(work, 'fixture.js'), 'export const used = 1;\n');
 const installed = run(process.execPath, ['scripts/git/install-hooks.mjs']);
 assert.equal(installed.status, 0, installed.stderr);
 commit('fixture: type error');
-const typeError = run('git', ['push', 'origin', 'main']);
-assert.notEqual(typeError.status, 0);
+const typeError = run('git', ['push', 'origin', 'main'], work, {
+  ...process.env,
+  GIT_TRACE: '1',
+  GIT_TRACE_SETUP: '1',
+});
+assert.notEqual(typeError.status, 0, [
+  `Expected invalid TypeScript push to fail; git exited ${typeError.status}.`,
+  `Git: ${git(['--version'])}`,
+  `core.hooksPath: ${git(['config', '--show-origin', '--get-all', 'core.hooksPath']) || '<unset>'}`,
+  `Tracked hook: ${git(['ls-files', '--stage', '.githooks/pre-push']) || '<missing>'}`,
+  `GIT_CONFIG_GLOBAL: ${process.env.GIT_CONFIG_GLOBAL || '<unset>'}`,
+  `GIT_CONFIG_COUNT: ${process.env.GIT_CONFIG_COUNT || '<unset>'}`,
+  `stdout:\n${typeError.stdout}`,
+  `stderr:\n${typeError.stderr}`,
+].join('\n'));
 assert.match(typeError.stdout + typeError.stderr, /TS2322/);
 assert.notEqual(run('git', ['--git-dir', remote, 'rev-parse', '--verify', 'refs/heads/main']).status, 0);
 
