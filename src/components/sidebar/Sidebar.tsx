@@ -1,4 +1,6 @@
 import { createSignal, onCleanup, Show, For, onMount, createEffect, on } from "solid-js";
+import { createFile, readFile } from "../../features/editor";
+import { isMarkdownPath } from "../../shared/fileCapabilities.generated";
 import { collectionsStore } from "../../stores/collections";
 import { uiStore } from "../../stores/ui";
 import { Icon } from "../common/Icon";
@@ -175,6 +177,26 @@ export function Sidebar(props: SidebarProps) {
     try {
       const selected = await pickFiles("Select Markdown Notes");
       if (selected && selected.length > 0) {
+        // Windows can return a newly named path from its native file picker
+        // before that document exists. Publish it before adding its reference.
+        for (const path of selected) {
+          if (!isMarkdownPath(path)) continue;
+          try {
+            await readFile(path);
+          } catch (error) {
+            const safety = asSafetyError(error);
+            const details = safety?.details as { reason?: string } | undefined;
+            if (safety?.code !== "stale_read" || details?.reason !== "absent_or_create_rename") {
+              throw error;
+            }
+            try {
+              await createFile(path, "");
+            } catch (createError) {
+              if (asSafetyError(createError)?.code !== "external_change_conflict") throw createError;
+              await readFile(path);
+            }
+          }
+        }
         await collectionsStore.addFiles(selected);
       }
     } catch (err) {
