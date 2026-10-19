@@ -27,3 +27,5 @@ Source cause: CSS selected used readiness=ready, which stays true for previously
 
 ### Log
 - 2026-10-19 — Created from direct implementation request; authorized before the next five plan tasks (016–020).
+
+- 2026-10-19 — Added DOM regression: two ready folder files still highlight only the currently selected/open path, including switching back.
