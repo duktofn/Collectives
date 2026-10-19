@@ -151,7 +151,7 @@ Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task ch�
 ## TASK-105 — Validate archive and migration rollback invariants
 
 **State:** On-Going
-**Current Step:** Step 1 — Audit ZIP, cross-volume, conflict, and journal-recovery coverage
+**Current Step:** Step 4 — Run Windows G-CODE/G-DATA checks and review the allowlisted diff
 **Phase:** Refactor plan Phase A
 **Source ID:** Attached plan TASK-006
 
@@ -174,22 +174,22 @@ Build a focused Windows fault matrix for unsafe ZIP members, duplicate destinati
 - `decisions.md` → DEC-013 (Windows-only verification)
 
 ### Requirements
-- [ ] ZIP traversal, reparse/symlink, duplicate names and ambiguous conflicts never write outside the selected destination or overwrite silently.
-- [ ] Cross-volume import/export preserve prior destination bytes and publish complete output only.
-- [ ] Abrupt restart at each journal state recovers idempotently; rollback failures preserve evidence and keep mutation blocked.
-- [ ] Injected faults leave the original collection accessible; no broad archive semantic change without reproduction.
+- [x] ZIP traversal, reparse/symlink, duplicate names and ambiguous conflicts never write outside the selected destination or overwrite silently.
+- [x] Cross-volume import/export preserve prior destination bytes and publish complete output only.
+- [x] Abrupt restart at each journal state recovers idempotently; rollback failures preserve evidence and keep mutation blocked.
+- [x] Injected faults leave the original collection accessible; no broad archive semantic change without reproduction.
 - [ ] Windows archive/migration tests and applicable G-CODE/G-DATA gates pass; no non-Windows validation is claimed.
 
 ### Steps
-- [ ] Step 1 — Audit existing ZIP validation, staging, cross-volume publication, rollback and UI conflict tests → verify: each attack/fault point is mapped to existing or missing coverage.
-- [ ] Step 2 — Add `archive_fault_matrix.rs` cases and strengthen conflict UI coverage → verify: traversal, symlink, duplicate and cross-volume cases preserve source/destination digests.
-- [ ] Step 3 — Exercise journal restart/retry/fault states and patch only any reproduced data-loss defect → verify: recovery is deterministic and idempotent.
+- [x] Step 1 — Audit existing ZIP validation, staging, cross-volume publication, rollback and UI conflict tests → verify: each attack/fault point is mapped to existing or missing coverage.
+- [x] Step 2 — Add `archive_fault_matrix.rs` cases and strengthen conflict UI coverage → verify: traversal, symlink, duplicate and cross-volume cases preserve source/destination digests.
+- [x] Step 3 — Exercise journal restart/retry/fault states and patch only any reproduced data-loss defect → verify: recovery is deterministic and idempotent.
 - [ ] Step 4 — Run Windows G-CODE/G-DATA checks and review the allowlisted diff → verify: no writes escape the chosen destination and rollback evidence remains recoverable.
 
 ### Handoff
 - Branch: `codex/phase-a-archive-migration`; base commit: `1742d90` (completed TASK-104).
 - Uncommitted files: pre-existing `.gitignore` edit adding `.opencode`, unrelated and preserved.
-- Next action: finish the coverage audit, then implement only missing Windows tests before considering production changes.
+- Next action: run the full Windows frontend/backend and contract gates, then review the allowlisted diff.
 - Blockers: none. Push is deferred until the full Phase A batch is complete.
 
 ### Verification
@@ -197,6 +197,9 @@ Not verified.
 
 ### Log
 - 2026-10-19 — Started Phase A / plan TASK-006 after TASK-005 passed Windows frontend/backend/contract gates; scope is restricted to the plan allowlist.
+- 2026-10-19 — Audit found traversal, conflict, backup-digest, migration-restart and rollback-pending coverage, but no executable ZIP symlink/reparse matrix, Windows case-collision fixture, cross-volume import/export sequence or repeated committed-journal cleanup.
+- 2026-10-19 — New fault matrix covers traversal, ZIP symlink, destination reparse, Windows case collision, explicit conflict resolution, and complete cross-volume import, ZIP export and folder export.
+- 2026-10-19 — Cross-volume tests reproduced a Windows read-only-handle flush failure and non-idempotent committed journal validation after cleanup; fixed Windows file flushing and allowed already-removed owned stage roots only for committed transactions. All five matrix cases pass.
 
 
 ## TASK-101 — Assert direct Windows pre-push hook invocation
