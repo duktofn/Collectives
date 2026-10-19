@@ -149,7 +149,7 @@ Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task ch�
 ## TASK-104 — Verify own-save and watcher collision safety
 
 **State:** On-Going
-**Current Step:** Step 2 — Add deterministic watcher and external-change schedules
+**Current Step:** Step 4 — Run Windows G-CODE/G-DATA checks and review the allowlisted diff
 **Phase:** Refactor plan Phase A
 **Source ID:** Attached plan TASK-005
 
@@ -183,14 +183,14 @@ Exercise own-save receipts, native watcher events, external edits, and same-path
 
 ### Steps
 - [x] Step 1 — Audit save queue, version receipt, watcher normalization, and current tests → verify: deterministic schedule matrix and existing coverage are recorded.
-- [ ] Step 2 — Add Windows frontend/native fixtures for own-save events and external replace/delete/recreate schedules → verify: 1,000 clean own saves and adversarial writes are deterministic.
-- [ ] Step 3 — Fix only any reproduced false conflict or overwrite defect → verify: regression fails before the fix and passes after it; no speculative persistence rewrite.
+- [x] Step 2 — Add Windows frontend/native fixtures for own-save events and external replace/delete/recreate schedules → verify: 1,000 clean own saves and adversarial writes are deterministic.
+- [x] Step 3 — Fix only any reproduced false conflict or overwrite defect → verify: regression fails before the fix and passes after it; no speculative persistence rewrite.
 - [ ] Step 4 — Run Windows G-CODE/G-DATA checks and review the allowlisted diff → verify: dirty drafts, compare/reload and save-copy recovery remain protected.
 
 ### Handoff
 - Branch: `codex/phase-a-save-watch-collision`; base commit: `fef01e9` (completed TASK-103).
 - Uncommitted files: pre-existing `.gitignore` edit adding `.opencode`, unrelated and preserved.
-- Next action: add frontend tests for own-save watcher events before receipt and external changes during an in-flight save; add a 1,000-write real Windows notify fixture and external replace/delete/recreate tests at the final token check.
+- Next action: run full Windows frontend/backend and contract gates, then review the scoped test-only and race-rollback changes.
 - Blockers: none. Push is deferred until the Phase A batch is complete, per the user's instruction.
 
 ### Verification
@@ -199,6 +199,8 @@ Not verified.
 ### Log
 - 2026-10-19 — Started Phase A / plan TASK-005 after TASK-004 passed local Windows quality gates; scope is limited to the plan allowlist and only reproduced production defects may be corrected.
 - 2026-10-19 — Audit found receipt tokens, active-write event filtering and final-token checks already exist. Current coverage has queue tests and a 100-write real notify test, but no deterministic watcher/receipt interleaving or external replace/delete/recreate schedule; no production defect reproduced yet.
+- 2026-10-19 — Added 1,000 real Windows save/watch iterations, frontend own-save and external-change interleavings, and staged external replace/delete/recreate tests.
+- 2026-10-19 — The red Windows seam test reproduced an overwrite when a same-path external write landed after the final token compare but before `ReplaceFileW`. The writer now verifies the atomic replacement backup against the expected token, restores newer external bytes on mismatch, and refuses to recreate a deleted path; replace/delete/recreate regressions pass.
 
 
 ## TASK-101 — Assert direct Windows pre-push hook invocation
