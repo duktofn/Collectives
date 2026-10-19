@@ -18,12 +18,14 @@ public; src assets; src-tauri/icons; app icon configuration; related task/change
 - [x] Commit separately with task ID → verify: record commit in task.md.
 
 ### Handoff
-- Branch: main; base: b43e4cd.
-- Next action: inspect scope and implement this request in priority order.
-- Blockers: none.
+- Branch: main; source and focused regression changes committed locally.
+- Next action: none for this task; current requested batch complete.
+- Blockers: none within Windows scope.
 
 ### Verification
-Supplied SVG copied exactly to src/assets/logo.svg (favicon, title bar and welcome). Tauri icon generator produced Windows ICO and PNG assets; copied existing Windows icon paths only. PNG preview inspected, typecheck and Vite build passed (existing chunk-size warning remains). No tests run.
+Supplied SVG copied to favicon, title bar and welcome. Windows ICO/PNG generated with Tauri, 128px preview inspected. Final typecheck/build pass; native installed-app icon cache was not exercised.
 
 ### Log
 - 2026-10-19 — Created from direct implementation request; authorized before the next five plan tasks (016–020).
+
+- 2026-10-19 — Final Windows verification recorded; source tree passed typecheck/lint/contracts/build, 291 frontend unit tests, 28 related browser tests and the full Rust all-target test run. No remote push or CI configuration change.
