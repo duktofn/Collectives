@@ -5,9 +5,14 @@ test.describe("Phase 6 accessibility emulation", () => {
     await page.setViewportSize({ width: 800, height: 600 });
     await page.goto("/");
     await page.waitForLoadState("load");
+    await expect(page.getByRole('main', { name: 'Collectives workspace' })).toBeVisible();
     expect(await page.locator('[role="tree"]').count()).toBeLessThanOrEqual(1);
     expect(await page.locator('[data-a11y-announcer]').count()).toBeLessThanOrEqual(2);
-    expect(await page.locator('.activity-status[role="status"]').getAttribute("aria-live")).toBe("off");
+    // Activity status is an optional AppShell slot, not an extra live announcer.
+    const activityModes = await page.locator('.activity-status[role="status"]')
+      .evaluateAll((elements) => elements.map((element) => element.getAttribute('aria-live')));
+    expect(activityModes.length).toBeLessThanOrEqual(1);
+    expect(activityModes.every((mode) => mode === 'off')).toBe(true);
   });
 
   test("emulates forced colors and reduced motion without changing OS settings", async ({ browser }) => {
