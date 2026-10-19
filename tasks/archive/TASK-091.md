@@ -27,3 +27,5 @@ Windows source review: missing Markdown picker paths go through exclusive create
 
 ### Log
 - 2026-10-19 — Created from direct implementation request; authorized before the next five plan tasks (016–020).
+
+- 2026-10-19 — Added real Sidebar browser regressions for missing path creation, existing file preservation and failed creation after Windows test authorization.
