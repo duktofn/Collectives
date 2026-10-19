@@ -12,9 +12,18 @@ const scratch = mkdtempSync(join(tmpdir(), 'collectives hook-check-'));
 const work = join(scratch, 'work');
 const remote = join(scratch, 'remote.git');
 const clone = join(scratch, 'clone');
+const fixtureEnv = { ...process.env };
+for (const name of Object.keys(fixtureEnv)) {
+  if (name.startsWith('GIT_')) delete fixtureEnv[name];
+}
+const runnerGitContext = Object.fromEntries(
+  ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_PREFIX', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_COUNT']
+    .filter((name) => process.env[name])
+    .map((name) => [name, process.env[name]]),
+);
 mkdirSync(work);
 
-function run(command, args, cwd = work, env = process.env) {
+function run(command, args, cwd = work, env = fixtureEnv) {
   const result = spawnSync(command, args, { cwd, encoding: 'utf8', shell: false, env });
   if (result.error) throw result.error;
   return result;
@@ -66,10 +75,18 @@ writeFileSync(join(work, 'fixture.ts'), "export const value: number = 'invalid';
 writeFileSync(join(work, 'fixture.js'), 'export const used = 1;\n');
 const installed = run(process.execPath, ['scripts/git/install-hooks.mjs']);
 assert.equal(installed.status, 0, installed.stderr);
-assert.match(installed.stdout, /Git pre-push checks installed/, `Hook installer did not install the fixture hook. stdout:\n${installed.stdout}\nstderr:\n${installed.stderr}`);
+assert.match(installed.stdout, /Git pre-push checks installed/, [
+  'Hook installer did not install the fixture hook.',
+  `Expected root: ${work}`,
+  `Git root before install: ${gitDiagnostic(['rev-parse', '--show-toplevel'])}`,
+  `Inherited Git context: ${JSON.stringify(runnerGitContext)}`,
+  `stdout:\n${installed.stdout}`,
+  `stderr:\n${installed.stderr}`,
+].join('\n'));
+assert.equal(git(['config', '--local', '--get', 'core.hooksPath']), '.githooks');
 commit('fixture: type error');
 const typeError = run('git', ['push', 'origin', 'main'], work, {
-  ...process.env,
+  ...fixtureEnv,
   GIT_TRACE: '1',
   GIT_TRACE_SETUP: '1',
 });
