@@ -24,6 +24,11 @@ function git(args, cwd = work) {
   assert.equal(result.status, 0, result.stderr);
   return result.stdout.trim();
 }
+function gitDiagnostic(args, cwd = work) {
+  const result = run('git', args, cwd);
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim();
+  return `exit ${result.status ?? 1}: ${output || '<no output>'}`;
+}
 function commit(message) {
   git(['add', '--all']);
   git(['update-index', '--chmod=+x', '.githooks/pre-push']);
@@ -61,6 +66,7 @@ writeFileSync(join(work, 'fixture.ts'), "export const value: number = 'invalid';
 writeFileSync(join(work, 'fixture.js'), 'export const used = 1;\n');
 const installed = run(process.execPath, ['scripts/git/install-hooks.mjs']);
 assert.equal(installed.status, 0, installed.stderr);
+assert.match(installed.stdout, /Git pre-push checks installed/, `Hook installer did not install the fixture hook. stdout:\n${installed.stdout}\nstderr:\n${installed.stderr}`);
 commit('fixture: type error');
 const typeError = run('git', ['push', 'origin', 'main'], work, {
   ...process.env,
@@ -69,11 +75,12 @@ const typeError = run('git', ['push', 'origin', 'main'], work, {
 });
 assert.notEqual(typeError.status, 0, [
   `Expected invalid TypeScript push to fail; git exited ${typeError.status}.`,
-  `Git: ${git(['--version'])}`,
-  `core.hooksPath: ${git(['config', '--show-origin', '--get-all', 'core.hooksPath']) || '<unset>'}`,
-  `Tracked hook: ${git(['ls-files', '--stage', '.githooks/pre-push']) || '<missing>'}`,
-  `GIT_CONFIG_GLOBAL: ${process.env.GIT_CONFIG_GLOBAL || '<unset>'}`,
-  `GIT_CONFIG_COUNT: ${process.env.GIT_CONFIG_COUNT || '<unset>'}`,
+  `Git: ${gitDiagnostic(['--version'])}`,
+  `Repository root: ${gitDiagnostic(['rev-parse', '--show-toplevel'])}`,
+  `core.hooksPath: ${gitDiagnostic(['config', '--show-origin', '--get-all', 'core.hooksPath'])}`,
+  `Tracked hook: ${gitDiagnostic(['ls-files', '--stage', '.githooks/pre-push'])}`,
+  `Git context environment: ${JSON.stringify(Object.fromEntries(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_PREFIX', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_COUNT'].filter((key) => process.env[key]).map((key) => [key, process.env[key]])))}`,
+  `Installer stdout:\n${installed.stdout}`,
   `stdout:\n${typeError.stdout}`,
   `stderr:\n${typeError.stderr}`,
 ].join('\n'));
