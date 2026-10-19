@@ -346,6 +346,17 @@ pub fn write_file(
     content: String,
     precondition: WritePrecondition,
 ) -> Result<DocumentWriteReceipt, SafetyError> {
+    write_file_with_cleanup(path, content, precondition, |backup| {
+        std::fs::remove_file(backup)
+    })
+}
+
+fn write_file_with_cleanup(
+    path: String,
+    content: String,
+    precondition: WritePrecondition,
+    cleanup: impl FnOnce(&std::path::Path) -> std::io::Result<()>,
+) -> Result<DocumentWriteReceipt, SafetyError> {
     let expected_token = match precondition {
         WritePrecondition::CreateNew => return create_file(path, content),
         WritePrecondition::Version { token } => token,
@@ -392,7 +403,10 @@ pub fn write_file(
         let version_token = blake3::hash(original_bytes.as_deref().unwrap_or_default())
             .to_hex()
             .to_string();
-        return Ok(DocumentWriteReceipt { version_token });
+        return Ok(DocumentWriteReceipt {
+            version_token,
+            warnings: Vec::new(),
+        });
     }
     let bytes_to_write = encode_document(&content, original.as_ref(), original_bytes.as_deref());
     if bytes_to_write.len() as u64 > MAX_DOCUMENT_BYTES {
@@ -448,19 +462,22 @@ pub fn write_file(
             ));
         }
     }
-    replace_file_preserving(&tmp_path, path)?;
+    let mut warnings = replace_file_preserving(&tmp_path, path, cleanup)?;
+    // Kept mutable for the existing Unix durability warning branch.
+    let _ = &mut warnings;
     #[cfg(unix)]
     if let Some(parent) = path.parent() {
-        std::fs::File::open(parent)
-            .and_then(|directory| directory.sync_all())
-            .map_err(|error| {
-                SafetyError::new(
-                    "recoverable_transaction",
-                    format!("directory fsync after file replacement failed: {error}"),
-                )
-            })?;
+        if let Err(error) = std::fs::File::open(parent).and_then(|directory| directory.sync_all()) {
+            warnings.push(DocumentWriteWarning {
+                code: "directory_sync_failed".into(),
+                message: format!("File saved, but directory sync failed: {error}"),
+            });
+        }
     }
-    Ok(DocumentWriteReceipt { version_token })
+    Ok(DocumentWriteReceipt {
+        version_token,
+        warnings,
+    })
 }
 
 /// Creates a UTF-8 document only when the destination does not already exist.
@@ -571,20 +588,23 @@ pub fn create_file(path: String, content: String) -> Result<DocumentWriteReceipt
             ));
         }
     }
-    let _ = std::fs::remove_file(&stage_path);
+    let mut warnings = Vec::new();
+    if let Err(error) = std::fs::remove_file(&stage_path) {
+        warnings.push(DocumentWriteWarning {
+            code: "temp_cleanup_failed".into(),
+            message: format!("File created, but temporary cleanup failed: {error}"),
+        });
+    }
     #[cfg(unix)]
-    std::fs::File::open(parent)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|error| {
-            SafetyError::new(
-                "recoverable_transaction",
-                format!(
-                    "The document was created, but its folder could not be synchronized: {error}"
-                ),
-            )
-        })?;
+    if let Err(error) = std::fs::File::open(parent).and_then(|directory| directory.sync_all()) {
+        warnings.push(DocumentWriteWarning {
+            code: "directory_sync_failed".into(),
+            message: format!("File created, but directory sync failed: {error}"),
+        });
+    }
     Ok(DocumentWriteReceipt {
         version_token: blake3::hash(&bytes).to_hex().to_string(),
+        warnings,
     })
 }
 
@@ -636,7 +656,8 @@ fn replace_file_preserving_windows(
 fn replace_file_preserving(
     replacement: &std::path::Path,
     destination: &std::path::Path,
-) -> Result<(), SafetyError> {
+    cleanup: impl FnOnce(&std::path::Path) -> std::io::Result<()>,
+) -> Result<Vec<DocumentWriteWarning>, SafetyError> {
     #[cfg(windows)]
     {
         if destination.exists() {
@@ -656,23 +677,25 @@ fn replace_file_preserving(
                     )
                 },
             )?;
-            if let Err(error) = std::fs::remove_file(&backup) {
-                return Err(SafetyError::new(
-                    "recoverable_transaction",
-                    format!(
-                        "Windows replacement succeeded but owned backup cleanup failed: {error}"
-                    ),
-                ));
-            }
-            return Ok(());
+            return Ok(match cleanup(&backup) {
+                Ok(()) => Vec::new(),
+                Err(error) => vec![DocumentWriteWarning {
+                    code: "backup_cleanup_failed".into(),
+                    message: format!("File saved, but backup cleanup failed: {error}"),
+                }],
+            });
         }
     }
-    std::fs::rename(replacement, destination).map_err(|error| {
-        SafetyError::new(
-            "recoverable_transaction",
-            format!("Failed to replace file without deleting the old output: {error}"),
-        )
-    })
+    #[cfg(not(windows))]
+    let _ = cleanup;
+    std::fs::rename(replacement, destination)
+        .map(|()| Vec::new())
+        .map_err(|error| {
+            SafetyError::new(
+                "recoverable_transaction",
+                format!("Failed to replace file without deleting the old output: {error}"),
+            )
+        })
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -690,6 +713,14 @@ pub struct DocumentSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct DocumentWriteReceipt {
     pub version_token: String,
+    #[serde(default)]
+    pub warnings: Vec<DocumentWriteWarning>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DocumentWriteWarning {
+    pub code: String,
+    pub message: String,
 }
 
 pub type FileSnapshot = DocumentSnapshot;
@@ -765,7 +796,8 @@ mod windows_replacement_tests {
         let replacement = temp.path().join("note.md.tmp");
         fs::write(&destination, b"old").unwrap();
         fs::write(&replacement, b"new").unwrap();
-        replace_file_preserving(&replacement, &destination).unwrap();
+        replace_file_preserving(&replacement, &destination, |backup| fs::remove_file(backup))
+            .unwrap();
         assert_eq!(fs::read(&destination).unwrap(), b"new");
         assert!(!replacement.exists());
     }
@@ -847,5 +879,54 @@ mod write_precondition_tests {
             .code,
             "precondition_required"
         );
+    }
+}
+
+#[cfg(all(test, windows))]
+mod post_commit_warning_tests {
+    use super::*;
+    use std::os::windows::fs::OpenOptionsExt;
+
+    #[test]
+    fn locked_backup_returns_success_and_next_save_accepts_receipt_token() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("note.md").to_string_lossy().into_owned();
+        std::fs::write(&path, "old").unwrap();
+        let token = read_file(path.clone()).unwrap().version_token;
+        let mut locked_backup = None;
+        let receipt = write_file_with_cleanup(
+            path.clone(),
+            "new".into(),
+            WritePrecondition::Version { token },
+            |backup| {
+                let handle = std::fs::OpenOptions::new()
+                    .read(true)
+                    .share_mode(1)
+                    .open(backup)?;
+                locked_backup = Some((backup.to_path_buf(), handle));
+                std::fs::remove_file(backup)
+            },
+        )
+        .unwrap();
+        assert_eq!(receipt.warnings.len(), 1);
+        assert_eq!(receipt.warnings[0].code, "backup_cleanup_failed");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+        assert_eq!(
+            receipt.version_token,
+            blake3::hash(b"new").to_hex().to_string()
+        );
+        let next = write_file(
+            path.clone(),
+            "next".into(),
+            WritePrecondition::Version {
+                token: receipt.version_token,
+            },
+        )
+        .unwrap();
+        assert!(next.warnings.is_empty());
+        assert_eq!(read_file(path).unwrap().version_token, next.version_token);
+        let (backup, handle) = locked_backup.unwrap();
+        drop(handle);
+        std::fs::remove_file(backup).unwrap();
     }
 }

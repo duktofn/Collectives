@@ -17,6 +17,7 @@ export type WritePrecondition =
   | { kind: "overwrite"; observedDiskToken: string };
 export interface WriteReceipt {
   versionToken: string;
+  warnings?: Array<{ code: string; message: string }>;
 }
 export type MetadataMutationOperation =
   | { kind: "addEntry"; parentPath: number[]; entry: Entry }
