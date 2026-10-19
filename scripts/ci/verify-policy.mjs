@@ -6,6 +6,7 @@ import { load } from 'js-yaml';
 
 const workflow = load(readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8'));
 const policy = JSON.parse(readFileSync(new URL('../../.github/main-branch-protection.json', import.meta.url), 'utf8'));
+assert.fail('Intentional TASK-099 probe: required frontend status must block this PR.');
 const fixed = ['frontend', 'browser', 'phase0-smoke'];
 for (const name of [...fixed, 'backend']) {
   assert.ok(workflow.jobs[name], `Missing required CI job: ${name}`);
