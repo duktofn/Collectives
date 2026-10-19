@@ -1,6 +1,6 @@
 /* global console */
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, readdirSync } from 'node:fs';
+import { chmodSync, existsSync, readdirSync, realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -10,8 +10,15 @@ const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8', s
 
 try {
   const top = git('rev-parse', '--show-toplevel');
-  const normalize = (path) => process.platform === 'win32'
-    ? resolve(path).toLowerCase() : resolve(path);
+  const normalize = (path) => {
+    let canonical = resolve(path);
+    try {
+      canonical = realpathSync.native(canonical);
+    } catch {
+      // Keep the resolved path so the existing diagnostic handles missing roots.
+    }
+    return process.platform === 'win32' ? canonical.toLowerCase() : canonical;
+  };
   if (top.status !== 0 || normalize(top.stdout.trim()) !== normalize(root)) {
     console.log('Git hooks not installed: this folder is not a Git checkout root.');
   } else {
