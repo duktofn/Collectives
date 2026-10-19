@@ -114,6 +114,7 @@
 | TASK-101 | [Assert direct Windows pre-push hook invocation](tasks/archive/TASK-101.md) | Paused | 2026-10-19 |
 | TASK-102 | [Characterize data integrity before refactor](tasks/archive/TASK-102.md) | Done | 2026-10-19 |
 | TASK-103 | [Prevent silent settings loss on corrupt configuration](tasks/archive/TASK-103.md) | Done | 2026-10-19 |
+| TASK-104 | [Verify own-save and watcher collision safety](tasks/archive/TASK-104.md) | On-Going | 2026-10-19 |
 
 ## Pending review
 Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task chưa bắt đầu) chuyển sang Cancelled theo yêu cầu chuẩn bị refactor lớn. TASK-014, TASK-022 và TASK-086 giữ Paused. Xem [bản review lưu trữ](tasks/plans/collectives-fix-rebuild-review.md).
@@ -143,6 +144,60 @@ Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task ch�
 | TASK-103 | `b9237a3` | 2026-10-19 |
 
 ## Active
+
+
+## TASK-104 — Verify own-save and watcher collision safety
+
+**State:** On-Going
+**Current Step:** Step 1 — Audit receipt/watcher interleavings and identify missing deterministic cases
+**Phase:** Refactor plan Phase A
+**Source ID:** Attached plan TASK-005
+
+### Description
+Exercise own-save receipts, native watcher events, external edits, and same-path replace/delete/recreate schedules. Keep external-change detection, version preconditions, durable replacement, dirty-draft retention, and save-copy recovery intact; change production code only if a deterministic test reproduces a defect.
+
+### Scope
+- `src/stores/editor.ts`
+- `src/stores/collections.ts`
+- `src/features/editor/metadataContinuity.ts`
+- `src-tauri/src/repositories/documents.rs`
+- `src-tauri/src/fs_layer/watcher.rs`
+- `src/stores/editor.phase1.test.ts`
+- `src/stores/collections.phase3.test.ts`
+- `src-tauri/tests/phase6_watcher_stress.rs`
+- `src-tauri/tests/owned_document_artifacts.rs`
+- `e2e/editor-missing-file.spec.ts`
+- task ledger
+
+### Related
+- `Collectives_Main_Architecture_Audit_Refactor_Plan_2026-10-19_v1.4(1).md` → Phase A / TASK-005
+- `task.md` → TASK-103 (corrupt settings are now preserved and explicitly recoverable)
+- `decisions.md` → DEC-014 (write preconditions) and DEC-015 (post-commit receipts)
+
+### Requirements
+- [ ] Run 1,000 deterministic own-save iterations without a false external-change conflict.
+- [ ] Adversarial external-change schedules never silently overwrite newer verified content.
+- [ ] Failed writes retain the dirty draft and existing save-copy recovery remains available.
+- [ ] Any production change is minimal, tied to a reproduced defect, and preserves CAS and durable replacement behavior.
+- [ ] Windows native filesystem tests and applicable quality gates pass; no non-Windows validation is claimed.
+
+### Steps
+- [ ] Step 1 — Audit save queue, version receipt, watcher normalization, and current tests → verify: deterministic schedule matrix and existing coverage are recorded.
+- [ ] Step 2 — Add Windows frontend/native fixtures for own-save events and external replace/delete/recreate schedules → verify: 1,000 clean own saves and adversarial writes are deterministic.
+- [ ] Step 3 — Fix only any reproduced false conflict or overwrite defect → verify: regression fails before the fix and passes after it; no speculative persistence rewrite.
+- [ ] Step 4 — Run Windows G-CODE/G-DATA checks and review the allowlisted diff → verify: dirty drafts, compare/reload and save-copy recovery remain protected.
+
+### Handoff
+- Branch: `codex/phase-a-save-watch-collision`; base commit: `fef01e9` (completed TASK-103).
+- Uncommitted files: pre-existing `.gitignore` edit adding `.opencode`, unrelated and preserved.
+- Next action: inspect `handleFilesystemChange`, `drainSaveQueue`, the Windows replace path, and real notify fixtures; identify where to interleave watcher events around a save receipt.
+- Blockers: none. Push is deferred until the Phase A batch is complete, per the user's instruction.
+
+### Verification
+Not verified.
+
+### Log
+- 2026-10-19 — Started Phase A / plan TASK-005 after TASK-004 passed local Windows quality gates; scope is limited to the plan allowlist and only reproduced production defects may be corrected.
 
 
 ## TASK-101 — Assert direct Windows pre-push hook invocation
