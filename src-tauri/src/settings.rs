@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri::Manager;
@@ -157,32 +158,95 @@ impl Default for Settings {
     }
 }
 
+const SETTINGS_SCHEMA_VERSION: u64 = 1;
+
+pub fn load_settings_checked_from_path(settings_file: &Path) -> Result<Settings, String> {
+    let data = match fs::read(settings_file) {
+        Ok(data) => data,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Settings::default());
+        }
+        Err(error) => {
+            return Err(format!(
+                "settings_read_error: could not read {}: {error}",
+                settings_file.display()
+            ));
+        }
+    };
+
+    let value: serde_json::Value = serde_json::from_slice(&data).map_err(|error| {
+        format!(
+            "settings_invalid_file: {} is not valid settings JSON: {error}",
+            settings_file.display()
+        )
+    })?;
+
+    let schema_version = match value.get("schemaVersion") {
+        None => SETTINGS_SCHEMA_VERSION,
+        Some(version) => version.as_u64().ok_or_else(|| {
+            format!(
+                "settings_invalid_file: {} has an invalid schemaVersion",
+                settings_file.display()
+            )
+        })?,
+    };
+    if schema_version == 0 {
+        return Err(format!(
+            "settings_invalid_file: {} has an invalid schemaVersion",
+            settings_file.display()
+        ));
+    }
+    if schema_version > SETTINGS_SCHEMA_VERSION {
+        return Err(format!(
+            "settings_future_version: {} uses settings schema version {schema_version}; this app supports version {SETTINGS_SCHEMA_VERSION}",
+            settings_file.display()
+        ));
+    }
+
+    serde_json::from_value(value).map_err(|error| {
+        format!(
+            "settings_invalid_file: {} does not match a supported settings format: {error}",
+            settings_file.display()
+        )
+    })
+}
+
+// Kept for legacy repository consumers; all IPC loads use the checked result above.
 pub fn load_settings_from_path(settings_file: &Path) -> Settings {
-    if !settings_file.exists() {
-        return Settings::default();
-    }
-    match fs::read_to_string(settings_file) {
-        Ok(data) => serde_json::from_str(&data).unwrap_or_else(|_| Settings::default()),
-        Err(_) => Settings::default(),
-    }
+    load_settings_checked_from_path(settings_file).unwrap_or_default()
 }
 
 pub fn save_settings_to_path(settings_file: &Path, settings: &Settings) -> Result<(), String> {
+    load_settings_checked_from_path(settings_file).map_err(|error| {
+        format!("{error}. Choose explicit settings recovery before saving defaults.")
+    })?;
+    save_settings_unchecked(settings_file, settings)
+}
+
+fn save_settings_unchecked(settings_file: &Path, settings: &Settings) -> Result<(), String> {
     if let Some(parent) = settings_file.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let data = serde_json::to_string_pretty(settings)
-        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+    let mut value =
+        serde_json::to_value(settings).map_err(|e| format!("Failed to serialize settings: {e}"))?;
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| "Failed to serialize settings as an object".to_string())?;
+    object.insert(
+        "schemaVersion".to_string(),
+        serde_json::Value::from(SETTINGS_SCHEMA_VERSION),
+    );
+    let data = serde_json::to_vec_pretty(&value)
+        .map_err(|e| format!("Failed to serialize settings: {e}"))?;
     let parent = settings_file.parent().unwrap_or_else(|| Path::new("."));
     let temp_file = parent.join(format!(".settings-{}.tmp", uuid::Uuid::new_v4()));
     let write_result: Result<(), String> = (|| {
-        use std::io::Write;
         let mut file = fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&temp_file)
             .map_err(|e| format!("Failed to create temporary settings file: {}", e))?;
-        file.write_all(data.as_bytes())
+        file.write_all(&data)
             .map_err(|e| format!("Failed to write temporary settings file: {}", e))?;
         file.sync_all()
             .map_err(|e| format!("Failed to flush temporary settings file: {}", e))?;
@@ -194,6 +258,83 @@ pub fn save_settings_to_path(settings_file: &Path, settings: &Settings) -> Resul
         let _ = fs::remove_file(&temp_file);
     }
     write_result?;
+    Ok(())
+}
+
+pub fn recover_settings_to_path(
+    settings_file: &Path,
+    settings: &Settings,
+) -> Result<Option<String>, String> {
+    if load_settings_checked_from_path(settings_file).is_ok() {
+        match fs::symlink_metadata(settings_file) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                save_settings_unchecked(settings_file, settings)?;
+                return Ok(None);
+            }
+            Err(error) => {
+                return Err(format!(
+                    "settings_recovery_not_required: could not confirm the settings file state: {error}"
+                ));
+            }
+            Ok(_) => {
+                return Err(
+                    "settings_recovery_not_required: the settings file has become readable; reload before changing it".to_string(),
+                );
+            }
+        }
+    }
+
+    let original = fs::read(settings_file).map_err(|error| {
+        format!(
+            "settings_recovery_preserve_failed: could not preserve the original bytes at {}: {error}",
+            settings_file.display()
+        )
+    })?;
+    let backup_path = settings_backup_path(settings_file);
+    write_settings_backup(&backup_path, &original)?;
+
+    if let Err(error) = save_settings_unchecked(settings_file, settings) {
+        return Err(format!(
+            "Settings recovery failed. The original file remains unchanged and a copy is preserved at {}: {error}",
+            backup_path.display()
+        ));
+    }
+
+    Ok(Some(backup_path.to_string_lossy().into_owned()))
+}
+
+fn settings_backup_path(settings_file: &Path) -> PathBuf {
+    let parent = settings_file.parent().unwrap_or_else(|| Path::new("."));
+    let name = settings_file
+        .file_name()
+        .unwrap_or_else(|| std::ffi::OsStr::new("settings.json"))
+        .to_string_lossy();
+    parent.join(format!("{name}.corrupt-{}.bak", uuid::Uuid::new_v4()))
+}
+
+fn write_settings_backup(backup_path: &Path, original: &[u8]) -> Result<(), String> {
+    let mut created_by_this_call = false;
+    let write_result = (|| {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(backup_path)
+            .map_err(|error| error.to_string())?;
+        created_by_this_call = true;
+        file.write_all(original)
+            .map_err(|error| error.to_string())?;
+        file.sync_all().map_err(|error| error.to_string())
+    })();
+
+    if let Err(error) = write_result {
+        if created_by_this_call {
+            let _ = fs::remove_file(backup_path);
+        }
+        return Err(format!(
+            "settings_recovery_preserve_failed: could not write a backup at {}: {error}",
+            backup_path.display()
+        ));
+    }
     Ok(())
 }
 
@@ -213,9 +354,21 @@ pub fn load_settings(app: &AppHandle) -> Settings {
     }
 }
 
+pub fn load_settings_checked(app: &AppHandle) -> Result<Settings, String> {
+    let path = get_settings_file_path(app)
+        .map_err(|error| format!("settings_storage_unavailable: {error}"))?;
+    load_settings_checked_from_path(&path)
+}
+
 pub fn save_settings(app: &AppHandle, settings: Settings) -> Result<(), String> {
     let path = get_settings_file_path(app)?;
     save_settings_to_path(&path, &settings)
+}
+
+pub fn recover_settings(app: &AppHandle, settings: Settings) -> Result<Option<String>, String> {
+    let path = get_settings_file_path(app)
+        .map_err(|error| format!("settings_storage_unavailable: {error}"))?;
+    recover_settings_to_path(&path, &settings)
 }
 
 #[cfg(test)]
@@ -254,7 +407,7 @@ mod tests {
     fn test_settings_save_replaces_existing_file_and_cleans_temporary_file() {
         let temp_dir = tempfile::tempdir().unwrap();
         let file_path = temp_dir.path().join("settings.json");
-        fs::write(&file_path, "previous settings").unwrap();
+        fs::write(&file_path, r#"{"theme":"dark","fontScale":1.0}"#).unwrap();
 
         let settings = Settings {
             theme: "light".to_string(),

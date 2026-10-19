@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Settings } from "../../types";
-import { ThemePanel } from "./ThemePanel";
+import { SettingsRecoveryDialog, ThemePanel } from "./ThemePanel";
 
 const settingsApi = vi.hoisted(() => ({
   saveSettings: vi.fn(),
@@ -170,5 +170,57 @@ describe("ThemePanel settings draft", () => {
     finishSave();
     await waitFor(() => expect(themeEngine.applyThemeSettings).toHaveBeenCalledOnce());
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe("settings recovery prompt", () => {
+  it("only treats classified settings-file failures as requiring recovery", async () => {
+    const settingsApplication = await vi.importActual<
+      typeof import("../../features/settings/application")
+    >("../../features/settings/application");
+
+    expect(
+      settingsApplication.isSettingsRecoveryError(
+        "settings_invalid_file: settings.json is not valid settings JSON"
+      )
+    ).toBe(true);
+    expect(settingsApplication.isSettingsRecoveryError(new Error("IPC bridge unavailable"))).toBe(false);
+  });
+
+  it("explains that the current file is preserved and offers an explicit reset", async () => {
+    const onRecover = vi.fn();
+    const onKeepFile = vi.fn();
+    render(() => (
+      <SettingsRecoveryDialog
+        isOpen
+        message="The settings file is not valid JSON."
+        errorMessage="A prior recovery attempt could not write a backup."
+        onRecover={onRecover}
+        onKeepFile={onKeepFile}
+      />
+    ));
+
+    expect(screen.getByRole("dialog").textContent).toContain("existing file has not been changed");
+    expect(screen.getByRole("dialog").textContent).toContain("could not write a backup");
+    await fireEvent.click(screen.getByRole("button", { name: "Back up and reset" }));
+    expect(onRecover).toHaveBeenCalledOnce();
+    expect(onKeepFile).not.toHaveBeenCalled();
+  });
+
+  it("keeps the existing settings file when recovery is deferred", async () => {
+    const onRecover = vi.fn();
+    const onKeepFile = vi.fn();
+    render(() => (
+      <SettingsRecoveryDialog
+        isOpen
+        message="Settings could not be read."
+        onRecover={onRecover}
+        onKeepFile={onKeepFile}
+      />
+    ));
+
+    await fireEvent.click(screen.getByRole("button", { name: "Keep existing file" }));
+    expect(onKeepFile).toHaveBeenCalledOnce();
+    expect(onRecover).not.toHaveBeenCalled();
   });
 });

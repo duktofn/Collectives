@@ -61,7 +61,7 @@ export interface CommandMap {
   update_collection: { args: { collection: Collection }; result: void };
   delete_collection: { args: { id: string }; result: void };
   load_settings: { args: EmptyArgs; result: Settings };
-  save_settings: { args: { settings: Settings }; result: void };
+  save_settings: { args: { settings: Settings; recoveryConfirmed?: boolean }; result: string | null };
   read_folder_children: { args: { path: string }; result: FsEntry[] };
   add_entry: { args: { collectionId: string; parentPath: number[]; entry: Entry }; result: void };
   remove_entry: { args: { collectionId: string; entryId: string }; result: Entry };
