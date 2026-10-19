@@ -341,6 +341,26 @@ pub enum WritePrecondition {
     },
 }
 
+#[cfg(test)]
+thread_local! {
+    static WRITE_FAILURE_POINT: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+}
+
+#[cfg(test)]
+fn inject_write_failure(stage: &str) -> Result<(), SafetyError> {
+    WRITE_FAILURE_POINT.with(|point| {
+        if point.get() == Some(stage) {
+            point.set(None);
+            Err(SafetyError::new(
+                "save_failed",
+                format!("Injected {stage} failure"),
+            ))
+        } else {
+            Ok(())
+        }
+    })
+}
+
 pub fn write_file(
     path: String,
     content: String,
@@ -443,11 +463,17 @@ fn write_file_with_cleanup(
     };
     let file = stage.file.as_mut().expect("staged document owns its file");
     use std::io::Write;
+    #[cfg(test)]
+    inject_write_failure("write")?;
     file.write_all(&bytes_to_write)
         .map_err(|e| SafetyError::new("save_failed", format!("Failed to write temp file: {e}")))?;
+    #[cfg(test)]
+    inject_write_failure("sync")?;
     file.sync_all()
         .map_err(|e| SafetyError::new("save_failed", format!("Failed to flush temp file: {e}")))?;
     drop(stage.file.take());
+    #[cfg(test)]
+    inject_write_failure("cas")?;
     {
         let actual = file_version_token(path, "").map_err(|error| {
             SafetyError::new(
@@ -462,6 +488,8 @@ fn write_file_with_cleanup(
             ));
         }
     }
+    #[cfg(test)]
+    inject_write_failure("replace")?;
     let mut warnings = replace_file_preserving(&tmp_path, path, cleanup)?;
     // Kept mutable for the existing Unix durability warning branch.
     let _ = &mut warnings;
@@ -950,5 +978,36 @@ mod missing_parent_tests {
             "parent_missing"
         );
         assert!(!parent.exists());
+    }
+}
+
+#[cfg(test)]
+mod staged_cleanup_tests {
+    use super::*;
+    #[test]
+    fn every_precommit_error_removes_owned_temp_and_keeps_original() {
+        for stage in ["write", "sync", "cas", "replace"] {
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().join("note.md").to_string_lossy().into_owned();
+            std::fs::write(&path, "original").unwrap();
+            let token = read_file(path.clone()).unwrap().version_token;
+            WRITE_FAILURE_POINT.with(|point| point.set(Some(stage)));
+            assert!(write_file(
+                path.clone(),
+                "draft".into(),
+                WritePrecondition::Version { token }
+            )
+            .is_err());
+            assert_eq!(
+                std::fs::read_to_string(path).unwrap(),
+                "original",
+                "{stage}"
+            );
+            let names: Vec<_> = std::fs::read_dir(root.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            assert_eq!(names, vec![std::ffi::OsString::from("note.md")], "{stage}");
+        }
     }
 }

@@ -1,7 +1,7 @@
 ## TASK-017 — Dọn file tạm trên mọi lỗi trước commit
 
-**State:** Paused
-**Current Step:** Implementation complete; fault-injection verification pending
+**State:** Done
+**Current Step:** Completed
 **Phase:** Phase 1
 **Source ID:** 1A.2
 
@@ -20,7 +20,7 @@
 Gate P0; [TASK-016](./TASK-016.md)
 
 ### Requirements
-- [ ] Dọn file tạm trên mọi đường lỗi: guard RAII xóa `*.tmp-<uuid>` khi `write_all`, `sync_all`, kiểm tra CAS hoặc rename thất bại.
+- [x] Dọn file tạm trên mọi đường lỗi: guard RAII xóa `*.tmp-<uuid>` khi `write_all`, `sync_all`, kiểm tra CAS hoặc rename thất bại.
 
 ### Acceptance / Verification plan
 Tiêm lỗi ở từng bước: sau mỗi lần, thư mục không còn `*.tmp-*` và bytes của file gốc không đổi.
@@ -28,9 +28,9 @@ Tiêm lỗi ở từng bước: sau mỗi lần, thư mục không còn `*.tmp-*
 Các lệnh và phép kiểm tra ở đây dành cho lúc task được duyệt và thực hiện. Ngưỡng nào được nguồn ghi là đề xuất thì cần chốt theo baseline. Nếu claim đã hết đúng, ghi bằng chứng và điều chỉnh task trước khi sửa.
 
 ### Steps
-- [ ] Step 1 — Đối chiếu mục 1A.2 với hiện trạng; kiểm tra phụ thuộc → verify: ghi file/log/fixture hoặc quyết định còn thiếu.
-- [ ] Step 2 — Thực hiện phạm vi đã được duyệt → verify: đạt Requirements và các ràng buộc chung.
-- [ ] Step 3 — Nghiệm thu và cập nhật ledger → verify: đáp ứng Acceptance bằng bằng chứng thực chạy hoặc xác nhận được ghi rõ.
+- [x] Step 1 — Đối chiếu mục 1A.2 với hiện trạng; kiểm tra phụ thuộc → verify: ghi file/log/fixture hoặc quyết định còn thiếu.
+- [x] Step 2 — Thực hiện phạm vi đã được duyệt → verify: đạt Requirements và các ràng buộc chung.
+- [x] Step 3 — Nghiệm thu và cập nhật ledger → verify: đáp ứng Acceptance bằng bằng chứng thực chạy hoặc xác nhận được ghi rõ.
 
 ### Handoff
 - Branch: `main`
@@ -49,3 +49,5 @@ Chưa triển khai; chưa chạy test sản phẩm. Các tiêu chí nghiệm thu
 - 2026-10-19 — Started explicit next-five scope after TASK-016 implementation; Windows-only.
 
 - 2026-10-19 — Implemented owned temporary-file RAII: only successfully created files are owned; handle closes before deletion even on write/flush/CAS/rename failure. Windows Rust 1.99 cargo fmt/check --lib pass. Fault-injection acceptance awaits test authorization.
+
+- 2026-10-19 — Windows Rust 1.99 fault-injection regression passes all four precommit boundaries (write, sync, CAS, replace); after each injected error only the original unchanged note remains. User authorized tests; task Done.
