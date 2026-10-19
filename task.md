@@ -169,10 +169,11 @@ Distinguish first launch from unreadable, malformed, or future-version settings;
 - `src-tauri/src/ipc/generated.rs`
 - `src-tauri/tests/settings_integrity.rs` (new)
 - `src/components/theme/ThemePanel.test.tsx`
-- `decisions.md`, `codebase.md`, task ledger
+- task ledger
 
 ### Related
 - `Collectives_Main_Architecture_Audit_Refactor_Plan_2026-10-19_v1.4(1).md` → Phase A / TASK-004
+- Plan decision register → DEC-CORE-02 (preserve settings bytes and require an explicit recovery/reset choice)
 - `task.md` → TASK-102 (Windows data-integrity baseline)
 - `decisions.md` → DEC-013 (Windows-only verification)
 
@@ -193,7 +194,7 @@ Distinguish first launch from unreadable, malformed, or future-version settings;
 ### Handoff
 - Branch: `codex/phase-a-settings-integrity`; base commit: `7a2acd4` (completed TASK-102).
 - Uncommitted files: pre-existing `.gitignore` edit adding `.opencode`, unrelated and preserved.
-- Next action: trace all `load_settings` callers and repository ports, then document the persistence/UI boundary before choosing the API.
+- Next action: implement a Windows-safe parser/preservation gate, then connect the existing settings load/save API to an explicit recovery dialog without adding a new command handler.
 - Blockers: TASK-099 remains Paused until a fresh hosted Windows workflow is green; user directed switching to another task when CI does not pass.
 
 ### Verification
@@ -201,6 +202,7 @@ Not verified.
 
 ### Log
 - 2026-10-19 — Started Phase A / plan TASK-004 after completing Windows data-integrity characterization and following the user's instruction to switch tasks rather than wait on a non-passing hosted CI gate.
+- 2026-10-19 — Audit confirmed settings reads currently collapse read/parse errors to defaults, no persisted schema marker exists, and app startup cannot tell first launch from corruption. Plan decision DEC-CORE-02 governs recovery behavior.
 
 
 ## TASK-101 — Assert direct Windows pre-push hook invocation
