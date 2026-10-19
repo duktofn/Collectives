@@ -6,6 +6,8 @@ const OPEN_TO_CLOSE: Record<string, string> = {
   "[": "]",
   "{": "}",
   "*": "*",
+  "_": "_",
+  "~": "~",
   "`": "`",
   '"': '"',
   "'": "'",
@@ -27,31 +29,52 @@ function isEscaped(text: string, from: number): boolean {
   return slashes % 2 === 1;
 }
 
-function hasUnclosedStrongDelimiter(text: string, to: number): boolean {
+function hasUnclosedStrongDelimiter(text: string, to: number, marker: string): boolean {
   let open = false;
   const lineStart = text.lastIndexOf("\n", to - 1) + 1;
   for (let index = lineStart; index < to;) {
-    if (text[index] !== "*" || isEscaped(text, index)) {
+    if (text[index] !== marker || isEscaped(text, index)) {
       index++;
       continue;
     }
     let end = index + 1;
-    while (end < to && text[end] === "*" && !isEscaped(text, end)) end++;
+    while (end < to && text[end] === marker && !isEscaped(text, end)) end++;
     if (Math.floor((end - index) / 2) % 2 === 1) open = !open;
     index = end;
   }
   return open;
 }
 
+function hasUnclosedMarker(text: string, to: number, marker: string): boolean {
+  let pending = 0;
+  const start = marker === "`" ? 0 : text.lastIndexOf("\n", to - 1) + 1;
+  for (let index = start; index < to;) {
+    if (text[index] !== marker || isEscaped(text, index)) {
+      index++;
+      continue;
+    }
+    if (marker === "_" && /[\p{L}\p{N}]/u.test(text[index - 1] ?? "")
+      && /[\p{L}\p{N}]/u.test(text[index + 1] ?? "")) {
+      index++;
+      continue;
+    }
+    let end = index + 1;
+    while (end < to && text[end] === marker) end++;
+    pending = Math.abs(pending - (end - index));
+    index = end;
+  }
+  return pending > 0;
+}
+
 /** Pure pairing rules shared by the document editor and Markdown table cells. */
 export function getDelimiterEdit(text: string, from: number, to: number, input: string): DelimiterEdit | null {
   if (input.length !== 1 || from < 0 || to < from || to > text.length) return null;
   const char = input;
-  if (char === "*" && from === to && text[from - 1] === "*" && text[from] === "*"
-    && !hasUnclosedStrongDelimiter(text, from - 1)
+  if (["*", "_", "~"].includes(char) && from === to && text[from - 1] === char && text[from] === char
+    && !hasUnclosedStrongDelimiter(text, from - 1, char)
     && !isEscaped(text, from - 1) && !isEscaped(text, from)) {
     // Turn the empty italic pair *|* into the empty bold pair **|**.
-    return { from, to: from + 1, insert: "***", cursor: from + 1 };
+    return { from, to: from + 1, insert: char.repeat(3), cursor: from + 1 };
   }
   if (from === to && CLOSE_CHARS.has(char) && text[from] === char) {
     return { from, to, insert: "", cursor: from + 1, overtype: true };
@@ -65,6 +88,8 @@ export function getDelimiterEdit(text: string, from: number, to: number, input: 
   if (char === "[" && from > 0 && text[from - 1] === "[") {
     return { from, to, insert: char, cursor: from + 1 };
   }
+  if (from === to && char === close && hasUnclosedMarker(text, from, char)) return null;
+
   const selected = text.slice(from, to);
   return {
     from,
