@@ -344,6 +344,16 @@ pub enum WritePrecondition {
 #[cfg(test)]
 thread_local! {
     static WRITE_FAILURE_POINT: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+    static EXTERNAL_CHANGE_BEFORE_FINAL_COMPARE: std::cell::RefCell<Option<ExternalChangeBeforeFinalCompare>> = const { std::cell::RefCell::new(None) };
+    #[cfg(windows)]
+    static EXTERNAL_CHANGE_AFTER_FINAL_COMPARE: std::cell::RefCell<Option<ExternalChangeBeforeFinalCompare>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+enum ExternalChangeBeforeFinalCompare {
+    Replace(Vec<u8>),
+    Delete,
+    Recreate(Vec<u8>),
 }
 
 #[cfg(test)]
@@ -359,6 +369,46 @@ fn inject_write_failure(stage: &str) -> Result<(), SafetyError> {
             Ok(())
         }
     })
+}
+
+#[cfg(test)]
+fn apply_injected_external_change(
+    path: &std::path::Path,
+    change: Option<ExternalChangeBeforeFinalCompare>,
+) -> Result<(), SafetyError> {
+    use std::io::Write;
+
+    let result = match change {
+        Some(ExternalChangeBeforeFinalCompare::Replace(bytes)) => std::fs::write(path, bytes),
+        Some(ExternalChangeBeforeFinalCompare::Delete) => std::fs::remove_file(path),
+        Some(ExternalChangeBeforeFinalCompare::Recreate(bytes)) => std::fs::remove_file(path)
+            .and_then(|()| {
+                let mut file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(path)?;
+                file.write_all(&bytes)
+            }),
+        None => return Ok(()),
+    };
+    result.map_err(|error| {
+        SafetyError::new(
+            "external_change_conflict",
+            format!("Injected external change failed before final comparison: {error}"),
+        )
+    })
+}
+
+#[cfg(test)]
+fn inject_external_change_before_final_compare(path: &std::path::Path) -> Result<(), SafetyError> {
+    let change = EXTERNAL_CHANGE_BEFORE_FINAL_COMPARE.with(|change| change.borrow_mut().take());
+    apply_injected_external_change(path, change)
+}
+
+#[cfg(all(test, windows))]
+fn inject_external_change_after_final_compare(path: &std::path::Path) -> Result<(), SafetyError> {
+    let change = EXTERNAL_CHANGE_AFTER_FINAL_COMPARE.with(|change| change.borrow_mut().take());
+    apply_injected_external_change(path, change)
 }
 
 pub fn write_file(
@@ -474,6 +524,8 @@ fn write_file_with_cleanup(
     drop(stage.file.take());
     #[cfg(test)]
     inject_write_failure("cas")?;
+    #[cfg(test)]
+    inject_external_change_before_final_compare(path)?;
     {
         let actual = file_version_token(path, "").map_err(|error| {
             SafetyError::new(
@@ -490,7 +542,9 @@ fn write_file_with_cleanup(
     }
     #[cfg(test)]
     inject_write_failure("replace")?;
-    let mut warnings = replace_file_preserving(&tmp_path, path, cleanup)?;
+    #[cfg(all(test, windows))]
+    inject_external_change_after_final_compare(path)?;
+    let mut warnings = replace_file_preserving(&tmp_path, path, &expected_token, cleanup)?;
     // Kept mutable for the existing Unix durability warning branch.
     let _ = &mut warnings;
     #[cfg(unix)]
@@ -684,46 +738,103 @@ fn replace_file_preserving_windows(
 fn replace_file_preserving(
     replacement: &std::path::Path,
     destination: &std::path::Path,
+    expected_original_token: &str,
     cleanup: impl FnOnce(&std::path::Path) -> std::io::Result<()>,
 ) -> Result<Vec<DocumentWriteWarning>, SafetyError> {
     #[cfg(windows)]
     {
-        if destination.exists() {
-            let backup = destination.with_file_name(format!(
-                ".{}.collectives-backup-{}",
-                destination
-                    .file_name()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or("file"),
-                uuid::Uuid::new_v4()
+        if !destination.exists() {
+            return Err(SafetyError::new(
+                "external_change_conflict",
+                "File was removed after the final version check; the draft was retained",
             ));
-            replace_file_preserving_windows(replacement, destination, &backup).map_err(
-                |error| {
-                    SafetyError::new(
-                        "recoverable_transaction",
-                        format!("Windows ReplaceFileW preservation failed: {error}"),
-                    )
-                },
-            )?;
-            return Ok(match cleanup(&backup) {
-                Ok(()) => Vec::new(),
-                Err(error) => vec![DocumentWriteWarning {
-                    code: "backup_cleanup_failed".into(),
-                    message: format!("File saved, but backup cleanup failed: {error}"),
-                }],
-            });
         }
-    }
-    #[cfg(not(windows))]
-    let _ = cleanup;
-    std::fs::rename(replacement, destination)
-        .map(|()| Vec::new())
-        .map_err(|error| {
+        let backup = destination.with_file_name(format!(
+            ".{}.collectives-backup-{}",
+            destination
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("file"),
+            uuid::Uuid::new_v4()
+        ));
+        replace_file_preserving_windows(replacement, destination, &backup).map_err(|error| {
             SafetyError::new(
                 "recoverable_transaction",
-                format!("Failed to replace file without deleting the old output: {error}"),
+                format!("Windows ReplaceFileW preservation failed: {error}"),
             )
+        })?;
+
+        let backup_token = match file_version_token(&backup, "") {
+            Ok(token) => token,
+            Err(error) => {
+                restore_replaced_file(destination, &backup)?;
+                return Err(SafetyError::new(
+                    "external_change_conflict",
+                    format!(
+                        "Could not verify the original file during replacement; its previous version was restored and the draft was retained: {error}"
+                    ),
+                ));
+            }
+        };
+        if backup_token != expected_original_token {
+            restore_replaced_file(destination, &backup)?;
+            return Err(SafetyError::new(
+                "external_change_conflict",
+                "File changed after the final version check; the newer external version was restored and the draft was retained",
+            ));
+        }
+
+        Ok(match cleanup(&backup) {
+            Ok(()) => Vec::new(),
+            Err(error) => vec![DocumentWriteWarning {
+                code: "backup_cleanup_failed".into(),
+                message: format!("File saved, but backup cleanup failed: {error}"),
+            }],
         })
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (cleanup, expected_original_token);
+        std::fs::rename(replacement, destination)
+            .map(|()| Vec::new())
+            .map_err(|error| {
+                SafetyError::new(
+                    "recoverable_transaction",
+                    format!("Failed to replace file without deleting the old output: {error}"),
+                )
+            })
+    }
+}
+
+#[cfg(windows)]
+fn restore_replaced_file(
+    destination: &std::path::Path,
+    backup: &std::path::Path,
+) -> Result<(), SafetyError> {
+    let filename = destination
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("file");
+    let local_draft =
+        destination.with_file_name(format!("{filename}.tmp-{}", uuid::Uuid::new_v4()));
+    replace_file_preserving_windows(backup, destination, &local_draft).map_err(|error| {
+        SafetyError::new(
+            "recoverable_transaction",
+            format!(
+                "External bytes are preserved at {}, but restoring them failed: {error}",
+                backup.display()
+            ),
+        )
+    })?;
+    std::fs::remove_file(&local_draft).map_err(|error| {
+        SafetyError::new(
+            "recoverable_transaction",
+            format!(
+                "The newer external version was restored; the rejected local draft remains at {}: {error}",
+                local_draft.display()
+            ),
+        )
+    })
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -824,8 +935,13 @@ mod windows_replacement_tests {
         let replacement = temp.path().join("note.md.tmp");
         fs::write(&destination, b"old").unwrap();
         fs::write(&replacement, b"new").unwrap();
-        replace_file_preserving(&replacement, &destination, |backup| fs::remove_file(backup))
-            .unwrap();
+        replace_file_preserving(
+            &replacement,
+            &destination,
+            blake3::hash(b"old").to_hex().as_ref(),
+            |backup| fs::remove_file(backup),
+        )
+        .unwrap();
         assert_eq!(fs::read(&destination).unwrap(), b"new");
         assert!(!replacement.exists());
     }
@@ -907,6 +1023,104 @@ mod write_precondition_tests {
             .code,
             "precondition_required"
         );
+    }
+
+    #[test]
+    fn staged_save_rejects_external_replace_delete_and_recreate_before_final_compare() {
+        let scenarios = vec![
+            (
+                ExternalChangeBeforeFinalCompare::Replace(b"external replacement".to_vec()),
+                Some(b"external replacement".to_vec()),
+            ),
+            (ExternalChangeBeforeFinalCompare::Delete, None),
+            (
+                ExternalChangeBeforeFinalCompare::Recreate(b"external recreation".to_vec()),
+                Some(b"external recreation".to_vec()),
+            ),
+        ];
+
+        for (change, expected_content) in scenarios {
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().join("note.md");
+            std::fs::write(&path, b"original").unwrap();
+            let token = read_file(path.to_string_lossy().into_owned())
+                .unwrap()
+                .version_token;
+            EXTERNAL_CHANGE_BEFORE_FINAL_COMPARE.with(|pending| {
+                *pending.borrow_mut() = Some(change);
+            });
+
+            let error = write_file(
+                path.to_string_lossy().into_owned(),
+                "local draft".into(),
+                WritePrecondition::Version { token },
+            )
+            .unwrap_err();
+
+            assert_eq!(error.code, "external_change_conflict");
+            match expected_content {
+                Some(expected) => assert_eq!(std::fs::read(&path).unwrap(), expected),
+                None => assert!(!path.exists(), "a deleted file must not be recreated"),
+            }
+            assert!(root.path().read_dir().unwrap().all(|entry| {
+                !entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .contains(".tmp-")
+            }));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn external_replace_delete_and_recreate_after_final_compare_never_get_overwritten() {
+        let scenarios = vec![
+            (
+                ExternalChangeBeforeFinalCompare::Replace(b"external replacement".to_vec()),
+                Some(b"external replacement".to_vec()),
+                "external_change_conflict",
+            ),
+            (
+                ExternalChangeBeforeFinalCompare::Delete,
+                None,
+                "external_change_conflict",
+            ),
+            (
+                ExternalChangeBeforeFinalCompare::Recreate(b"external recreation".to_vec()),
+                Some(b"external recreation".to_vec()),
+                "external_change_conflict",
+            ),
+        ];
+
+        for (change, expected_content, expected_error) in scenarios {
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().join("note.md");
+            std::fs::write(&path, b"original").unwrap();
+            let token = read_file(path.to_string_lossy().into_owned())
+                .unwrap()
+                .version_token;
+            EXTERNAL_CHANGE_AFTER_FINAL_COMPARE.with(|pending| {
+                *pending.borrow_mut() = Some(change);
+            });
+
+            let error = write_file(
+                path.to_string_lossy().into_owned(),
+                "local draft".into(),
+                WritePrecondition::Version { token },
+            )
+            .unwrap_err();
+
+            assert_eq!(error.code, expected_error);
+            match expected_content {
+                Some(expected) => assert_eq!(std::fs::read(&path).unwrap(), expected),
+                None => assert!(!path.exists(), "a deleted file must not be recreated"),
+            }
+            assert!(root.path().read_dir().unwrap().all(|entry| {
+                let name = entry.unwrap().file_name().to_string_lossy().into_owned();
+                !name.contains(".tmp-") && !name.contains(".collectives-backup-")
+            }));
+        }
     }
 }
 
