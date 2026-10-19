@@ -38,14 +38,12 @@ Các lệnh và phép kiểm tra ở đây dành cho lúc task được duyệt 
 - [x] Step 3 — Nghiệm thu và cập nhật ledger → verify: đáp ứng Acceptance bằng bằng chứng thực chạy hoặc xác nhận được ghi rõ.
 
 ### Handoff
-- Branch: `main`
-- Base commit: `110bc56` (mốc phân rã kế hoạch)
-- Uncommitted files: bộ tài liệu Pending; chưa có thay đổi triển khai cho task này.
-- Next action: Người dùng duyệt TASK-019; khi bắt đầu, kiểm tra lại git và Dependencies, rồi làm Step 1.
-- Blockers: chờ duyệt và các phụ thuộc chưa hoàn tất.
+- Branch: main; source and focused regression changes committed locally.
+- Next action: none for this task; current requested batch complete.
+- Blockers: none within Windows scope.
 
 ### Verification
-Chưa triển khai; chưa chạy test sản phẩm. Các tiêu chí nghiệm thu chưa được xác nhận đạt.
+Windows test holds a real backup file handle without delete sharing: committed write returns backup_cleanup_failed warning with exact new-byte hash; next save succeeds with receipt token. Full Rust all-target test run passes. Native Unix behavior was not tested.
 
 ### Log
 - 2026-10-18 — Tạo đề xuất Pending từ tài liệu nguồn; chưa triển khai.
@@ -56,3 +54,5 @@ Chưa triển khai; chưa chạy test sản phẩm. Các tiêu chí nghiệm thu
 - 2026-10-19 — Started receipt warnings under Windows-only scope; native Linux/macOS acceptance paused by user direction.
 
 - 2026-10-19 — Windows Rust 1.99.0: locked real backup handle regression passed; write returned Ok with backup_cleanup_failed, new bytes and exact token, next save with that token succeeded. Receipt warnings also preserve success for existing Unix directory sync branch (not native-tested) and create-file cleanup. Typecheck passed.
+
+- 2026-10-19 — Final Windows verification recorded; source tree passed typecheck/lint/contracts/build, 291 frontend unit tests, 28 related browser tests and the full Rust all-target test run. No remote push or CI configuration change.
