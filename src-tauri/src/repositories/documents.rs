@@ -321,10 +321,15 @@ pub fn write_file(
 ) -> Result<DocumentWriteReceipt, SafetyError> {
     let path = std::path::Path::new(&path);
     file_kind(path)?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            SafetyError::new("save_failed", format!("Failed to create directories: {e}"))
-        })?;
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."));
+    if !parent.is_dir() {
+        return Err(SafetyError::new(
+            "parent_missing",
+            "The document folder is missing or unavailable; the draft was retained",
+        ));
     }
     let original_bytes = if path.exists() {
         Some(read_document_bytes(path)?)
