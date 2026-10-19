@@ -62,13 +62,20 @@ test('theme picker aligns the arrow and supports keyboard, dismissal and small w
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
   const picker = settings.getByRole('combobox', { name: 'Theme', exact: true });
-  const arrow = picker.locator('.theme-picker-chevron');
-  const bounds = (await picker.boundingBox())!;
-  const arrowBounds = (await arrow.boundingBox())!;
-  expect(
-    Math.abs(arrowBounds.y + arrowBounds.height / 2 - bounds.y - bounds.height / 2)
-  ).toBeLessThan(1);
-  expect(bounds.x + bounds.width - arrowBounds.x - arrowBounds.width).toBeGreaterThanOrEqual(12);
+  await picker.scrollIntoViewIfNeeded();
+  const geometry = await picker.evaluate((trigger) => {
+    const arrow = trigger.querySelector('.theme-picker-chevron')!;
+    const triggerBounds = trigger.getBoundingClientRect();
+    const arrowBounds = arrow.getBoundingClientRect();
+    return {
+      centerOffset: Math.abs(
+        arrowBounds.y + arrowBounds.height / 2 - triggerBounds.y - triggerBounds.height / 2
+      ),
+      rightGap: triggerBounds.right - arrowBounds.right,
+    };
+  });
+  expect(geometry.centerOffset).toBeLessThan(1);
+  expect(geometry.rightGap).toBeGreaterThanOrEqual(12);
   await picker.focus();
   await page.keyboard.press('ArrowDown');
   await expect(settings.getByRole('listbox')).toBeVisible();
