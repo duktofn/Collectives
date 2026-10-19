@@ -18,14 +18,16 @@ src/lib/cm-extensions; src/components/editor/Editor.tsx; related task/changelog 
 - [x] Commit separately with task ID → verify: record commit in task.md.
 
 ### Handoff
-- Branch: main; base: b43e4cd.
-- Next action: inspect scope and implement this request in priority order.
-- Blockers: none.
+- Branch: main; source and focused regression changes committed locally.
+- Next action: none for this task; current requested batch complete.
+- Blockers: none within Windows scope.
 
 ### Verification
-Typecheck passed on Windows. Source review: Read Enter is consumed before Markdown list continuation; user document transactions are rejected in Read mode. Table equality includes readOnly so old editable DOM is rebuilt on mode switch; row/column changes check current view readOnly. No tests added/run.
+Windows Chromium regression passes for Write→Read→Write: no editable cells/row-column controls in Read, list Enter leaves source unchanged, and Write editing returns. All related 28 browser tests pass.
 
 ### Log
 - 2026-10-19 — Created from direct implementation request; authorized before the next five plan tasks (016–020).
 
 - 2026-10-19 — Added browser regression for Write→Read→Write table/list transitions after test authorization.
+
+- 2026-10-19 — Final Windows verification recorded; source tree passed typecheck/lint/contracts/build, 291 frontend unit tests, 28 related browser tests and the full Rust all-target test run. No remote push or CI configuration change.
