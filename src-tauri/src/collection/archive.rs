@@ -115,6 +115,61 @@ fn prepare_cross_volume_publish(
     Ok(payload)
 }
 
+#[cfg(windows)]
+fn set_windows_readonly_attribute(path: &Path, readonly: bool) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetFileAttributesW(path: *const u16) -> u32;
+        fn SetFileAttributesW(path: *const u16, attributes: u32) -> i32;
+    }
+
+    const INVALID_FILE_ATTRIBUTES: u32 = u32::MAX;
+    const FILE_ATTRIBUTE_READONLY: u32 = 0x1;
+    let wide_path: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let attributes = unsafe { GetFileAttributesW(wide_path.as_ptr()) };
+    if attributes == INVALID_FILE_ATTRIBUTES {
+        return Err(std::io::Error::last_os_error());
+    }
+    let updated = if readonly {
+        attributes | FILE_ATTRIBUTE_READONLY
+    } else {
+        attributes & !FILE_ATTRIBUTE_READONLY
+    };
+    if unsafe { SetFileAttributesW(wide_path.as_ptr(), updated) } == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn sync_staged_file(path: &Path) -> std::io::Result<()> {
+    let original_permissions = fs::metadata(path)?.permissions();
+    let restore_readonly = original_permissions.readonly();
+    if restore_readonly {
+        set_windows_readonly_attribute(path, false)?;
+    }
+
+    let sync_result = fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .and_then(|file| file.sync_all());
+    if !restore_readonly {
+        return sync_result;
+    }
+
+    let restore_result = set_windows_readonly_attribute(path, true);
+    match (sync_result, restore_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(sync_error), Ok(())) | (Ok(()), Err(sync_error)) => Err(sync_error),
+        (Err(sync_error), Err(restore_error)) => Err(std::io::Error::new(
+            sync_error.kind(),
+            format!("{sync_error}; restoring read-only permission also failed: {restore_error}"),
+        )),
+    }
+}
+
 fn sync_tree(path: &Path) -> Result<(), String> {
     if path.is_dir() {
         for entry in fs::read_dir(path).map_err(|e| e.to_string())? {
@@ -125,11 +180,14 @@ fn sync_tree(path: &Path) -> Result<(), String> {
             .and_then(|file| file.sync_all())
             .map_err(|e| format!("recoverable_transaction: directory fsync failed: {e}"))?;
     } else {
-        fs::OpenOptions::new()
+        #[cfg(windows)]
+        let sync_result = sync_staged_file(path);
+        #[cfg(not(windows))]
+        let sync_result = fs::OpenOptions::new()
             .read(true)
             .open(path)
-            .and_then(|file| file.sync_all())
-            .map_err(|e| format!("recoverable_transaction: file fsync failed: {e}"))?;
+            .and_then(|file| file.sync_all());
+        sync_result.map_err(|e| format!("recoverable_transaction: file fsync failed: {e}"))?;
     }
     Ok(())
 }

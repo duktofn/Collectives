@@ -528,12 +528,19 @@ pub fn recover(collections_dir: &Path) -> Result<(), SafetyError> {
                     .ok_or_else(|| {
                         SafetyError::new("recoverable_transaction", "destination has no parent")
                     })?;
-            if publish_path.file_name().and_then(|v| v.to_str()) != Some(expected_name.as_str())
-                || publish_path.parent() != Some(expected_parent)
-                || !publish_path.join(".collectives-owner").is_file()
-                || fs::read_to_string(publish_path.join(".collectives-owner")).unwrap_or_default()
-                    != format!("collectives-phase1-v1\n{}\n", journal.transaction_id)
-            {
+            let publish_path_valid = publish_path.file_name().and_then(|v| v.to_str())
+                == Some(expected_name.as_str())
+                && publish_path.parent() == Some(expected_parent);
+            let publish_marker_valid = if publish_path.exists() {
+                validate_path_components(publish_path)?;
+                publish_path.join(".collectives-owner").is_file()
+                    && fs::read_to_string(publish_path.join(".collectives-owner"))
+                        .unwrap_or_default()
+                        == format!("collectives-phase1-v1\n{}\n", journal.transaction_id)
+            } else {
+                journal.state == TransactionState::Committed
+            };
+            if !publish_path_valid || !publish_marker_valid {
                 return Err(SafetyError::new(
                     "recoverable_transaction",
                     "cross-volume publish stage ownership validation failed",
@@ -549,12 +556,19 @@ pub fn recover(collections_dir: &Path) -> Result<(), SafetyError> {
                     .ok_or_else(|| {
                         SafetyError::new("recoverable_transaction", "destination has no parent")
                     })?;
-            if backup_path.file_name().and_then(|v| v.to_str()) != Some(expected_name.as_str())
-                || backup_path.parent() != Some(expected_parent)
-                || !backup_path.join(".collectives-owner").is_file()
-                || fs::read_to_string(backup_path.join(".collectives-owner")).unwrap_or_default()
-                    != format!("collectives-phase1-v1\n{}\n", journal.transaction_id)
-            {
+            let backup_path_valid = backup_path.file_name().and_then(|v| v.to_str())
+                == Some(expected_name.as_str())
+                && backup_path.parent() == Some(expected_parent);
+            let backup_marker_valid = if backup_path.exists() {
+                validate_path_components(backup_path)?;
+                backup_path.join(".collectives-owner").is_file()
+                    && fs::read_to_string(backup_path.join(".collectives-owner"))
+                        .unwrap_or_default()
+                        == format!("collectives-phase1-v1\n{}\n", journal.transaction_id)
+            } else {
+                journal.state == TransactionState::Committed
+            };
+            if !backup_path_valid || !backup_marker_valid {
                 return Err(SafetyError::new(
                     "recoverable_transaction",
                     "cross-volume backup ownership validation failed",
