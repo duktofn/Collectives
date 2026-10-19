@@ -34,14 +34,12 @@ Các lệnh và phép kiểm tra ở đây dành cho lúc task được duyệt 
 - [x] Step 3 — Nghiệm thu và cập nhật ledger → verify: đáp ứng Acceptance bằng bằng chứng thực chạy hoặc xác nhận được ghi rõ.
 
 ### Handoff
-- Branch: `main`
-- Base commit: `110bc56` (mốc phân rã kế hoạch)
-- Uncommitted files: bộ tài liệu Pending; chưa có thay đổi triển khai cho task này.
-- Next action: Người dùng duyệt TASK-020; khi bắt đầu, kiểm tra lại git và Dependencies, rồi làm Step 1.
-- Blockers: chờ duyệt và các phụ thuộc chưa hoàn tất.
+- Branch: main; source and focused regression changes committed locally.
+- Next action: none for this task; current requested batch complete.
+- Blockers: none within Windows scope.
 
 ### Verification
-Chưa triển khai; chưa chạy test sản phẩm. Các tiêu chí nghiệm thu chưa được xác nhận đạt.
+Windows frontend save suite (23 tests) passes, including warning receipt with dirty=false, error/conflict=null, visible notice data, no requeued save and correct next-write token. Typecheck, lint and build pass.
 
 ### Log
 - 2026-10-18 — Tạo đề xuất Pending từ tài liệu nguồn; chưa triển khai.
@@ -50,3 +48,5 @@ Chưa triển khai; chưa chạy test sản phẩm. Các tiêu chí nghiệm thu
 - 2026-10-19 — Started warning notice integration after TASK-019 Windows regression passed.
 
 - 2026-10-19 — Windows typecheck and 22 save-state tests pass. Warning receipt clears dirty state, preserves token, leaves error/conflict null, shows dismissible status, does not enqueue duplicate save, and next write uses committed token.
+
+- 2026-10-19 — Final Windows verification recorded; source tree passed typecheck/lint/contracts/build, 291 frontend unit tests, 28 related browser tests and the full Rust all-target test run. No remote push or CI configuration change.
