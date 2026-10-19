@@ -290,6 +290,32 @@ fn conditional_write_rejects_external_change_without_replacing_draft_target() {
 }
 
 #[test]
+fn removed_open_document_is_not_recreated_by_a_stale_save() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("removed-note.md");
+    fs::write(&path, b"opened content").unwrap();
+    let snapshot = documents::read_file(path.to_string_lossy().into_owned()).unwrap();
+
+    fs::remove_file(&path).unwrap();
+    let read_error = documents::read_file(path.to_string_lossy().into_owned()).unwrap_err();
+    assert_eq!(read_error.code, "stale_read");
+
+    let save_error = documents::write_file(
+        path.to_string_lossy().into_owned(),
+        "unsaved draft".into(),
+        documents::WritePrecondition::Version {
+            token: snapshot.version_token,
+        },
+    )
+    .unwrap_err();
+    assert_eq!(save_error.code, "external_change_conflict");
+    assert!(
+        !path.exists(),
+        "a stale save must not recreate the removed file"
+    );
+}
+
+#[test]
 fn recovery_restores_persisted_backup_before_unblocking() {
     let temp = tempfile::tempdir().unwrap();
     let original = temp.path().join("original.txt");
