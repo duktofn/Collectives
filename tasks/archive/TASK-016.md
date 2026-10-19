@@ -34,12 +34,12 @@ Các lệnh và phép kiểm tra ở đây dành cho lúc task được duyệt 
 - [x] Step 3 — Nghiệm thu và cập nhật ledger → verify: đáp ứng Acceptance bằng bằng chứng thực chạy hoặc xác nhận được ghi rõ.
 
 ### Handoff
-- Branch: main; base: 11a2fd2.
-- Next action: run missing-parent acceptance when tests are authorized; implementation complete.
-- Blockers: runtime regression not run.
+- Branch: main; source and focused regression changes committed locally.
+- Next action: none for this task; current requested batch complete.
+- Blockers: none within Windows scope.
 
 ### Verification
-Chưa triển khai; chưa chạy test sản phẩm. Các tiêu chí nghiệm thu chưa được xác nhận đạt.
+Windows Rust 1.99.0 missing-parent regression passes: parent remains absent and returns parent_missing. Frontend draft/navigation regression passes in the 23-test save suite.
 
 ### Log
 - 2026-10-18 — Tạo đề xuất Pending từ tài liệu nguồn; chưa triển khai.
@@ -52,3 +52,5 @@ Chưa triển khai; chưa chạy test sản phẩm. Các tiêu chí nghiệm thu
 - 2026-10-19 — User authorized Windows regressions; resumed acceptance verification.
 
 - 2026-10-19 — Windows acceptance now passed: removed parent stays absent after parent_missing; frontend draft remains dirty and navigation is blocked. Rust missing-parent test and all 23 save-state tests pass. Earlier no-test handoff is superseded.
+
+- 2026-10-19 — Final Windows verification recorded; source tree passed typecheck/lint/contracts/build, 291 frontend unit tests, 28 related browser tests and the full Rust all-target test run. No remote push or CI configuration change.
