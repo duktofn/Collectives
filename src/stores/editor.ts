@@ -27,6 +27,7 @@ interface EditorState {
   isSaving: boolean;
   isReadOnly: boolean;
   error: string | null;
+  saveNotice: string | null;
   conflictKind: "file" | "metadata" | null;
   pendingNavigation: WikilinkFragment | null;
   pendingSearchPosition: { path: string; lineNumber: number; columnUtf16: number } | null;
@@ -59,6 +60,7 @@ const [state, setState] = createStore<EditorState>({
   isSaving: false,
   isReadOnly: false,
   error: null,
+    saveNotice: null,
   conflictKind: null,
   pendingNavigation: null,
   pendingSearchPosition: null,
@@ -150,7 +152,8 @@ async function drainSaveQueue(): Promise<void> {
           throw { code: "external_change_conflict", message: "File changed while save was completing" };
         }
         if (state.conflictKind === "file") {
-          setState({ error: null, conflictKind: null });
+          setState({ error: null,
+    saveNotice: null, conflictKind: null });
         }
       }
       clearPersistedRecoveryDraft(writeSnapshot.path, writeSnapshot.recoverySessionId, writeSnapshot.revision);
@@ -162,6 +165,9 @@ async function drainSaveQueue(): Promise<void> {
           currentContent,
           isDirty: currentContent !== writeSnapshot.content,
           versionToken: persistedVersionToken,
+          saveNotice: receipt?.warnings?.length
+            ? "Saved successfully. " + receipt.warnings.map((warning) => warning.message).join(" ")
+            : null,
           conflictKind: retainedConflict,
         });
         // A switch/close is a save barrier, including edits made during I/O.
@@ -184,6 +190,8 @@ async function drainSaveQueue(): Promise<void> {
 
 export const editorStore = {
   state,
+
+  dismissSaveNotice() { setState("saveNotice", null); },
 
   setRecoveryCollectionId(collectionId: string | null) {
     recoveryCollectionId = collectionId ?? "";
@@ -311,6 +319,7 @@ export const editorStore = {
         recoveryCollectionId,
         generation: generation + 1,
         error: null,
+    saveNotice: null,
         conflictKind: null,
       });
       return true;
@@ -331,6 +340,7 @@ export const editorStore = {
     if (saveDrainPromise) return saveDrainPromise;
 
     setState("isSaving", true);
+    setState("saveNotice", null);
     setState("error", null);
     setState("conflictKind", null);
     const drain = drainSaveQueue();
@@ -364,6 +374,7 @@ export const editorStore = {
       isReadOnly: false,
       isSaving: false,
       error: null,
+    saveNotice: null,
       conflictKind: null,
       pendingNavigation: null,
       pendingSearchPosition: null,
@@ -395,6 +406,7 @@ export const editorStore = {
       mode: readOnly ? "view" : (snapshot.fileKind ?? classifyFilePath(path)) === "text-source" ? "edit-source" : state.lastMarkdownMode,
       isSaving: false,
       error: null,
+    saveNotice: null,
       conflictKind: null,
       pendingNavigation: null,
       pendingSearchPosition: null,
@@ -463,6 +475,7 @@ export const editorStore = {
       mode: "edit-render",
       isSaving: false,
       error: null,
+    saveNotice: null,
       conflictKind: null,
       pendingNavigation: null,
       pendingSearchPosition: null,
@@ -505,6 +518,7 @@ export const editorStore = {
         versionToken: snapshot.versionToken,
         isDirty: false,
         error: null,
+    saveNotice: null,
         conflictKind: null,
         generation: generation + 1,
         revision: 0,
@@ -537,7 +551,8 @@ export const editorStore = {
         return false;
       }
       saveQueue = saveQueue.filter((queued) => queued.path !== path || queued.generation !== generation);
-      setState({ versionToken: snapshot.versionToken, error: null, conflictKind: null });
+      setState({ versionToken: snapshot.versionToken, error: null,
+    saveNotice: null, conflictKind: null });
       await this.saveFile({ kind: "overwrite", observedDiskToken: snapshot.versionToken });
       return !state.isDirty && state.error === null;
     } catch (error) {

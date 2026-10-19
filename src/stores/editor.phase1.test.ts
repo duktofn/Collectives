@@ -369,4 +369,25 @@ describe("Phase 1 committed selection", () => {
     expect(reader.mock.calls.length).toBeLessThanOrEqual(2);
     unregister();
   });
+  it("accepts a committed receipt with cleanup warnings without retrying", async () => {
+    const api = await import("../features/editor");
+    await editorStore.openFile("a.md");
+    editorStore.updateContent("saved draft");
+    vi.mocked(api.writeFile).mockResolvedValueOnce({ versionToken: "committed-token", warnings: [
+      { code: "backup_cleanup_failed", message: "Temporary backup cleanup could not finish." },
+    ] });
+    await editorStore.saveFile();
+    expect(editorStore.state.isDirty).toBe(false);
+    expect(editorStore.state.error).toBeNull();
+    expect(editorStore.state.conflictKind).toBeNull();
+    expect(editorStore.state.versionToken).toBe("committed-token");
+    expect(editorStore.state.saveNotice).toContain("Saved successfully");
+    await editorStore.flushPendingSave();
+    expect(api.writeFile).toHaveBeenCalledTimes(1);
+    editorStore.updateContent("next draft");
+    await editorStore.saveFile();
+    expect(vi.mocked(api.writeFile).mock.calls[1]?.[2]).toEqual({ kind: "version", token: "committed-token" });
+    expect(editorStore.state.saveNotice).toBeNull();
+  });
+
 });

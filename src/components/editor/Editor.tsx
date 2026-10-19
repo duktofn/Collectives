@@ -501,6 +501,12 @@ export function Editor() {
 
   return (
     <div class="editor-container">
+      <Show when={editorStore.state.saveNotice}>
+        <div class="editor-copy-message" role="status">
+          <span>{editorStore.state.saveNotice}</span>
+          <button class="btn btn-text" onClick={() => editorStore.dismissSaveNotice()}>Dismiss</button>
+        </div>
+      </Show>
       {(editorStore.state.error || (editorStore.state.conflictKind && !conflictNoticeDismissed())) && (
         <div class="editor-error-banner">
           <span>
