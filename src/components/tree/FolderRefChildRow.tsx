@@ -84,7 +84,7 @@ export function FolderRefChildRow(props: FolderRefChildRowProps) {
       <div
         class="tree-node"
         classList={{
-          selected: !props.item.isDir && readiness()?.status === "ready",
+          selected: isOpenSelected(),
           broken: broken() || readiness()?.status === "broken",
           unsupported: !isSupported(),
           "folder-ref-child-checking": readiness()?.status === "checking",
