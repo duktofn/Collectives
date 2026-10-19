@@ -113,6 +113,7 @@
 | TASK-100 | [Fix Windows theme picker alignment gate](tasks/archive/TASK-100.md) | Paused | 2026-10-19 |
 | TASK-101 | [Assert direct Windows pre-push hook invocation](tasks/archive/TASK-101.md) | Paused | 2026-10-19 |
 | TASK-102 | [Characterize data integrity before refactor](tasks/archive/TASK-102.md) | Done | 2026-10-19 |
+| TASK-103 | [Prevent silent settings loss on corrupt configuration](tasks/archive/TASK-103.md) | On-Going | 2026-10-19 |
 
 ## Pending review
 Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task chưa bắt đầu) chuyển sang Cancelled theo yêu cầu chuẩn bị refactor lớn. TASK-014, TASK-022 và TASK-086 giữ Paused. Xem [bản review lưu trữ](tasks/plans/collectives-fix-rebuild-review.md).
@@ -141,6 +142,65 @@ Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task ch�
 | TASK-102 | `3754155` | 2026-10-19 |
 
 ## Active
+
+
+## TASK-103 — Prevent silent settings loss on corrupt configuration
+
+**State:** On-Going
+**Current Step:** Step 1 — Audit settings load, startup, and recovery boundaries
+**Phase:** Refactor plan Phase A
+**Source ID:** Attached plan TASK-004
+
+### Description
+Distinguish first launch from unreadable, malformed, or future-version settings; preserve the original file for diagnosis and require an explicit user recovery choice before defaults can replace it. Keep valid existing preferences, custom themes, fonts, and IPC compatibility intact.
+
+### Scope
+- `src-tauri/src/settings.rs`
+- `src-tauri/src/ipc/commands/settings.rs`
+- `src-tauri/src/application/services.rs`
+- `src/features/settings/application.ts`
+- `src/features/settings/infrastructure/ipc.ts`
+- `src/App.tsx`
+- `src/components/theme/ThemePanel.tsx`
+- `src/types/index.ts`
+- `contracts/ipc.v1.json`
+- `src/shared/ipc/client.ts`
+- `src/shared/ipc/generated.ts`
+- `src-tauri/src/ipc/generated.rs`
+- `src-tauri/tests/settings_integrity.rs` (new)
+- `src/components/theme/ThemePanel.test.tsx`
+- `decisions.md`, `codebase.md`, task ledger
+
+### Related
+- `Collectives_Main_Architecture_Audit_Refactor_Plan_2026-10-19_v1.4(1).md` → Phase A / TASK-004
+- `task.md` → TASK-102 (Windows data-integrity baseline)
+- `decisions.md` → DEC-013 (Windows-only verification)
+
+### Requirements
+- [ ] Invalid JSON, read denial, future schema, and failed recovery preserve the previous bytes.
+- [ ] Valid legacy/current settings round-trip, including custom themes and fonts.
+- [ ] The UI clearly explains the failure and requires an explicit user choice before replacing corrupt settings with defaults.
+- [ ] IPC contracts and generated types stay synchronized.
+- [ ] All changes stay within the allowlist; no unrelated behavior or platform changes.
+
+### Steps
+- [ ] Step 1 — Audit backend load/save, startup, UI and IPC contracts → verify: missing/corrupt/read-denied/future-version paths and existing compatibility are recorded.
+- [ ] Step 2 — Choose and record the recovery API/state model → verify: original bytes remain recoverable and normal startup cannot overwrite them silently.
+- [ ] Step 3 — Implement explicit recovery and migration-compatible settings flow → verify: valid settings and explicit recovery paths work end to end.
+- [ ] Step 4 — Add native-file and UI regressions; regenerate/check contracts → verify: failure cases preserve bytes and custom themes/fonts round-trip.
+- [ ] Step 5 — Run Windows quality gates and review the allowlisted diff → verify: applicable G-CODE/G-DATA/G-UX gates pass.
+
+### Handoff
+- Branch: `codex/phase-a-settings-integrity`; base commit: `7a2acd4` (completed TASK-102).
+- Uncommitted files: pre-existing `.gitignore` edit adding `.opencode`, unrelated and preserved.
+- Next action: trace all `load_settings` callers and repository ports, then document the persistence/UI boundary before choosing the API.
+- Blockers: TASK-099 remains Paused until a fresh hosted Windows workflow is green; user directed switching to another task when CI does not pass.
+
+### Verification
+Not verified.
+
+### Log
+- 2026-10-19 — Started Phase A / plan TASK-004 after completing Windows data-integrity characterization and following the user's instruction to switch tasks rather than wait on a non-passing hosted CI gate.
 
 
 ## TASK-101 — Assert direct Windows pre-push hook invocation
