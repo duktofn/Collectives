@@ -314,6 +314,20 @@ pub fn read_folderref_snapshot(
     decode_document(&canonical_child)
 }
 
+/// Owns only a successfully created temporary file, closing its Windows
+/// handle before cleanup on every early return.
+struct StagedDocument {
+    path: std::path::PathBuf,
+    file: Option<std::fs::File>,
+}
+
+impl Drop for StagedDocument {
+    fn drop(&mut self) {
+        drop(self.file.take());
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 pub fn write_file(
     path: String,
     content: String,
@@ -378,21 +392,25 @@ pub fn write_file(
         id
     );
     let tmp_path = path.with_file_name(tmp_filename);
-    let mut file = std::fs::OpenOptions::new()
+    let file = std::fs::OpenOptions::new()
         .create_new(true)
         .write(true)
         .open(&tmp_path)
         .map_err(|e| SafetyError::new("save_failed", format!("Failed to write temp file: {e}")))?;
+    let mut stage = StagedDocument {
+        path: tmp_path.clone(),
+        file: Some(file),
+    };
+    let file = stage.file.as_mut().expect("staged document owns its file");
     use std::io::Write;
     file.write_all(&bytes_to_write)
         .map_err(|e| SafetyError::new("save_failed", format!("Failed to write temp file: {e}")))?;
     file.sync_all()
         .map_err(|e| SafetyError::new("save_failed", format!("Failed to flush temp file: {e}")))?;
-    drop(file);
+    drop(stage.file.take());
     if let Some(expected) = expected_token.as_ref() {
         let actual = file_version_token(path, "").map_err(SafetyError::from)?;
         if &actual != expected {
-            let _ = std::fs::remove_file(&tmp_path);
             return Err(SafetyError::new(
                 "external_change_conflict",
                 "File changed outside the editor immediately before replacement; draft was retained",
