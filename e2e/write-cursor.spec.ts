@@ -67,8 +67,14 @@ for (const [phrase, offset, width] of [
       { phrase, offset }
     );
     expect(snapshot.head).toBe(snapshot.expected);
-    expect(Math.abs(snapshot.caret.x - target.x)).toBeLessThan(3);
-    expect(Math.abs(snapshot.caret.y - target.y)).toBeLessThan(3);
+    // Active bold reveals its delimiters, so compare with the glyph after that reflow.
+    if (phrase === 'bold words') {
+      await expect(page.locator('#write-cursor-host .cm-strong').filter({ hasText: phrase }))
+        .toHaveText('**bold words**');
+    }
+    const caretTarget = phrase === 'bold words' ? await point(page, phrase, offset) : target;
+    expect(Math.abs(snapshot.caret.x - caretTarget.x)).toBeLessThan(3);
+    expect(Math.abs(snapshot.caret.y - caretTarget.y)).toBeLessThan(3);
     await page.keyboard.type('|');
     const after = await page.evaluate(() => (window as any).__writeCursorView.state.doc.toString());
     expect(after).toBe(

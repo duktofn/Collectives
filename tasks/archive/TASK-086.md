@@ -29,6 +29,8 @@ TASK-015 bổ sung runner macOS; bản sửa TASK-007 và TASK-008 đã commit.
 - [ ] Chạy editor-floating-controls E2E và ContextMenu.a11y unit của TASK-010 trên Linux/macOS; xác minh clipboard, menu con, phím điều hướng và focus.
 - [ ] Phân loại lỗi nền tảng, sửa trong task sở hữu hoặc tạo task sửa riêng; giữ yêu cầu hỗ trợ cả ba OS.
 
+- [ ] Chạy các hồi quy Quick Open TASK-011 và caret/inline-formatting TASK-012 trên Linux/macOS.
+
 ### Steps
 - [ ] Step 1 — Chuẩn bị runner/CI và revision cần kiểm tra → verify: runner, compiler và commit được ghi rõ.
 - [ ] Step 2 — Chạy checks native và xử lý sai khác → verify: lệnh, exit code và log mỗi OS.
@@ -48,3 +50,4 @@ Chưa chạy Linux/macOS. TASK-007 đã có cargo check trên Windows Rust 1.99.
 - 2026-10-18 — Người dùng yêu cầu tạo task mới cho Linux/macOS, chạy Windows trước và đánh Done nếu Windows đạt. Tạo Pending để giữ phần kiểm chứng còn lại.
 - 2026-10-18 — Bổ sung follow-up profile native TASK-087 và hồi quy trình duyệt TASK-009; các kiểm tra Linux/macOS chưa chạy.
 - 2026-10-18 — TASK-010 đã pass Windows: 6 E2E, 3 unit, 9 lượt lặp; bổ sung phần kiểm chứng tương ứng trên Linux/macOS, vẫn Pending.
+- 2026-10-19 — Bổ sung Quick Open/caret theo TASK-011 và TASK-012; Windows đã đạt, Linux/macOS chưa chạy.
