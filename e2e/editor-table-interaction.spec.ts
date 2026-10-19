@@ -216,3 +216,27 @@ test("table cell input pairs Markdown delimiters without duplicating closers", a
     return view.state.doc.toString();
   })).toContain("| **fresh** |");
 });
+
+test("Read blocks list Enter and rebuilds editable table controls on mode switches", async ({ page }) => {
+  const doc = "- first item\n\n| A | B |\n| --- | --- |\n| one | two |";
+  await installWorkspaceMock(page, "dark", false, false, doc);
+  await page.goto("/e2e/workspace.html");
+  const table = page.locator(".cm-table-widget");
+  await expect(table).toBeVisible();
+  const cell = table.locator("tbody td").first();
+  await cell.dblclick();
+  await expect(cell).toHaveAttribute("contenteditable", "true");
+  await page.getByRole("button", { name: "Read", exact: true }).click();
+  await expect(page.locator(".cm-table-widget-container .cm-table-control-group")).toHaveCount(0);
+  await expect(page.locator('.cm-table-widget [contenteditable="true"]')).toHaveCount(0);
+  await page.locator(".cm-content").click({ position: { x: 30, y: 10 } });
+  await page.keyboard.press("Enter");
+  const source = await page.evaluate(async () => (await import('/src/stores/editor.ts')).editorStore.getCurrentContent());
+  expect(source).toBe(doc);
+  await cell.dblclick();
+  await expect(page.locator('.cm-table-widget [contenteditable="true"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "Write", exact: true }).click();
+  await expect(page.locator(".cm-table-widget-container .cm-table-control-group").first()).toBeAttached();
+  await cell.dblclick();
+  await expect(cell).toHaveAttribute("contenteditable", "true");
+});

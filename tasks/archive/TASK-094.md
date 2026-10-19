@@ -27,3 +27,5 @@ Typecheck passed on Windows. Source review: Read Enter is consumed before Markdo
 
 ### Log
 - 2026-10-19 — Created from direct implementation request; authorized before the next five plan tasks (016–020).
+
+- 2026-10-19 — Added browser regression for Write→Read→Write table/list transitions after test authorization.
