@@ -84,6 +84,13 @@ assert.match(installed.stdout, /Git pre-push checks installed/, [
   `stderr:\n${installed.stderr}`,
 ].join('\n'));
 assert.equal(git(['config', '--local', '--get', 'core.hooksPath']), '.githooks');
+const direct = run(process.execPath, ['scripts/git/pre-push.mjs']);
+assert.notEqual(direct.status, 0, [
+  'Direct pre-push check unexpectedly passed the invalid TypeScript fixture.',
+  `stdout:\n${direct.stdout}`,
+  `stderr:\n${direct.stderr}`,
+].join('\n'));
+assert.match(direct.stdout + direct.stderr, /TS2322/);
 commit('fixture: type error');
 const typeError = run('git', ['push', 'origin', 'main'], work, {
   ...fixtureEnv,
