@@ -149,7 +149,7 @@ Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task ch�
 ## TASK-104 — Verify own-save and watcher collision safety
 
 **State:** On-Going
-**Current Step:** Step 1 — Audit receipt/watcher interleavings and identify missing deterministic cases
+**Current Step:** Step 2 — Add deterministic watcher and external-change schedules
 **Phase:** Refactor plan Phase A
 **Source ID:** Attached plan TASK-005
 
@@ -182,7 +182,7 @@ Exercise own-save receipts, native watcher events, external edits, and same-path
 - [ ] Windows native filesystem tests and applicable quality gates pass; no non-Windows validation is claimed.
 
 ### Steps
-- [ ] Step 1 — Audit save queue, version receipt, watcher normalization, and current tests → verify: deterministic schedule matrix and existing coverage are recorded.
+- [x] Step 1 — Audit save queue, version receipt, watcher normalization, and current tests → verify: deterministic schedule matrix and existing coverage are recorded.
 - [ ] Step 2 — Add Windows frontend/native fixtures for own-save events and external replace/delete/recreate schedules → verify: 1,000 clean own saves and adversarial writes are deterministic.
 - [ ] Step 3 — Fix only any reproduced false conflict or overwrite defect → verify: regression fails before the fix and passes after it; no speculative persistence rewrite.
 - [ ] Step 4 — Run Windows G-CODE/G-DATA checks and review the allowlisted diff → verify: dirty drafts, compare/reload and save-copy recovery remain protected.
@@ -190,7 +190,7 @@ Exercise own-save receipts, native watcher events, external edits, and same-path
 ### Handoff
 - Branch: `codex/phase-a-save-watch-collision`; base commit: `fef01e9` (completed TASK-103).
 - Uncommitted files: pre-existing `.gitignore` edit adding `.opencode`, unrelated and preserved.
-- Next action: inspect `handleFilesystemChange`, `drainSaveQueue`, the Windows replace path, and real notify fixtures; identify where to interleave watcher events around a save receipt.
+- Next action: add frontend tests for own-save watcher events before receipt and external changes during an in-flight save; add a 1,000-write real Windows notify fixture and external replace/delete/recreate tests at the final token check.
 - Blockers: none. Push is deferred until the Phase A batch is complete, per the user's instruction.
 
 ### Verification
@@ -198,6 +198,7 @@ Not verified.
 
 ### Log
 - 2026-10-19 — Started Phase A / plan TASK-005 after TASK-004 passed local Windows quality gates; scope is limited to the plan allowlist and only reproduced production defects may be corrected.
+- 2026-10-19 — Audit found receipt tokens, active-write event filtering and final-token checks already exist. Current coverage has queue tests and a 100-write real notify test, but no deterministic watcher/receipt interleaving or external replace/delete/recreate schedule; no production defect reproduced yet.
 
 
 ## TASK-101 — Assert direct Windows pre-push hook invocation
