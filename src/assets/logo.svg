@@ -1,12 +1,12 @@
-<svg width="43" height="43" viewBox="0 0 43 43" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect x="7.77832" y="28.9914" width="8" height="8" rx="2" transform="rotate(-45 7.77832 28.9914)" fill="#D57852"/>
-<rect x="23.3345" y="28.9914" width="8" height="8" rx="2" transform="rotate(-45 23.3345 28.9914)" fill="#D57852"/>
-<rect x="7.77832" y="13.435" width="8" height="8" rx="2" transform="rotate(-45 7.77832 13.435)" fill="#D57852"/>
-<rect x="23.3345" y="13.435" width="8" height="8" rx="2" transform="rotate(-45 23.3345 13.435)" fill="#D57852"/>
-<rect x="15.5562" y="25.4558" width="4" height="2" transform="rotate(-45 15.5562 25.4558)" fill="#97563B"/>
-<rect x="22.6274" y="18.3848" width="4" height="2" transform="rotate(-45 22.6274 18.3848)" fill="white"/>
-<rect width="4" height="2" transform="matrix(-0.707107 -0.707107 -0.707107 0.707107 26.8701 25.4558)" fill="#97563B"/>
-<rect width="4" height="2" transform="matrix(-0.707107 -0.707107 -0.707107 0.707107 19.7988 18.3848)" fill="#97563B"/>
-<rect x="22.6274" y="18.3848" width="4" height="2" transform="rotate(-45 22.6274 18.3848)" fill="#97563B"/>
-<circle cx="21.213" cy="21.2132" r="4" transform="rotate(-45 21.213 21.2132)" fill="#D57852"/>
+<svg width="27" height="27" viewBox="0 0 27 27" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect y="21.2132" width="8" height="8" rx="2" transform="rotate(-45 0 21.2132)" fill="#D57852"/>
+<rect x="15.5562" y="21.2132" width="8" height="8" rx="2" transform="rotate(-45 15.5562 21.2132)" fill="#D57852"/>
+<rect y="5.65686" width="8" height="8" rx="2" transform="rotate(-45 0 5.65686)" fill="#D57852"/>
+<rect x="15.5562" y="5.65686" width="8" height="8" rx="2" transform="rotate(-45 15.5562 5.65686)" fill="#D57852"/>
+<rect x="7.77783" y="17.6777" width="4" height="2" transform="rotate(-45 7.77783 17.6777)" fill="#97563B"/>
+<rect x="14.8491" y="10.6066" width="4" height="2" transform="rotate(-45 14.8491 10.6066)" fill="white"/>
+<rect width="4" height="2" transform="matrix(-0.707107 -0.707107 -0.707107 0.707107 19.0918 17.6777)" fill="#97563B"/>
+<rect width="4" height="2" transform="matrix(-0.707107 -0.707107 -0.707107 0.707107 12.0205 10.6066)" fill="#97563B"/>
+<rect x="14.8491" y="10.6066" width="4" height="2" transform="rotate(-45 14.8491 10.6066)" fill="#97563B"/>
+<circle cx="13.4347" cy="13.435" r="4" transform="rotate(-45 13.4347 13.435)" fill="#D57852"/>
 </svg>
