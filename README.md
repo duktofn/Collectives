@@ -118,6 +118,8 @@ Tạo bộ cài và tệp chạy bằng `npm run release:build`. Các tệp phá
 
    Nếu đã có Git hooks riêng, tích hợp `node scripts/git/pre-push.mjs` vào hook pre-push hiện có; script cài đặt giữ nguyên cấu hình hook đó và báo hướng dẫn tích hợp.
 
+   Policy bảo vệ `main` được lưu ở `.github/main-branch-protection.json`; `npm run check:ci-policy` kiểm tra policy khớp với các job trong workflow. Maintainer đã đăng nhập GitHub CLI có thể áp dụng bằng `gh api --method PUT repos/duktofn/Collectives/branches/main/protection --input .github/main-branch-protection.json`. Policy yêu cầu CI frontend, browser, smoke và backend trên Windows/Linux/macOS; nhánh phải cập nhật với main trước khi merge.
+
 3. **Chạy ứng dụng trong chế độ phát triển (Development Mode):**
    ```bash
    npm run tauri dev

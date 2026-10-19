@@ -18,6 +18,10 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Hook and branch-policy regressions
+        run: |
+          npm run test:hooks
+          npm run check:ci-policy
       - name: Canonical frontend quality gates
         run: node scripts/phase0/verify-quality.mjs frontend
       - name: Install Rust formatting tools for generated contracts
