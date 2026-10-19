@@ -15,6 +15,8 @@ fn only_exact_owned_names_are_hidden() {
         format!("note.md.tmp-{id}"),
         format!(".note.md.collectives-backup-{id}"),
         format!(".note.md.collectives-{id}.tmp"),
+        format!(".note.tmp-draft.md.collectives-backup-{id}"),
+        format!(".note.tmp-draft.md.collectives-{id}.tmp"),
     ] {
         assert!(
             is_owned_document_artifact(std::path::Path::new(&name)),

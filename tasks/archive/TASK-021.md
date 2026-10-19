@@ -49,3 +49,5 @@ Windows / Rust 1.99.0: three new ownership/watcher tests pass, including 100 rea
 - 2026-10-19 — Started by direct next-two request; Windows tests authorized. Inspected current writers: note.tmp-UUID, .note.collectives-backup-UUID, and .note.collectives-UUID.tmp are all app-owned patterns. Filter real publication paths separately so a save still refreshes the real note.
 
 - 2026-10-19 — Implemented shared canonical-v4-UUID predicate, native callback/delivery filtering and folder-list exclusion. Real note publication remains visible; task complete after Windows checks.
+
+- 2026-10-19 — Final ownership review: filenames themselves may contain .tmp-; validate all three complete patterns independently rather than short-circuiting on an invalid earlier suffix.
