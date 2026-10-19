@@ -1,7 +1,7 @@
 ## TASK-014 — Bật CI bắt buộc và ghi nhận 3 push xanh
 
 **State:** Paused
-**Current Step:** Step 3 — Chờ TASK-088, PR probe và 3 push xanh
+**Current Step:** Step 3 — Kiểm chứng required check qua PR probe
 **Phase:** Phase 0
 **Source ID:** 0.5
 
@@ -25,7 +25,7 @@
 
 ### Requirements
 - [x] Policy main đã bật 6 checks từ GitHub Actions app 15368, strict và enforce_admins; đã read-back xác nhận.
-- [ ] PR có lỗi type được chứng minh blocked qua check bắt buộc.
+- [x] PR có lỗi type được chứng minh blocked qua check bắt buộc.
 - [ ] Ba main push thực tế liên tiếp xanh theo acceptance; không tạo push để tích đếm.
 
 ### Acceptance / Verification plan
@@ -39,14 +39,12 @@ Các lệnh và phép kiểm tra ở đây dành cho lúc task được duyệt 
 - [ ] Step 3 — Nghiệm thu và cập nhật ledger → verify: đáp ứng Acceptance bằng bằng chứng thực chạy hoặc xác nhận được ghi rõ.
 
 ### Handoff
-- Branch: `main`
-- Base commit: `810ab86`
-- Uncommitted files: bộ tài liệu Pending; chưa có thay đổi triển khai cho task này.
-- Next action: Sửa test Phase 6 stale trong TASK-088, rồi đẩy nhánh review và PR probe type error riêng (không merge); ghi trạng thái blocked và theo dõi các main push thật.
-- Blockers: chưa có 3 main push xanh; 5 CI push gần nhất đều fail. Cần thu bằng chứng thực sau cấu hình.
+- Branch: `main`; base commit: `e02d5dc`.
+- Next action: TASK-089 chuyển CI và policy sang Windows-only; sau đó theo dõi draft PR #2 và ba main push thực tế.
+- Blockers: thiếu ba main push xanh; không tạo push để tích đếm.
 
 ### Verification
-Đã apply GitHub branch protection và read-back 6 checks đúng app 15368 (artifacts/task014/protection-after.json). Canonical frontend sau sửa script pass: typecheck/lint, 287 unit tests, build; contracts pass. 122 main E2E pass, Phase 6 4/5 pass: một expectation stale về activity-status đã bị bỏ, tách TASK-088. Chưa có PR negative proof hoặc 3 main push xanh; task chưa Done.
+Negative PR #1 có TS2322, frontend FAILURE, merge BLOCKED; đã đóng không merge. Local Windows frontend: 287 unit tests, typecheck/lint/build/contracts pass; browser 127/127. Policy sáu checks đã read-back; phạm vi Windows-only thay thế tại TASK-089. Chưa có ba main push xanh.
 
 ### Log
 - 2026-10-18 — Tạo đề xuất Pending từ tài liệu nguồn; chưa triển khai.
@@ -56,3 +54,7 @@ Các lệnh và phép kiểm tra ở đây dành cho lúc task được duyệt 
 - 2026-10-19 — Đã version policy 6 status checks từ GitHub Actions app 15368; GitHub PUT thành công và read-back xác nhận strict=true, enforce_admins=true, đủ 6 checks. Snapshot artifacts/task014/protection-before.json và protection-after.json. Đã giữ main chưa merge/push; chuẩn bị PR riêng để kiểm chứng CI type error bị chặn.
 - 2026-10-19 — Local typecheck, 287 unit tests, production build và contracts pass; phát hiện/sửa import URL trong script policy để lint pass. Đang rerun canonical frontend gate sạch và toàn bộ E2E trước khi đẩy nhánh kiểm chứng.
 - 2026-10-19 — Commit phần policy/CI đã kiểm chứng trước khi chuyển xử lý blocker TASK-088. Main E2E 122/122 pass, Phase 6 4/5; Task014 vẫn Paused cho PR proof và lịch sử CI thực. Không merge/push main.
+- 2026-10-19 — Resume sau TASK-088/e02d5dc: Phase 6 5/5, main E2E 122/122, tổng browser Windows 127/127. Chuẩn bị đẩy nhánh codex/phase0-required-ci và PR probe riêng; main giữ nguyên.
+- 2026-10-19 — Đã đẩy nhánh codex/phase0-required-ci qua pre-push checks. Tạo negative PR https://github.com/duktofn/Collectives/pull/1 (không draft, BLOCKED khi checks chạy) và draft review PR https://github.com/duktofn/Collectives/pull/2. CI run 39196145598 đang kiểm chứng file type error trong probe branch riêng; source review không chứa fixture lỗi.
+
+- 2026-10-19 — Negative PR #1 ghi nhận TS2322, frontend FAILURE và merge BLOCKED; đã đóng không merge và xóa nhánh probe. Evidence: artifacts/task014/probe-pr-proof.json, probe-frontend.log, probe-closed.json. Browser Windows 127/127 pass sau TASK-088. Tạm dừng để chuyển Windows-only theo yêu cầu mới; ba main push xanh vẫn chưa có.
