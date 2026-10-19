@@ -1,5 +1,7 @@
 * text=auto
 
+.githooks/* text eol=lf
+
 # These files are compared byte-for-byte with their generators on every OS.
 src/shared/ipc/generated.ts text eol=lf
 src/shared/fileCapabilities.generated.ts text eol=lf

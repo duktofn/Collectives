@@ -114,6 +114,10 @@ Tạo bộ cài và tệp chạy bằng `npm run release:build`. Các tệp phá
    npm ci
    ```
 
+   `prepare` đăng ký hook pre-push cho Git checkout này. Mỗi lần push sẽ chạy typecheck và lint; chỉ tiếp tục khi cả hai đạt. Để cài lại hook, chạy `npm run hooks:install`. Chạy `npm run test:hooks` để kiểm chứng hook bằng repo tạm và các fixture lỗi type/lint.
+
+   Nếu đã có Git hooks riêng, tích hợp `node scripts/git/pre-push.mjs` vào hook pre-push hiện có; script cài đặt giữ nguyên cấu hình hook đó và báo hướng dẫn tích hợp.
+
 3. **Chạy ứng dụng trong chế độ phát triển (Development Mode):**
    ```bash
    npm run tauri dev

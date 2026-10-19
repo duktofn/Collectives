@@ -4,6 +4,9 @@
   "description": "",
   "type": "module",
   "scripts": {
+    "prepare": "node scripts/git/install-hooks.mjs",
+    "hooks:install": "node scripts/git/install-hooks.mjs",
+    "test:hooks": "node scripts/git/verify-pre-push.mjs",
     "start": "vite",
     "dev": "vite",
     "build": "vite build",
