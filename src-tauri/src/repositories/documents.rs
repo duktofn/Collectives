@@ -930,3 +930,25 @@ mod post_commit_warning_tests {
         std::fs::remove_file(backup).unwrap();
     }
 }
+
+#[cfg(test)]
+mod missing_parent_tests {
+    use super::*;
+    #[test]
+    fn save_does_not_recreate_removed_parent() {
+        let root = tempfile::tempdir().unwrap();
+        let parent = root.path().join("notes");
+        std::fs::create_dir(&parent).unwrap();
+        let path = parent.join("note.md").to_string_lossy().into_owned();
+        std::fs::write(&path, "old").unwrap();
+        let token = read_file(path.clone()).unwrap().version_token;
+        std::fs::remove_dir_all(&parent).unwrap();
+        assert_eq!(
+            write_file(path, "draft".into(), WritePrecondition::Version { token })
+                .unwrap_err()
+                .code,
+            "parent_missing"
+        );
+        assert!(!parent.exists());
+    }
+}

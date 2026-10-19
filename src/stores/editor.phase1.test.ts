@@ -390,4 +390,17 @@ describe("Phase 1 committed selection", () => {
     expect(editorStore.state.saveNotice).toBeNull();
   });
 
+  it("retains a dirty draft and blocks navigation when its parent disappeared", async () => {
+    const api = await import("../features/editor");
+    await editorStore.openFile("a.md");
+    editorStore.updateContent("retain me");
+    vi.mocked(api.asSafetyError).mockReturnValueOnce({ code: "parent_missing", message: "Folder disappeared" });
+    vi.mocked(api.writeFile).mockRejectedValue({ code: "parent_missing", message: "Folder disappeared" });
+    expect(await editorStore.openFile("b.md")).toBe(false);
+    expect(editorStore.state.openFilePath).toBe("a.md");
+    expect(editorStore.state.currentContent).toBe("retain me");
+    expect(editorStore.state.isDirty).toBe(true);
+    expect(editorStore.state.error).toContain("parent_missing");
+  });
+
 });

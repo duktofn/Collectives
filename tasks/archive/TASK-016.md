@@ -1,7 +1,7 @@
 ## TASK-016 — Giữ draft và báo lỗi khi thư mục cha của note đã mất
 
-**State:** Paused
-**Current Step:** Step 2 — Reject missing parent without recreating it
+**State:** Done
+**Current Step:** Completed
 **Phase:** Phase 1
 **Source ID:** 1A.1
 
@@ -21,7 +21,7 @@
 Gate P0
 
 ### Requirements
-- [ ] Save note đã tồn tại không tạo lại thư mục cha: bỏ `create_dir_all` khỏi `write_file`; thư mục cha mất thì trả lỗi `parent_missing` và giữ draft. File mới chỉ tạo qua `create_file`.
+- [x] Save note đã tồn tại không tạo lại thư mục cha: bỏ `create_dir_all` khỏi `write_file`; thư mục cha mất thì trả lỗi `parent_missing` và giữ draft. File mới chỉ tạo qua `create_file`.
 
 ### Acceptance / Verification plan
 Xóa thư mục cha rồi `write_file`: kết quả là lỗi, và thư mục cha vẫn không tồn tại sau lệnh.
@@ -29,9 +29,9 @@ Xóa thư mục cha rồi `write_file`: kết quả là lỗi, và thư mục ch
 Các lệnh và phép kiểm tra ở đây dành cho lúc task được duyệt và thực hiện. Ngưỡng nào được nguồn ghi là đề xuất thì cần chốt theo baseline. Nếu claim đã hết đúng, ghi bằng chứng và điều chỉnh task trước khi sửa.
 
 ### Steps
-- [ ] Step 1 — Đối chiếu mục 1A.1 với hiện trạng; kiểm tra phụ thuộc → verify: ghi file/log/fixture hoặc quyết định còn thiếu.
-- [ ] Step 2 — Thực hiện phạm vi đã được duyệt → verify: đạt Requirements và các ràng buộc chung.
-- [ ] Step 3 — Nghiệm thu và cập nhật ledger → verify: đáp ứng Acceptance bằng bằng chứng thực chạy hoặc xác nhận được ghi rõ.
+- [x] Step 1 — Đối chiếu mục 1A.1 với hiện trạng; kiểm tra phụ thuộc → verify: ghi file/log/fixture hoặc quyết định còn thiếu.
+- [x] Step 2 — Thực hiện phạm vi đã được duyệt → verify: đạt Requirements và các ràng buộc chung.
+- [x] Step 3 — Nghiệm thu và cập nhật ledger → verify: đáp ứng Acceptance bằng bằng chứng thực chạy hoặc xác nhận được ghi rõ.
 
 ### Handoff
 - Branch: main; base: 11a2fd2.
@@ -48,3 +48,7 @@ Chưa triển khai; chưa chạy test sản phẩm. Các tiêu chí nghiệm thu
 - 2026-10-19 — Authorized as first of next five tasks after priority fixes. Windows-only scope; CI history is not an implementation dependency.
 
 - 2026-10-19 — Implemented parent_missing check without create_dir_all. Existing frontend catch retains dirty state and draft. Windows Rust 1.99.0 cargo fmt and cargo check --locked --lib passed. Acceptance runtime regression awaits test authorization; implementation committed before TASK-017.
+
+- 2026-10-19 — User authorized Windows regressions; resumed acceptance verification.
+
+- 2026-10-19 — Windows acceptance now passed: removed parent stays absent after parent_missing; frontend draft remains dirty and navigation is blocked. Rust missing-parent test and all 23 save-state tests pass. Earlier no-test handoff is superseded.
