@@ -1,6 +1,6 @@
 ## TASK-086 — Kiểm chứng Linux và macOS sau các task chạy Windows
 
-**State:** Pending
+**State:** Paused
 **Current Step:** Chờ triển khai runner và thu bằng chứng native
 
 ### Description
@@ -55,3 +55,5 @@ Chưa chạy Linux/macOS. TASK-007 đã có cargo check trên Windows Rust 1.99.
 - 2026-10-18 — TASK-010 đã pass Windows: 6 E2E, 3 unit, 9 lượt lặp; bổ sung phần kiểm chứng tương ứng trên Linux/macOS, vẫn Pending.
 - 2026-10-19 — Bổ sung Quick Open/caret theo TASK-011 và TASK-012; Windows đã đạt, Linux/macOS chưa chạy.
 - 2026-10-19 — TASK-015 đã đạt kiểm tra YAML trên Windows; phần native matrix/false fail-fast và hooks các OS được ghi ở đây để kiểm chứng trên runner thật.
+
+- 2026-10-19 — User requested Windows-only focus (TASK-089). Native Linux/macOS work paused. Existing CI evidence: Unix clippy needless_return in import_transaction.rs:133; macOS four import/collection tests reject symlink paths; Linux three browser failures. Logs: artifacts/task014/macos-job.log, linux-backend.log, linux-browser.log. Resume only when explicitly requested.

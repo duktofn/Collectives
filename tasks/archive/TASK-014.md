@@ -24,12 +24,12 @@
 [TASK-006](./TASK-006.md), [TASK-007](./TASK-007.md), [TASK-008](./TASK-008.md), [TASK-009](./TASK-009.md), [TASK-010](./TASK-010.md), [TASK-011](./TASK-011.md), [TASK-012](./TASK-012.md), [TASK-013](./TASK-013.md), [TASK-015](./TASK-015.md)
 
 ### Requirements
-- [x] Policy main đã bật 6 checks từ GitHub Actions app 15368, strict và enforce_admins; đã read-back xác nhận.
+- [x] Policy main đã bật các checks từ GitHub Actions app 15368, strict và enforce_admins; TASK-089 thu hẹp còn bốn checks Windows.
 - [x] PR có lỗi type được chứng minh blocked qua check bắt buộc.
 - [ ] Ba main push thực tế liên tiếp xanh theo acceptance; không tạo push để tích đếm.
 
 ### Acceptance / Verification plan
-PR kiểm chứng có lỗi type bị chặn merge; 3 push thực tế liên tiếp lên main xanh trên ubuntu-latest, windows-latest và macos-latest. Kiểm chứng lỗi chủ động trên nhánh thử nghiệm; không tạo push main chỉ để đủ số lần.
+PR kiểm chứng có lỗi type bị chặn merge; 3 push thực tế liên tiếp lên main xanh trên Windows (phạm vi mới tại TASK-089 / DEC-013). Kiểm chứng lỗi chủ động trên nhánh thử nghiệm; không tạo push main chỉ để đủ số lần.
 
 Các lệnh và phép kiểm tra ở đây dành cho lúc task được duyệt và thực hiện. Ngưỡng nào được nguồn ghi là đề xuất thì cần chốt theo baseline. Nếu claim đã hết đúng, ghi bằng chứng và điều chỉnh task trước khi sửa.
 
@@ -58,3 +58,5 @@ Negative PR #1 có TS2322, frontend FAILURE, merge BLOCKED; đã đóng không m
 - 2026-10-19 — Đã đẩy nhánh codex/phase0-required-ci qua pre-push checks. Tạo negative PR https://github.com/duktofn/Collectives/pull/1 (không draft, BLOCKED khi checks chạy) và draft review PR https://github.com/duktofn/Collectives/pull/2. CI run 39196145598 đang kiểm chứng file type error trong probe branch riêng; source review không chứa fixture lỗi.
 
 - 2026-10-19 — Negative PR #1 ghi nhận TS2322, frontend FAILURE và merge BLOCKED; đã đóng không merge và xóa nhánh probe. Evidence: artifacts/task014/probe-pr-proof.json, probe-frontend.log, probe-closed.json. Browser Windows 127/127 pass sau TASK-088. Tạm dừng để chuyển Windows-only theo yêu cầu mới; ba main push xanh vẫn chưa có.
+
+- 2026-10-19 — TASK-089 cập nhật acceptance nền tảng sang chỉ Windows theo yêu cầu; giữ nguyên tiêu chí ba main push thực tế.

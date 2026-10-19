@@ -6,9 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+defaults:
+  run:
+    shell: pwsh
+
 jobs:
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node
@@ -21,6 +25,7 @@ jobs:
       - name: Hook and branch-policy regressions
         run: |
           npm run test:hooks
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run check:ci-policy
       - name: Canonical frontend quality gates
         run: node scripts/phase0/verify-quality.mjs frontend
@@ -33,7 +38,7 @@ jobs:
         run: npm run check:contracts
 
   browser:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,7 +46,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install chromium
       - run: npm run test:e2e
       - name: Upload browser failures
         if: failure()
@@ -55,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -71,11 +76,6 @@ jobs:
         with:
           toolchain: 1.97.0
           components: clippy, rustfmt
-      - name: Install Linux dependencies
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -84,7 +84,7 @@ jobs:
         run: node scripts/phase0/verify-quality.mjs backend
 
   phase0-smoke:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node
@@ -99,20 +99,22 @@ jobs:
         with:
           toolchain: 1.97.0
           components: clippy, rustfmt
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - name: Generate and compare smoke fixtures
         run: |
-          FIXTURE_PARENT="$RUNNER_TEMP/collectives-phase0-smoke"
-          mkdir -p "$FIXTURE_PARENT"
-          node scripts/phase0/generate-fixtures.mjs --out "$FIXTURE_PARENT/a" --profile smoke --seed phase0-v1
-          node scripts/phase0/generate-fixtures.mjs --out "$FIXTURE_PARENT/b" --profile smoke --seed phase0-v1
-          node scripts/phase0/verify-fixtures.mjs --left "$FIXTURE_PARENT/a" --right "$FIXTURE_PARENT/b" --manifest test-fixtures/phase0/manifest.json
+          $smokeFixtureRoot = Join-Path $env:RUNNER_TEMP 'collectives-phase0-smoke'
+          $fixtureA = Join-Path $smokeFixtureRoot 'a'
+          $fixtureB = Join-Path $smokeFixtureRoot 'b'
+          New-Item -ItemType Directory -Force -Path $smokeFixtureRoot | Out-Null
+          node scripts/phase0/generate-fixtures.mjs --out "$fixtureA" --profile smoke --seed phase0-v1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/phase0/generate-fixtures.mjs --out "$fixtureB" --profile smoke --seed phase0-v1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/phase0/verify-fixtures.mjs --left "$fixtureA" --right "$fixtureB" --manifest test-fixtures/phase0/manifest.json
       - name: Run smoke harness and validate schema
         run: |
-          node scripts/phase0/run-benchmarks.mjs --fixture-root "$RUNNER_TEMP/collectives-phase0-smoke/a" --artifact-root artifacts/phase0 --native-cold-samples 1 --native-warm-samples 1 --workload-samples 1 --skip-native
+          $fixtureA = Join-Path $env:RUNNER_TEMP 'collectives-phase0-smoke/a'
+          node scripts/phase0/run-benchmarks.mjs --fixture-root "$fixtureA" --artifact-root artifacts/phase0 --native-cold-samples 1 --native-warm-samples 1 --workload-samples 1 --skip-native
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/phase0/verify-artifacts.mjs --root artifacts/phase0 --allow-incomplete
       - name: Upload Phase 0 smoke evidence
         if: always()

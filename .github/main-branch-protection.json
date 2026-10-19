@@ -2,12 +2,22 @@
   "required_status_checks": {
     "strict": true,
     "checks": [
-      { "context": "frontend", "app_id": 15368 },
-      { "context": "browser", "app_id": 15368 },
-      { "context": "phase0-smoke", "app_id": 15368 },
-      { "context": "backend (ubuntu-latest)", "app_id": 15368 },
-      { "context": "backend (windows-latest)", "app_id": 15368 },
-      { "context": "backend (macos-latest)", "app_id": 15368 }
+      {
+        "context": "frontend",
+        "app_id": 15368
+      },
+      {
+        "context": "browser",
+        "app_id": 15368
+      },
+      {
+        "context": "phase0-smoke",
+        "app_id": 15368
+      },
+      {
+        "context": "backend (windows-latest)",
+        "app_id": 15368
+      }
     ]
   },
   "enforce_admins": true,

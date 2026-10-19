@@ -12,7 +12,9 @@ for (const name of [...fixed, 'backend']) {
   assert.equal(workflow.jobs[name].name, undefined, 'Update policy mapping when naming CI jobs.');
 }
 assert.equal(workflow.jobs.backend.strategy['fail-fast'], false);
-assert.deepEqual(workflow.jobs.backend.strategy.matrix.os, ['ubuntu-latest', 'windows-latest', 'macos-latest']);
+assert.deepEqual(workflow.jobs.backend.strategy.matrix.os, ['windows-latest']);
+for (const name of fixed) assert.equal(workflow.jobs[name]['runs-on'], 'windows-latest');
+assert.equal(workflow.defaults.run.shell, 'pwsh');
 const expected = [...fixed, ...workflow.jobs.backend.strategy.matrix.os.map((os) => `backend (${os})`)];
 assert.equal(policy.required_status_checks.strict, true);
 assert.equal(policy.enforce_admins, true);
@@ -23,4 +25,4 @@ assert.deepEqual(checks.map((check) => check.context).sort(), expected.sort());
 assert.ok(checks.every((check) => check.app_id === 15368), 'Require checks from the verified GitHub Actions app.');
 assert.ok(workflow.jobs.frontend.steps.some((step) => step.run?.includes('npm run test:hooks')));
 assert.ok(workflow.jobs.frontend.steps.some((step) => step.run?.includes('npm run check:ci-policy')));
-console.log('PASS: main protection requires all canonical CI jobs and three backend platforms from GitHub Actions.');
+console.log('PASS: main protection requires all canonical CI jobs on Windows from GitHub Actions.');
