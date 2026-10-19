@@ -33,14 +33,12 @@ Các lệnh và phép kiểm tra ở đây dành cho lúc task được duyệt 
 - [x] Step 3 — Nghiệm thu và cập nhật ledger → verify: đáp ứng Acceptance bằng bằng chứng thực chạy hoặc xác nhận được ghi rõ.
 
 ### Handoff
-- Branch: `main`
-- Base commit: `110bc56` (mốc phân rã kế hoạch)
-- Uncommitted files: bộ tài liệu Pending; chưa có thay đổi triển khai cho task này.
-- Next action: Người dùng duyệt TASK-017; khi bắt đầu, kiểm tra lại git và Dependencies, rồi làm Step 1.
-- Blockers: chờ duyệt và các phụ thuộc chưa hoàn tất.
+- Branch: main; source and focused regression changes committed locally.
+- Next action: none for this task; current requested batch complete.
+- Blockers: none within Windows scope.
 
 ### Verification
-Chưa triển khai; chưa chạy test sản phẩm. Các tiêu chí nghiệm thu chưa được xác nhận đạt.
+Windows injected precommit failures at write, sync, CAS and replace all leave original bytes unchanged and no owned temporary files. Included in the passing full Rust all-target test run.
 
 ### Log
 - 2026-10-18 — Tạo đề xuất Pending từ tài liệu nguồn; chưa triển khai.
@@ -51,3 +49,5 @@ Chưa triển khai; chưa chạy test sản phẩm. Các tiêu chí nghiệm thu
 - 2026-10-19 — Implemented owned temporary-file RAII: only successfully created files are owned; handle closes before deletion even on write/flush/CAS/rename failure. Windows Rust 1.99 cargo fmt/check --lib pass. Fault-injection acceptance awaits test authorization.
 
 - 2026-10-19 — Windows Rust 1.99 fault-injection regression passes all four precommit boundaries (write, sync, CAS, replace); after each injected error only the original unchanged note remains. User authorized tests; task Done.
+
+- 2026-10-19 — Final Windows verification recorded; source tree passed typecheck/lint/contracts/build, 291 frontend unit tests, 28 related browser tests and the full Rust all-target test run. No remote push or CI configuration change.
