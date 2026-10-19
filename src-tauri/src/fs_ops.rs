@@ -41,6 +41,9 @@ pub fn read_children(path: &Path) -> Result<Vec<FsEntry>, String> {
         }
 
         let is_dir = path_buf.is_dir();
+        if !is_dir && crate::fs_layer::owned_artifacts::is_owned_document_artifact(&path_buf) {
+            continue;
+        }
         let size = if is_dir {
             None
         } else {

@@ -200,6 +200,9 @@ impl WatchManager {
         let (sender, receiver) = sync_channel::<notify::Event>(1024);
         let callback = move |res: Result<notify::Event, notify::Error>| {
             if let Ok(event) = res {
+                let Some(event) = visible_document_event(&event) else {
+                    return;
+                };
                 if sender.try_send(event).is_err() {
                     overflow_for_callback.store(true, Ordering::Release);
                 }
@@ -407,6 +410,27 @@ impl Default for WatchManager {
     }
 }
 
+/// Drop internal paths while retaining the real document side of publication.
+fn visible_document_event(event: &notify::Event) -> Option<notify::Event> {
+    use crate::fs_layer::owned_artifacts::is_owned_document_artifact;
+    let mut visible = event.clone();
+    visible
+        .paths
+        .retain(|path| !is_owned_document_artifact(path));
+    if visible.paths.is_empty() {
+        return None;
+    }
+    if visible.paths.len() != event.paths.len()
+        && matches!(
+            event.kind,
+            EventKind::Modify(ModifyKind::Name(RenameMode::Both))
+        )
+    {
+        visible.kind = EventKind::Modify(ModifyKind::Data(notify::event::DataChange::Any));
+    }
+    Some(visible)
+}
+
 fn collect_test_events(
     event: &notify::Event,
     files: &HashMap<PathBuf, String>,
@@ -414,6 +438,9 @@ fn collect_test_events(
     changes: &mut Vec<FilesystemChangeV2>,
     legacy: &mut Vec<WatchLegacyEvent>,
 ) {
+    let Some(event) = visible_document_event(event) else {
+        return;
+    };
     for path in &event.paths {
         if let Some(entry_id) = files.get(path) {
             match &event.kind {
@@ -485,6 +512,9 @@ fn emit_legacy_and_collect(
     folders: &HashMap<PathBuf, String>,
     changes: &mut Vec<FilesystemChangeV2>,
 ) {
+    let Some(event) = visible_document_event(event) else {
+        return;
+    };
     for path in &event.paths {
         if let Some(entry_id) = files.get(path) {
             match &event.kind {
