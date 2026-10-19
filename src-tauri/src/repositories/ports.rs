@@ -94,7 +94,7 @@ pub trait DocumentRepository: Send + Sync {
         &self,
         path: &str,
         content: &str,
-        expected_token: Option<String>,
+        precondition: crate::repositories::documents::WritePrecondition,
     ) -> Result<DocumentWriteReceipt, SafetyError>;
     fn create_new(&self, path: &str, content: &str) -> Result<DocumentWriteReceipt, SafetyError>;
 }

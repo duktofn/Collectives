@@ -11,6 +11,10 @@ export interface FileSnapshot {
   lineEnding?: LineEnding;
   byteSize?: number;
 }
+export type WritePrecondition =
+  | { kind: "version"; token: string }
+  | { kind: "createNew" }
+  | { kind: "overwrite"; observedDiskToken: string };
 export interface WriteReceipt {
   versionToken: string;
 }
@@ -69,7 +73,7 @@ export interface CommandMap {
   validate_entries: { args: { collectionId: string }; result: BrokenEntry[] };
   read_file: { args: { path: string }; result: FileSnapshot | string };
   read_folderref_snapshot: { args: { rootPath: string; childPath: string }; result: FileSnapshot };
-  write_file: { args: { path: string; content: string; expectedToken?: string }; result: WriteReceipt };
+  write_file: { args: { path: string; content: string; precondition: WritePrecondition }; result: WriteReceipt };
   create_file: { args: { path: string; content: string }; result: WriteReceipt };
   resolve_wikilink: { args: { collectionId: string; noteName: string }; result: ResolveCandidate | null };
   search_link_index: { args: { collectionId: string; query: string; limit?: number }; result: ResolveCandidate[] };

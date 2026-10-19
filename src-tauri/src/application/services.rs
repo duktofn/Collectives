@@ -412,9 +412,9 @@ pub fn write_file(
     services: &AppServices,
     path: String,
     content: String,
-    expected_token: Option<String>,
+    precondition: crate::repositories::documents::WritePrecondition,
 ) -> Result<crate::repositories::documents::DocumentWriteReceipt, SafetyError> {
-    services.documents.write(&path, &content, expected_token)
+    services.documents.write(&path, &content, precondition)
 }
 
 pub fn create_file(

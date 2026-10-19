@@ -238,7 +238,7 @@ describe("Phase 1 committed selection", () => {
     finishWrite({ versionToken: "first-commit" });
     expect(await closing).toBe(true);
     expect(vi.mocked(api.writeFile).mock.calls.map((call) => call[1])).toEqual(["first draft", "typed while closing"]);
-    expect(vi.mocked(api.writeFile).mock.calls[1]?.[2]).toBe("first-commit");
+    expect(vi.mocked(api.writeFile).mock.calls[1]?.[2]).toEqual({ kind: "version", token: "first-commit" });
   });
 
   it("coalesces intermediate revisions while a write is in flight", async () => {
@@ -268,7 +268,7 @@ describe("Phase 1 committed selection", () => {
     editorStore.updateContent("typed while loading B");
     finishRead({ content: "B", versionToken: "B-token" });
     await opening;
-    expect(api.writeFile).toHaveBeenCalledWith("a.md", "typed while loading B", "token:a.md");
+    expect(api.writeFile).toHaveBeenCalledWith("a.md", "typed while loading B", { kind: "version", token: "token:a.md" });
     expect(editorStore.state.openFilePath).toBe("b.md");
   });
 
@@ -365,7 +365,7 @@ describe("Phase 1 committed selection", () => {
     expect(reader).not.toHaveBeenCalled();
 
     await editorStore.saveFile();
-    expect(api.writeFile).toHaveBeenCalledWith("a.md", "final revision", "token:a.md");
+    expect(api.writeFile).toHaveBeenCalledWith("a.md", "final revision", { kind: "version", token: "token:a.md" });
     expect(reader.mock.calls.length).toBeLessThanOrEqual(2);
     unregister();
   });

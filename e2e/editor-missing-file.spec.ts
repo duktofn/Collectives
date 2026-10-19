@@ -48,7 +48,7 @@ for (const editDuringRead of [false, true]) {
     await expect(page.locator('.cm-content')).toHaveText('other text file');
     if (editDuringRead) {
       await expect.poll(() => page.evaluate(() => (window as unknown as { __fileWrites: Record<string, unknown>[] }).__fileWrites)).toContainEqual({
-        path: 'D:/Sample/Knowledge/Slot0.json', content: 'null\n42', expectedToken: 'sample-v1',
+        path: 'D:/Sample/Knowledge/Slot0.json', content: 'null\n42', precondition: { kind: 'version', token: 'sample-v1' },
       });
     }
     await missing.click({ button: 'right' });

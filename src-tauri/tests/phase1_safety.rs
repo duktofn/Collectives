@@ -280,7 +280,9 @@ fn conditional_write_rejects_external_change_without_replacing_draft_target() {
     let error = documents::write_file(
         path.to_string_lossy().into_owned(),
         "draft".into(),
-        Some(snapshot.version_token),
+        tauri_app_lib::repositories::documents::WritePrecondition::Version {
+            token: snapshot.version_token,
+        },
     )
     .unwrap_err();
     assert_eq!(error.code, "external_change_conflict");

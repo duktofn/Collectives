@@ -245,8 +245,8 @@ export const IPC_COMMANDS = [
         "type": "string"
       },
       {
-        "name": "expectedToken",
-        "type": "string | undefined"
+        "name": "precondition",
+        "type": "WritePrecondition"
       }
     ],
     "result": "WriteReceipt"

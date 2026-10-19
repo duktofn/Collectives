@@ -13,7 +13,14 @@ fn writes_reject_unreadable_output_without_changing_the_original() {
         ("x".repeat(10 * 1024 * 1024 + 1), "size"),
         ("invalid\0text".into(), "nul"),
     ] {
-        let error = write_file(path.clone(), content, Some(token.clone())).unwrap_err();
+        let error = write_file(
+            path.clone(),
+            content,
+            tauri_app_lib::repositories::documents::WritePrecondition::Version {
+                token: token.clone(),
+            },
+        )
+        .unwrap_err();
         assert_eq!(error.details["reason"], reason);
         assert_eq!(fs::read_to_string(&path).unwrap(), "original");
     }
@@ -46,7 +53,9 @@ fn arbitrary_text_names_open_and_folder_listings_identify_binary_files() {
         write_file(
             path.to_string_lossy().into(),
             "Updated\n".into(),
-            Some(snapshot.version_token),
+            tauri_app_lib::repositories::documents::WritePrecondition::Version {
+                token: snapshot.version_token,
+            },
         )
         .unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "Updated\n");
@@ -128,7 +137,9 @@ fn save_preserves_bom_and_crlf_and_unchanged_mixed_content_is_not_rewritten() {
     tauri_app_lib::repositories::documents::write_file(
         crlf.to_string_lossy().to_string(),
         "a\nc\n".into(),
-        Some(snapshot.version_token),
+        tauri_app_lib::repositories::documents::WritePrecondition::Version {
+            token: snapshot.version_token,
+        },
     )
     .unwrap();
     let saved = fs::read(&crlf).unwrap();
@@ -144,7 +155,9 @@ fn save_preserves_bom_and_crlf_and_unchanged_mixed_content_is_not_rewritten() {
     tauri_app_lib::repositories::documents::write_file(
         mixed.to_string_lossy().to_string(),
         mixed_snapshot.content.clone(),
-        Some(mixed_snapshot.version_token),
+        tauri_app_lib::repositories::documents::WritePrecondition::Version {
+            token: mixed_snapshot.version_token,
+        },
     )
     .unwrap();
     assert_eq!(fs::read(&mixed).unwrap(), mixed_bytes);

@@ -25,9 +25,18 @@ pub fn write_file(
     state: State<'_, AppServices>,
     path: String,
     content: String,
-    expected_token: Option<String>,
+    precondition: Option<crate::repositories::documents::WritePrecondition>,
 ) -> Result<crate::repositories::documents::DocumentWriteReceipt, SafetyError> {
-    crate::application::services::write_file(&state, path, content, expected_token)
+    let precondition = require_precondition(precondition)?;
+    crate::application::services::write_file(&state, path, content, precondition)
+}
+
+fn require_precondition(
+    precondition: Option<crate::repositories::documents::WritePrecondition>,
+) -> Result<crate::repositories::documents::WritePrecondition, SafetyError> {
+    precondition.ok_or_else(|| {
+        SafetyError::new("precondition_required", "A write precondition is required")
+    })
 }
 
 #[tauri::command]
@@ -37,4 +46,15 @@ pub fn create_file(
     content: String,
 ) -> Result<crate::repositories::documents::DocumentWriteReceipt, SafetyError> {
     crate::application::services::create_file(&state, path, content)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn omitted_precondition_is_rejected() {
+        assert_eq!(
+            super::require_precondition(None).unwrap_err().code,
+            "precondition_required"
+        );
+    }
 }

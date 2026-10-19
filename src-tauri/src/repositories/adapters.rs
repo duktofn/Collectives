@@ -251,12 +251,12 @@ impl DocumentRepository for DocumentFileRepository {
         &self,
         path: &str,
         content: &str,
-        expected_token: Option<String>,
+        precondition: crate::repositories::documents::WritePrecondition,
     ) -> Result<crate::repositories::documents::DocumentWriteReceipt, SafetyError> {
         crate::repositories::documents::write_file(
             path.to_string(),
             content.to_string(),
-            expected_token,
+            precondition,
         )
     }
 

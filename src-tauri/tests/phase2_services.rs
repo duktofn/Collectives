@@ -69,7 +69,9 @@ fn temp_root_service_smoke_keeps_phase1_recovery_guard_and_formats() {
     documents::write_file(
         source.to_string_lossy().into_owned(),
         "# Updated".into(),
-        Some(snapshot.version_token),
+        tauri_app_lib::repositories::documents::WritePrecondition::Version {
+            token: snapshot.version_token,
+        },
     )
     .unwrap();
     assert_eq!(std::fs::read_to_string(source).unwrap(), "# Updated");

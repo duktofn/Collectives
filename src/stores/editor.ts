@@ -1,3 +1,4 @@
+import type { WritePrecondition } from "../shared/ipc/client";
 import { createStore } from "solid-js/store";
 import * as api from "../features/editor";
 import { EditorMode, WikilinkFragment } from "../types";
@@ -45,6 +46,7 @@ interface SaveSnapshot {
   revision: number;
   content: string;
   expectedToken?: string;
+  precondition?: WritePrecondition;
   recoverySessionId: string;
 }
 
@@ -119,11 +121,11 @@ async function drainSaveQueue(): Promise<void> {
     const snapshot = saveQueue.shift() as SaveSnapshot;
     activeSaveSnapshot = snapshot;
     const writeSnapshot: SaveSnapshot = lastPersistedToken && snapshot.path === state.openFilePath
-      ? { ...snapshot, expectedToken: lastPersistedToken }
+      ? { ...snapshot, expectedToken: lastPersistedToken, precondition: { kind: "version", token: lastPersistedToken } }
       : { ...snapshot };
     try {
       const conflictEpochAtStart = filesystemConflictEpoch;
-      const receipt = await api.writeFile(writeSnapshot.path, writeSnapshot.content, writeSnapshot.expectedToken);
+      const receipt = await api.writeFile(writeSnapshot.path, writeSnapshot.content, writeSnapshot.precondition ?? { kind: "version", token: writeSnapshot.expectedToken ?? "" });
       // Keep older/mocked adapters safe: retaining the prior token causes a later
       // CAS conflict rather than silently accepting an unverified disk version.
       const persistedVersionToken = receipt?.versionToken ?? writeSnapshot.expectedToken ?? state.versionToken;
@@ -321,11 +323,11 @@ export const editorStore = {
     }
   },
 
-  async saveFile() {
+  async saveFile(precondition?: WritePrecondition) {
     const snapshot = currentSaveSnapshot();
     if (!snapshot) return;
     if (state.conflictKind) throw new Error(state.error || "Resolve the current conflict before saving");
-    enqueueSnapshot(snapshot);
+    enqueueSnapshot({ ...snapshot, precondition });
     if (saveDrainPromise) return saveDrainPromise;
 
     setState("isSaving", true);
@@ -536,7 +538,7 @@ export const editorStore = {
       }
       saveQueue = saveQueue.filter((queued) => queued.path !== path || queued.generation !== generation);
       setState({ versionToken: snapshot.versionToken, error: null, conflictKind: null });
-      await this.saveFile();
+      await this.saveFile({ kind: "overwrite", observedDiskToken: snapshot.versionToken });
       return !state.isDirty && state.error === null;
     } catch (error) {
       setState("error", formatEditorError(error));

@@ -328,11 +328,37 @@ impl Drop for StagedDocument {
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum WritePrecondition {
+    Version {
+        token: String,
+    },
+    CreateNew,
+    Overwrite {
+        #[serde(rename = "observedDiskToken")]
+        observed_disk_token: String,
+    },
+}
+
 pub fn write_file(
     path: String,
     content: String,
-    expected_token: Option<String>,
+    precondition: WritePrecondition,
 ) -> Result<DocumentWriteReceipt, SafetyError> {
+    let expected_token = match precondition {
+        WritePrecondition::CreateNew => return create_file(path, content),
+        WritePrecondition::Version { token } => token,
+        WritePrecondition::Overwrite {
+            observed_disk_token,
+        } => observed_disk_token,
+    };
+    if expected_token.is_empty() {
+        return Err(SafetyError::new(
+            "precondition_required",
+            "A disk version token is required",
+        ));
+    }
     let path = std::path::Path::new(&path);
     file_kind(path)?;
     let parent = path
@@ -354,8 +380,8 @@ pub fn write_file(
         .as_deref()
         .map(|bytes| decode_document_bytes(path, bytes))
         .transpose()?;
-    if let Some(expected) = expected_token.as_ref() {
-        if original.as_ref().map(|snapshot| &snapshot.version_token) != Some(expected) {
+    {
+        if original.as_ref().map(|snapshot| &snapshot.version_token) != Some(&expected_token) {
             return Err(SafetyError::new(
                 "external_change_conflict",
                 "File changed outside the editor; draft was retained",
@@ -408,9 +434,14 @@ pub fn write_file(
     file.sync_all()
         .map_err(|e| SafetyError::new("save_failed", format!("Failed to flush temp file: {e}")))?;
     drop(stage.file.take());
-    if let Some(expected) = expected_token.as_ref() {
-        let actual = file_version_token(path, "").map_err(SafetyError::from)?;
-        if &actual != expected {
+    {
+        let actual = file_version_token(path, "").map_err(|error| {
+            SafetyError::new(
+                "external_change_conflict",
+                format!("File unavailable before replacement; draft retained: {error}"),
+            )
+        })?;
+        if actual != expected_token {
             return Err(SafetyError::new(
                 "external_change_conflict",
                 "File changed outside the editor immediately before replacement; draft was retained",
@@ -760,5 +791,61 @@ mod create_file_tests {
         let error = create_file(path, "replacement".into()).unwrap_err();
         assert_eq!(error.code, "external_change_conflict");
         assert_eq!(fs::read_to_string(destination).unwrap(), "first draft");
+    }
+}
+
+#[cfg(test)]
+mod write_precondition_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_write_intents_keep_external_changes_and_create_exclusively() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("note.md").to_string_lossy().into_owned();
+        let receipt =
+            write_file(path.clone(), "first".into(), WritePrecondition::CreateNew).unwrap();
+        assert!(write_file(path.clone(), "replace".into(), WritePrecondition::CreateNew).is_err());
+        std::fs::write(&path, "outside").unwrap();
+        for intent in [
+            WritePrecondition::Version {
+                token: receipt.version_token.clone(),
+            },
+            WritePrecondition::Overwrite {
+                observed_disk_token: receipt.version_token,
+            },
+        ] {
+            assert_eq!(
+                write_file(path.clone(), "draft".into(), intent)
+                    .unwrap_err()
+                    .code,
+                "external_change_conflict"
+            );
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "outside");
+        }
+        let token = read_file(path.clone()).unwrap().version_token;
+        let updated = write_file(
+            path.clone(),
+            "chosen".into(),
+            WritePrecondition::Overwrite {
+                observed_disk_token: token,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_file(path.clone()).unwrap().version_token,
+            updated.version_token
+        );
+        assert_eq!(
+            write_file(
+                path,
+                "draft".into(),
+                WritePrecondition::Version {
+                    token: String::new()
+                }
+            )
+            .unwrap_err()
+            .code,
+            "precondition_required"
+        );
     }
 }
