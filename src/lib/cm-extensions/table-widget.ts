@@ -188,10 +188,11 @@ function setAllControlsHidden(container: HTMLElement): void {
 }
 
 class TableWidget extends WidgetType {
-  constructor(public table: TableModel) { super(); }
+  constructor(public table: TableModel, public readOnly: boolean) { super(); }
 
   eq(other: TableWidget): boolean {
-    return this.table.from === other.table.from
+    return this.readOnly === other.readOnly
+      && this.table.from === other.table.from
       && this.table.to === other.table.to
       && this.table.source === other.table.source;
   }
@@ -223,7 +224,8 @@ class TableWidget extends WidgetType {
     const previousColumn = Number(focusedCell?.dataset.columnIndex ?? container.dataset.activeColumn ?? 0);
     const shapeChanged = container.querySelectorAll("thead th").length !== this.table.headers.length
       || container.querySelectorAll("tbody tr").length !== this.table.rows.length;
-    if (activeCell && container.contains(document.activeElement) && !shapeChanged) {
+    if (!view.state.readOnly && container.dataset.readOnly === String(view.state.readOnly)
+      && activeCell && container.contains(document.activeElement) && !shapeChanged) {
       this.refreshCells(container, view, activeCell);
       setActiveControls(container, Number(activeCell.dataset.rowIndex), Number(activeCell.dataset.columnIndex));
     } else {
@@ -233,7 +235,7 @@ class TableWidget extends WidgetType {
       delete container.dataset.rendering;
       const scroll = container.querySelector<HTMLElement>(".cm-table-scroll");
       if (scroll) scroll.scrollLeft = scrollLeft;
-      if (focusedElement) {
+      if (focusedElement && !view.state.readOnly) {
         requestAnimationFrame(() => this.restoreFocus(container, view, previousRow, previousColumn));
       }
     }
@@ -253,6 +255,7 @@ class TableWidget extends WidgetType {
     container.dataset.sourceFrom = String(this.table.from);
     container.dataset.sourceTo = String(this.table.to);
     const editable = !view.state.facet(EditorState.readOnly);
+    container.dataset.readOnly = String(!editable);
     const scroll = document.createElement("div");
     scroll.className = "cm-table-scroll";
     const table = document.createElement("table");
@@ -352,7 +355,7 @@ class TableWidget extends WidgetType {
         this.activateCell(cell, latestModel, sourceOffset, event.detail >= 2);
       });
       cell.addEventListener("focus", () => {
-        if (cell.dataset.editing === "true") return;
+        if (this.readOnly || cell.dataset.editing === "true") return;
         const container = cell.closest<HTMLElement>(".cm-table-widget-container");
         const view = container ? EditorView.findFromDOM(container) : null;
         const table = container && view ? currentTable(container, view) : undefined;
@@ -701,7 +704,7 @@ class TableWidget extends WidgetType {
 
   private changeRows(container: HTMLElement, row: number, insert: boolean): void {
     const view = EditorView.findFromDOM(container);
-    if (!view) return;
+    if (!view || view.state.readOnly) return;
     const table = currentTable(container, view);
     if (!table) return;
     const source = sourceData(table);
@@ -718,7 +721,7 @@ class TableWidget extends WidgetType {
 
   private changeColumns(container: HTMLElement, column: number, insert: boolean): void {
     const view = EditorView.findFromDOM(container);
-    if (!view) return;
+    if (!view || view.state.readOnly) return;
     const table = currentTable(container, view);
     if (!table) return;
     const source = sourceData(table);
@@ -739,6 +742,7 @@ class TableWidget extends WidgetType {
   }
 
   private replaceTable(view: EditorView, current: TableModel, source: TableSource, focusRow: number, focusColumn: number): void {
+    if (view.state.readOnly) return;
     const oldSource = view.state.doc.sliceString(current.from, current.to);
     const keepTrailingNewline = oldSource.endsWith("\n");
     const serialized = serializeTable(source) + (keepTrailingNewline ? "\n" : "");
@@ -788,7 +792,7 @@ function normalizeTableCell(source: string): string {
 function buildTableDecorations(state: EditorState): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   for (const table of findTables(state)) {
-    builder.add(table.from, table.to, Decoration.replace({ widget: new TableWidget(table), block: true }));
+    builder.add(table.from, table.to, Decoration.replace({ widget: new TableWidget(table, state.readOnly), block: true }));
   }
   return builder.finish();
 }

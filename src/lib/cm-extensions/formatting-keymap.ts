@@ -154,7 +154,7 @@ const lineMoveKeymap: KeyBinding[] = [
 ];
 
 export const formattingKeymapExtension: Extension = [
-  Prec.highest(keymap.of([{ key: 'Enter', run: finishInlineFormattingOnEnter }])),
+  Prec.highest(keymap.of([{ key: 'Enter', run: (view) => view.state.readOnly || finishInlineFormattingOnEnter(view) }])),
   Prec.highest(keymap.of(lineMoveKeymap)),
   keymap.of(formattingBindings),
   Prec.high(keymap.of(listIndentKeymap)),

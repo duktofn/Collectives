@@ -139,7 +139,7 @@ function handleDelimiterInput(
 }
 
 function asymmetricBackspace(view: EditorView): boolean {
-  if (!view.state.selection.main.empty) return false;
+  if (view.state.readOnly || !view.state.selection.main.empty) return false;
 
   const pos = view.state.selection.main.head;
   if (pos === 0) return false;
@@ -158,7 +158,7 @@ function asymmetricBackspace(view: EditorView): boolean {
 }
 
 function asymmetricForwardDelete(view: EditorView): boolean {
-  if (!view.state.selection.main.empty) return false;
+  if (view.state.readOnly || !view.state.selection.main.empty) return false;
 
   const pos = view.state.selection.main.head;
   if (pos >= view.state.doc.length) return false;

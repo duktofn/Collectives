@@ -1,4 +1,4 @@
-import { Compartment, Extension, EditorState } from "@codemirror/state";
+import { Compartment, Extension, EditorState, Transaction } from "@codemirror/state";
 import { autocompletion } from "@codemirror/autocomplete";
 import { markdown } from "@codemirror/lang-markdown";
 import { Strikethrough } from "@lezer/markdown";
@@ -32,6 +32,9 @@ const sourceMarkdownAutocomplete = autocompletion({ override: [slashTemplateComp
 const renderMarkdownAutocomplete = autocompletion({ override: [wikilinkCompletionSource, slashTemplateCompletionSource], activateOnTyping: true, interactionDelay: 0 });
 
 export const baseEditorExtensions: Extension[] = [
+  EditorState.transactionFilter.of((transaction) =>
+    transaction.startState.readOnly && transaction.docChanged && transaction.annotation(Transaction.userEvent)
+      ? [] : transaction),
   wordOccurrenceHighlighting('markdown'),
   editorLayoutExtension,
   markdown({ codeLanguages, extensions: [tableMarkdownExtension, Strikethrough] }),
