@@ -27,7 +27,7 @@ describe("shared Markdown delimiter input rules", () => {
       expect(getDelimiterEdit(text, text.length, text.length, marker), text).toBeNull();
     }
     for (const [text, marker] of [["*italic* ", "*"], ["**bold** ", "*"], ["_italic_ ", "_"],
-      ["~~strike~~ ", "~"], ["`code` ", "`"]]) {
+      ["~~strike~~ ", "~"], ["`code` ", "`"], ["``one`two`` ", "`"], ["`literal*` ", "*"], ["* list item ", "*"]]) {
       expect(getDelimiterEdit(text, text.length, text.length, marker), text)?.toMatchObject({ insert: marker + marker });
     }
     expect(getDelimiterEdit("__", 1, 1, "_")?.insert).toBe("___");

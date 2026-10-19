@@ -47,20 +47,32 @@ function hasUnclosedStrongDelimiter(text: string, to: number, marker: string): b
 
 function hasUnclosedMarker(text: string, to: number, marker: string): boolean {
   let pending = 0;
+  let codeTicks = 0;
   const start = marker === "`" ? 0 : text.lastIndexOf("\n", to - 1) + 1;
   for (let index = start; index < to;) {
-    if (text[index] !== marker || isEscaped(text, index)) {
-      index++;
+    const character = text[index];
+    if (isEscaped(text, index)) { index++; continue; }
+    if (marker !== "`" && character === "`") {
+      let end = index + 1;
+      while (end < to && text[end] === "`") end++;
+      const length = end - index;
+      if (codeTicks === 0) codeTicks = length;
+      else if (codeTicks === length) codeTicks = 0;
+      index = end;
       continue;
     }
-    if (marker === "_" && /[\p{L}\p{N}]/u.test(text[index - 1] ?? "")
-      && /[\p{L}\p{N}]/u.test(text[index + 1] ?? "")) {
-      index++;
-      continue;
-    }
+    if (codeTicks || character !== marker) { index++; continue; }
     let end = index + 1;
     while (end < to && text[end] === marker) end++;
-    pending = Math.abs(pending - (end - index));
+    const length = end - index;
+    const inWord = marker === "_" && /[\p{L}\p{N}]/u.test(text[index - 1] ?? "")
+      && /[\p{L}\p{N}]/u.test(text[end] ?? "");
+    const listBullet = marker === "*" && length === 1
+      && /^[\t ]*$/.test(text.slice(start, index)) && /[\t ]/.test(text[end] ?? "");
+    if (!inWord && !listBullet) {
+      pending = marker === "`" && pending > 0 && pending !== length
+        ? pending : Math.abs(pending - length);
+    }
     index = end;
   }
   return pending > 0;

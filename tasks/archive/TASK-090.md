@@ -29,3 +29,5 @@ Source reviewed: unmatched marker runs now insert only the typed closer; complet
 - 2026-10-19 — Created from direct implementation request; authorized before the next five plan tasks (016–020).
 
 - 2026-10-19 — User authorized regression tests; added unmatched/closed marker cases.
+
+- 2026-10-19 — Refined marker scanning to ignore list bullets/code contents and match code runs by delimiter length; extended regression cases.
