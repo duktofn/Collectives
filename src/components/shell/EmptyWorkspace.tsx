@@ -1,3 +1,4 @@
+import appLogo from "../../assets/logo.svg";
 import { Icon } from "../common/Icon";
 
 interface EmptyWorkspaceProps {
@@ -10,7 +11,7 @@ export function EmptyWorkspace(props: EmptyWorkspaceProps) {
   return (
     <section class="empty-workspace" aria-labelledby="empty-workspace-title">
       <div class="empty-workspace-icon" aria-hidden="true">
-        <Icon name="virtual-folder" size={32} />
+        <img src={appLogo} width="43" height="43" alt="" />
       </div>
       <span class="workspace-eyebrow">A place for your ideas</span>
       <h1 id="empty-workspace-title">Welcome to Collectives</h1>

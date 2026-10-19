@@ -1,6 +1,6 @@
 import { createSignal, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { getCurrentAppWindow } from '../../platform';
-import { Icon } from '../common/Icon';
+import appLogo from '../../assets/logo.svg';
 import './WindowFrame.css';
 
 export function WindowFrame(props: {
@@ -67,7 +67,7 @@ export function WindowFrame(props: {
           }}
         >
           <span class="window-brand-icon" aria-hidden="true">
-            <Icon name="virtual-folder" size={15} />
+            <img src={appLogo} width="20" height="20" alt="" />
           </span>
           <span class="window-title">{props.title}</span>
         </div>
