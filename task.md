@@ -114,7 +114,7 @@
 | TASK-101 | [Assert direct Windows pre-push hook invocation](tasks/archive/TASK-101.md) | Done | 2026-10-20 |
 | TASK-102 | [Characterize data integrity before refactor](tasks/archive/TASK-102.md) | Done | 2026-10-19 |
 | TASK-103 | [Prevent silent settings loss on corrupt configuration](tasks/archive/TASK-103.md) | Done | 2026-10-19 |
-| TASK-104 | [Verify own-save and watcher collision safety](tasks/archive/TASK-104.md) | On-Going | 2026-10-20 |
+| TASK-104 | [Verify own-save and watcher collision safety](tasks/archive/TASK-104.md) | Done | 2026-10-20 |
 | TASK-105 | [Validate archive and migration rollback invariants](tasks/archive/TASK-105.md) | Done | 2026-10-19 |
 | TASK-106 | [Create reproducible native Windows performance baseline](tasks/archive/TASK-106.md) | On-Going | 2026-10-20 |
 
@@ -147,6 +147,7 @@ Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task ch�
 | TASK-102 | `3754155` | 2026-10-19 |
 | TASK-103 | `b9237a3` | 2026-10-19 |
 | TASK-104 | `707f906` | 2026-10-19 |
+| TASK-104 (post-publication rollback recovery) | `d6a97ae` | 2026-10-20 |
 | TASK-105 | `a1b9553` | 2026-10-19 |
 | TASK-106 | `f0eb16f` | 2026-10-20 |
 | TASK-099 (green PR CI/readback evidence) | `f54bac8` | 2026-10-20 |
@@ -232,48 +233,6 @@ Current 2026-10-20 evidence supersedes the earlier pending-CI/merge notes below:
 - 2026-10-20 — User explicitly authorized merge and fresh main CI. Pushed only the committed ledger records (32a5d20..34c9b9c), preserving unrelated .gitignore; normal pre-push typecheck/lint passed. Waited for all four final PR jobs to succeed. Re-read PR open/head34c9b9c, mergeable=true and mergeable_state=clean; merged PR #6 normally with expected_head_sha guard. Merge SHA f6042394fbec4c114ed9c5a8c8fd302429b92cbb. No override, settings change or other PR merge.
 - 2026-10-20 — Waited for fresh main run 39417711656 to complete; all four Windows jobs SUCCESS. Public main readback confirms f6042394fbec4c114ed9c5a8c8fd302429b92cbb, protected=true and the four required GitHub Actions checks. Detailed protection readback again returns HTTP 403 Resource not accessible by integration. Fresh-main requirement and Step 4 are complete; TASK-099 remains Paused solely for unverified current detailed flags, not CI or merge. No speculative code changes or gate weakening; TASK-106 baseline and pre-existing .gitignore edit preserved.
 
-## TASK-104 — Preserve external edits displaced during Windows rollback
-
-**State:** On-Going
-**Current Step:** Step 3 — Run Windows backend quality gates and review the task-scoped diff
-**Phase:** Phase A audit follow-up, required before Phase B
-**Reopened:** 2026-10-20, user-directed follow-up to the completed TASK-104 record in `tasks/archive/TASK-104.md`.
-
-### Description
-Close a data-loss schedule found during the Phase A audit. When an external version arrives after local publication and triggers rollback, restore the preserved original and keep any displaced external bytes as a recoverable local draft.
-
-### Scope
-- `src-tauri/src/repositories/documents.rs`
-- `task.md`
-
-### Related
-- Historical TASK-104 record: `tasks/archive/TASK-104.md`
-- `decisions.md` → DEC-014 (write preconditions) and DEC-015 (post-commit receipts)
-
-### Requirements
-- [x] Preserve the existing pre-publication replace/delete/recreate behavior and its prior Windows verification evidence.
-- [x] Detect destination bytes that differ from the staged local replacement after the first Windows `ReplaceFileW`.
-- [x] Rollback restores the backed-up version and never removes displaced bytes unless they are verified to be the rejected local replacement; report the retained external draft path.
-- [x] Focused Windows backend tests and applicable G-CODE checks pass with the installed Rust MSVC toolchain; make no non-Windows claim.
-
-### Steps
-- [x] Step 1 — Add deterministic post-publication external-write injection and regression → verify: the test requires a conflict, restored original bytes, and preserved external bytes at a reported recovery path; the test failed on the prior code because the write returned success.
-- [x] Step 2 — Verify the published destination and make rollback cleanup content-aware → verify: the regression passes on Windows; the earlier replacement schedule matrix is still pending rerun with the final gates.
-- [x] Step 3 — Run Windows backend quality gates and review the task-scoped diff → verify: fmt, Clippy, locked all-target tests, and `git diff --check` pass.
-
-### Handoff
-- Branch: `codex/phase-a-audit-fixes`; base commit: `5273cc7`.
-- Uncommitted files: `src-tauri/src/repositories/documents.rs`, `task.md`, and the pre-existing `.gitignore` edit (unrelated and preserved).
-- Next action: commit the verified TASK-104 implementation, then record its hash and archive the reopened follow-up before starting TASK-106.
-- Blockers: none. Windows backend gates and scoped review pass; no remote push is included in this follow-up.
-
-### Verification
-Windows 11 Pro, Rust 1.99.0 MSVC, Cargo 1.99.0. The new Windows regression first failed on the original code because it returned a successful receipt after external B replaced the published destination. After the fix, the focused regression passes: A is restored, B is preserved at a `.tmp-<uuid>` recovery path, and the error message includes that path. `cargo fmt --all -- --check`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked --all-targets -j 1` (109 tests passed), and `git diff --check` passed. The default parallel all-target test attempt hit Windows pagefile exhaustion (1455); the same all-target suite passed serialized. No Linux/macOS validation is claimed.
-
-### Log
-- 2026-10-20 — Reopened at user direction after the Phase A audit identified a post-publication rollback schedule missing from the original regression matrix. Historical completed evidence remains in `tasks/archive/TASK-104.md`.
-- 2026-10-20 — Steps 1–3 complete: added the post-publication Windows regression (red on the original implementation), verified the destination after `ReplaceFileW`, and made rollback delete only a displaced file whose token matches the rejected local replacement. fmt, Clippy, all 109 Windows backend tests, and diff check pass with Rust 1.99.0 MSVC; serialized Cargo tests were used after parallel compilation exhausted the pagefile.
-
 ## TASK-106 — Measure per-key latency in preloaded native documents
 
 **State:** On-Going
@@ -309,16 +268,17 @@ Correct the Phase A native typing metric. Load each 100 KiB and 1 MiB Markdown d
 - [ ] Step 3 — Correct the report and verify artifacts plus Windows gates → verify: old values remain identified as bulk insertion; corrected per-key metrics are compared with DEC-PERF-01.
 
 ### Handoff
-- Branch: `codex/phase-a-audit-fixes`; base commit: `5273cc7`.
-- Uncommitted files: pre-existing `.gitignore` edit only; TASK-106 benchmark sources have not changed in this follow-up.
-- Next action: wait for TASK-104's focused commit, then implement the per-key native measurement and update the baseline report.
-- Blockers: none. The recorded 263.3 ms was produced by one 1 MiB `keyboard.insertText`; it is not yet a valid per-key latency baseline.
+- Branch: `codex/phase-a-audit-fixes`; base commit: `d6a97ae` (TASK-104 follow-up implementation).
+- Uncommitted files: task-ledger closure for TASK-104; pre-existing `.gitignore` edit remains unrelated and preserved. TASK-106 benchmark sources have not changed in this follow-up.
+- Next action: implement per-key native measurement in the fixture generator and harness, then update the Windows performance workflow and report.
+- Blockers: none. The recorded 263.3 ms was produced by one 1 MiB `keyboard.insertText`; it is not a valid per-key latency baseline.
 
 ### Verification
 Not yet verified in this follow-up. Previous baseline and coverage evidence remains in `tasks/archive/TASK-106.md`; the typing rows do not validate the per-key budget.
 
 ### Log
 - 2026-10-20 — Reopened only the typing measurement at user direction after audit showed it times a whole-file insertion. Other completed TASK-106 workloads and artifacts remain historical evidence.
+- 2026-10-20 — TASK-104 follow-up implementation passed its Windows gates and was committed as `d6a97ae`; begin the per-key benchmark correction from that base.
 
 ## Batch commit records
 
