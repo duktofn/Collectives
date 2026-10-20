@@ -276,6 +276,10 @@ Verification: Node 24.20.0, Rust 1.99.0 on Windows. Typecheck/lint/contracts/bui
 
 - 2026-10-20 — Verified local checkpoint commit: `66610c4` (TASK-100); combined hosted browser evidence remains pending.
 
+- 2026-10-20 — Owner clarified the pictured target is the full CI workflow, not only the hook PR frontend. Exact duration match identifies run 39278459779 attempt 1 at 7ca559e: frontend 214 s (3m34s), browser 228 s (3m48s). GitHub job/check readback plus downloaded logs confirm backend job 118148346008 SUCCESS (Rust 1.97.0 Windows MSVC fmt/Clippy/all-target tests; quality status pass), phase0-smoke job 118148346111 SUCCESS (fixtures/harness/schema pass), browser job 118148346083 FAILURE (125 passed, 1 failed; theme picker 1.65570068359375 px against <1 at e2e/editor-theme-library.spec.ts:70). There are no backend/smoke failure roots to fix in this matching run.
+- 2026-10-20 — Retrieved actual check annotations via Code Review connector: backend and smoke each have one WARNING for Node 20 action runtime deprecation (checkout/setup-node v4; smoke also upload-artifact v4); browser has that WARNING plus FAILURE Process completed with exit code 1. Annotation counts are not failed-job counts. No action-version upgrade or Rust/backend/benchmark change is justified by these warnings.
+- 2026-10-20 — Confirmed the current E2E spec still exactly matches saved fix 8e610c7 (empty git diff); local integration is 66610c4. Existing same-spec Windows evidence remains 20 focused repeats/cases and 126+5 full browser cases passing, with original <1 px / >=12 px thresholds unchanged. Subsequent changes were hook scripts and task records only, so no additional code edits or redundant test rerun are needed. To obtain a green hosted workflow for the fixed combined revision, owner must authorize the deferred Phase A batch push and PR creation/update targeting main; rerunning 39278459779 alone reuses the unfixed remote 7ca559e. Stop before all remote writes. TASK-106 files and unrelated .gitignore remain untouched.
+
 ## Batch commit records
 
 | Task | Commit | Summary |
