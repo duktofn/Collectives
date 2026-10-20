@@ -163,8 +163,8 @@ Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task ch�
 
 ## TASK-099 — Enforce main branch protection for Windows CI
 
-**State:** Paused
-**Current Step:** Step 5 — Fresh main CI verified; detailed protection flags remain unreadable
+**State:** On-Going
+**Current Step:** Step 6 — Publish the completed Phase A audit follow-ups and run hosted Windows CI
 **Phase:** Refactor plan Phase A
 **Source ID:** Attached plan TASK-002
 
@@ -187,6 +187,7 @@ Ensure `main` requires the canonical Windows CI jobs, stays up to date with its 
 - [x] A deliberately failing PR cannot merge under the effective rule.
 - [x] A fresh `main` workflow is green after the protection is set.
 - [x] `npm run check:ci-policy` passes on Windows.
+- [ ] The completed TASK-104 and TASK-106 audit follow-ups pass all four canonical Windows checks on their exact PR head and a fresh `main` run after normal merge.
 - [ ] Current detailed protection readback reconfirms strict/up-to-date, administrator, force-push and deletion flags; the integration currently returns HTTP 403. Public protected=true and the four required checks are verified separately.
 
 ### Steps
@@ -196,12 +197,14 @@ Ensure `main` requires the canonical Windows CI jobs, stays up to date with its 
 - [x] Step 4 — Obtain a green fresh workflow after all required checks pass → verify: all four status contexts succeed.
 
 - [ ] Step 5 — Reconfirm the remaining detailed protection flags without changing settings → verify: administration-capable readback matches the historical policy; no unverified current flags are claimed.
+- [ ] Step 6 — Publish the completed TASK-104/TASK-106 follow-ups in one PR → verify: all four canonical Windows jobs pass on the exact PR head.
+- [ ] Step 7 — Merge normally after the required PR checks pass and verify a fresh `main` run → verify: all four required jobs succeed on the merge commit.
 
 ### Handoff
-- Branch: `codex/phase-a-performance-baseline`; final PR head: `34c9b9c`; main merge commit: `f6042394fbec4c114ed9c5a8c8fd302429b92cbb`.
-- Uncommitted files: unrelated pre-existing `.gitignore` edit preserved. This post-merge evidence update is documentation only and will be committed locally; no additional remote update or PR is needed for the verified CI result.
-- Next action: use an administration-capable connection to read /repos/duktofn/Collectives/branches/main/protection and confirm the remaining strict/up-to-date, administrator, force-push and deletion flags. No code, gate, merge or branch-protection mutation remains authorized/necessary.
-- Blockers: detailed protection endpoint still returns HTTP 403 Resource not accessible by integration. The public main summary confirms protected=true and the exact four required checks/app 15368 with enforcement_level=everyone. Final PR CI and fresh merged-main CI both passed; PR #6 is merged. Keep Paused only for the unreadable detailed flags; do not claim those current flags were verified or archive as fully Done.
+- Branch: `codex/phase-a-audit-fixes`; base `main`: `f6042394fbec4c114ed9c5a8c8fd302429b92cbb`; local merge of current `origin/main`: `c1cd960`.
+- Uncommitted files: TASK-099 status/handoff update only. The `.gitignore` update is already committed as `f7a7c4e`.
+- Next action: push this branch, create the follow-up PR, and wait for frontend, browser, phase0-smoke, and backend (windows-latest) on the exact head.
+- Blockers: the GitHub connector's branch-protection endpoint still returns HTTP 403, `Resource not accessible by integration`. The public branch response confirms protected=true and the exact four required contexts from app 15368; strict/up-to-date, administrator, force-push and deletion flags remain unverified. Do not change protection settings to work around the read failure.
 
 ### Verification
 Checked-in policy/workflow align on four Windows checks: `frontend`, `browser`, `phase0-smoke`, and `backend (windows-latest)`, all from app 15368. Applied protection through the admin-authorized GitHub credential and read it back: strict=true, enforce_admins=true, exactly those four contexts, force pushes=false, deletions=false.
@@ -213,6 +216,7 @@ Current 2026-10-20 evidence supersedes the earlier pending-CI/merge notes below:
 - Normal merge of PR #6, guarded by that exact expected head, succeeded as `f6042394fbec4c114ed9c5a8c8fd302429b92cbb`; no admin override or protection mutation. PR readback is closed/merged.
 - Fresh `main` push run [39417711656](https://github.com/duktofn/Collectives/actions/runs/39417711656) at that merge commit completed SUCCESS. Jobs frontend `118610679389` (297 unit tests plus hook/policy/typecheck/lint/build/contracts), browser `118610679353` (126 main + 5 Phase 6), backend Windows `118610679687` (fmt/Clippy/locked all-target tests), smoke `118610679069` (fixtures/harness/schema; 4 JSON artifacts) all SUCCESS. Hosted compiler: Rust 1.97.0 x86_64-pc-windows-msvc. No Linux/macOS result is claimed.
 - Current public branch summary: `protected=true`, protection enabled, enforcement_level `everyone`, exact contexts `frontend`, `browser`, `phase0-smoke`, `backend (windows-latest)`, each GitHub Actions app `15368`. Current detailed protection endpoint: HTTP 403 `Resource not accessible by integration`; strict/up-to-date, administrator, force-push and deletion flags are not independently reverified now. Their earlier successful application/readback remains historical evidence only.
+- 2026-10-20 follow-up audit: public `main` readback still reports merge commit `f6042394fbec4c114ed9c5a8c8fd302429b92cbb`, `protected=true`, and all four canonical contexts. A new GET of `/branches/main/protection` again returns HTTP 403 `Resource not accessible by integration`. TASK-104 and TASK-106 local follow-ups are committed through `f7a7c4e`; their PR and fresh-main CI evidence is outstanding.
 ### Log
 - 2026-10-19 — Started Phase A / plan TASK-002 after TASK-098 passed Windows frontend CI and review.
 
@@ -233,6 +237,7 @@ Current 2026-10-20 evidence supersedes the earlier pending-CI/merge notes below:
 
 - 2026-10-20 — User explicitly authorized merge and fresh main CI. Pushed only the committed ledger records (32a5d20..34c9b9c), preserving unrelated .gitignore; normal pre-push typecheck/lint passed. Waited for all four final PR jobs to succeed. Re-read PR open/head34c9b9c, mergeable=true and mergeable_state=clean; merged PR #6 normally with expected_head_sha guard. Merge SHA f6042394fbec4c114ed9c5a8c8fd302429b92cbb. No override, settings change or other PR merge.
 - 2026-10-20 — Waited for fresh main run 39417711656 to complete; all four Windows jobs SUCCESS. Public main readback confirms f6042394fbec4c114ed9c5a8c8fd302429b92cbb, protected=true and the four required GitHub Actions checks. Detailed protection readback again returns HTTP 403 Resource not accessible by integration. Fresh-main requirement and Step 4 are complete; TASK-099 remains Paused solely for unverified current detailed flags, not CI or merge. No speculative code changes or gate weakening; TASK-106 baseline and pre-existing .gitignore edit preserved.
+- 2026-10-20 — Resumed TASK-099 at user direction to close Phase A. GitHub public branch readback confirms current `main` f6042394 is protected and requires the four canonical Windows jobs; detailed branch-protection GET again returns 403. Merged current `origin/main` into `codex/phase-a-audit-fixes` as c1cd960 without file changes. TASK-104/TASK-106 follow-up PR CI and fresh-main evidence are now the next steps.
 
 ## Batch commit records
 
