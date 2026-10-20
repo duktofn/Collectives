@@ -110,7 +110,7 @@
 | TASK-097 | [Cancel unstarted rebuild backlog before major refactor](tasks/archive/TASK-097.md) | Done | 2026-10-19 |
 | TASK-098 | [Fix Phase A Windows pre-push hook regression](tasks/archive/TASK-098.md) | Done | 2026-10-19 |
 | TASK-099 | [Enforce main branch protection for Windows CI](tasks/archive/TASK-099.md) | Paused | 2026-10-19 |
-| TASK-100 | [Fix Windows theme picker alignment gate](tasks/archive/TASK-100.md) | Paused | 2026-10-19 |
+| TASK-100 | [Fix Windows theme picker alignment gate](tasks/archive/TASK-100.md) | Paused | 2026-10-20 |
 | TASK-101 | [Assert direct Windows pre-push hook invocation](tasks/archive/TASK-101.md) | Paused | 2026-10-19 |
 | TASK-102 | [Characterize data integrity before refactor](tasks/archive/TASK-102.md) | Done | 2026-10-19 |
 | TASK-103 | [Prevent silent settings loss on corrupt configuration](tasks/archive/TASK-103.md) | Done | 2026-10-19 |
@@ -248,7 +248,7 @@ Negative probe PR #4 failed the required frontend job; GitHub API reported `merg
 ## TASK-100 — Fix Windows theme picker alignment gate
 
 **State:** Paused
-**Current Step:** Step 3 — Awaiting user direction to resume theme-picker scope
+**Current Step:** Step 4 — Await combined Phase A hosted browser evidence
 **Phase:** Prerequisite for Phase A / TASK-099
 **Source ID:** Owner-approved follow-up to unblock the existing Windows browser gate
 
@@ -266,19 +266,21 @@ Resolve the reproducible Windows theme-picker chevron alignment failure while pr
 ### Requirements
 - [x] Explain and correct the 1.655 px Windows chevron-center mismatch or justify a stable pixel tolerance from measured layout.
 - [x] Keep the keyboard, dismissal, and 720×600 viewport checks meaningful.
-- [ ] The affected Playwright spec and full Windows browser suite pass.
+- [x] The affected Playwright spec and full Windows browser suite pass.
 - [x] Applicable local G-CODE gates pass on Windows; hosted CI rerun is still pending.
 
 ### Steps
 - [x] Step 1 — Inspect trigger, SVG box, computed styles and browser metrics → verify: the CSS positions the icon at the trigger center; separate Playwright `boundingBox()` calls could observe different scroll positions.
 - [x] Step 2 — Measure both elements in one browser evaluation after a single scroll → verify: the original <1 px and >=12 px thresholds pass 10 repeated runs.
-- [ ] Step 3 — Run Windows browser and applicable quality gates → verify: full browser suite and task checks pass; diff review has no unrelated files.
+- [x] Step 3 — Run Windows browser and applicable quality gates → verify: full browser suite and task checks pass; diff review has no unrelated files.
+
+- [ ] Step 4 — Verify the combined Phase A hosted browser job after authorized batch push → verify: the current branch browser check succeeds.
 
 ### Handoff
-- Branch: `codex/phase-a-theme-picker`; base code commit: `2c04582`; task commit: `8e610c7`.
-- Uncommitted files: pre-existing `.gitignore` edit (`.opencode`), unrelated and preserved.
-- Next action: resume only if the user requests the theme-picker task again; PR #5 was closed unmerged and its branch deleted after the hook-only scope instruction.
-- Blockers: user narrowed current work to Git pre-push hook files; this UI test task is paused.
+- Branch: `codex/phase-a-performance-baseline`; base commit: `91a442e`.
+- Uncommitted files: unrelated pre-existing `.gitignore` edit preserved; TASK-100 E2E patch is committed with this checkpoint.
+- Next action: after the owner authorizes the Phase A batch push, verify the combined branch hosted browser check; all local checks and review passed.
+- Blockers: hosted evidence for the combined branch requires the deferred Phase A batch push; do not push or merge.
 
 ### Verification
 Windows Node 20.19.0 / Git for Windows 2.56.0: focused Playwright spec repeated 10 times (20 cases): 20/20 pass; full `npm run test:e2e`: 126 browser tests + 5 Phase 6 tests pass. Frontend typecheck, lint, 291 unit tests and production build pass. `npm run check:contracts` passes. Rust 1.99.0 Windows fmt, clippy and locked all-target tests pass. Second-agent review: no findings.
@@ -302,6 +304,10 @@ Verification: Node 24.20.0, Rust 1.99.0 on Windows. Typecheck/lint/contracts/bui
 - 2026-10-19 — Owner approved a focused TASK-100 for the out-of-allowlist browser assertion; TASK-099 remains paused until the gate passes.
 - 2026-10-19 — Local focused spec passed 10 repeats; full browser, frontend, contract and Rust Windows gates passed; review found no issues. Hosted CI is still pending.
 - 2026-10-19 — User narrowed active work to Git pre-push hook files; closed PR #5 unmerged and deleted its branch. Task paused with local fix preserved in commit `8e610c7`.
+
+- 2026-10-20 — Resumed by owner after TASK-106 completed at 91a442e. Verified saved commit 8e610c7 changes only the unchanged theme-picker measurement block; original centering/right-gap thresholds and interaction coverage remain intact. Current hosted diagnosis: run 39278459779 browser failed at 1.65570068359375 px; saved fix run 39276809449 browser passed. Latest combined HEAD has no hosted run; remote writes remain deferred.
+
+- 2026-10-20 — Local Windows verification passed: focused spec repeat-each=10 (20/20), npm run test:e2e (126 main + 5 Phase 6), canonical frontend gate (typecheck/lint/297 tests/build), contracts, CI policy, hook fixtures and canonical backend fmt/Clippy/locked all-target tests. Node 24.20.0; rustc 1.99.0 x86_64-pc-windows-msvc. Quality evidence: artifacts/phase0/quality-logs/quality-frontend-20261020033936261.json and quality-backend-20261020033942818.json. G-REVIEW: no actionable findings, patch exactly matches 8e610c7. Paused only for combined hosted CI; no push/merge, no product/CSS/backend/benchmark changes.
 
 ## Batch commit records
 
