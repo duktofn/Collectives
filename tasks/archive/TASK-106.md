@@ -53,6 +53,16 @@ Final Windows local gates passed on Windows 11 Pro: `npm run check:ci-policy`, `
 
 Implementation commit: `f0eb16f`.
 
+### Reopened typing-measurement follow-up — 2026-10-20
+
+The audit found the previous “typing” rows timed one whole-document Playwright `keyboard.insertText` operation, so their values were not per-key input-to-paint measurements. The old raw values and run remain retained as a bulk-insertion proxy only.
+
+The regenerated smoke fixture now exposes separate preloaded 100 KiB and 1 MiB collections. The Windows release harness verifies each distinct fixture prefix, waits for fonts, five stable layout frames and 100 ms idle, then measures one printable `x` key through two animation frames. It verifies that the inserted key is visible after the paint barrier and records five warmups plus 20 samples per size in each of two independent release sessions.
+
+Corrected standard run `phase0-20261020123504178-5241dc7-d67f3473` passed with 40 valid samples per size and zero operation errors. Combined p50/p95: 100 KiB 56.0/75.7 ms; 1 MiB 139.7/267.3 ms. The 1 MiB p95 remains above the 120 ms DEC-PERF-01 target before Phase B. Regenerated smoke/large runs `phase0-20261020125514177-5241dc7-b6abf04f` and `phase0-20261020125712051-5241dc7-53621c2f` passed; `verify-artifacts --require-release`, targeted ESLint, Node syntax checks, `npm run check:ci-policy`, and `git diff --check` passed. Rust 1.99.0 MSVC on Windows 11 Pro. No Linux/macOS result is claimed.
+
+Typing-method implementation and report commit: `bb75a6f`.
+
 ### Log
 - 2026-10-20 — Created for Phase A / attached plan TASK-007 after verifying Windows-only scope and the existing benchmark runner gaps.
 - 2026-10-20 — Step 1 complete: audited workload and fixture gaps; confirmed CDP is available and identified stale production-profile recovery as requiring a dedicated measurement identifier.
