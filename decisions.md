@@ -24,6 +24,8 @@
 
 | DEC-016 | Lifecycle and navigation workflow ownership | Accepted | App wires UI; workflows own startup subscriptions, close barriers and serialized navigation. | 2026-10-21 |
 
+| DEC-017 | Document session owns coordination | Accepted | A session factory owns state/save/recovery; the store injects selection and the view owns CodeMirror only. | 2026-10-21 |
+
 ## DEC-001 — Reveal active inline Markdown syntax in Write mode
 Date: 2026-10-18 · Status: Accepted · Related: `RenderPlugin`, TASK-001
 
@@ -264,3 +266,16 @@ Date: 2026-10-21 · Status: Accepted · Related: TASK-108 (plan TASK-008)
 **Decision** — Use AppLifecycleWorkflow for startup/subscription/close ownership and NavigationWorkflow for serialized selection and search/history navigation. Keep rendering and modal signals in App. Register cleanup synchronously and dispose subscriptions even if their asynchronous registration finishes after unmount.
 
 **Reason** — This moves existing behavior without introducing an event bus or changing save ordering, keyboard shortcuts or modal timing.
+
+## DEC-017 — Document session owns coordination
+Date: 2026-10-21 · Status: Accepted · Related: TASK-109 (plan TASK-009), DEC-014, DEC-015
+
+**Problem** — Module-global editor coordination mixes the view facade with document identity, request generations, serialized saves and recovery ownership.
+
+**Options**
+- A — Keep the singleton store as the coordination implementation; existing callers remain simple but sessions cannot be instantiated or tested independently.
+- B — Move coordination into a session factory and keep the singleton facade; selection becomes an injected port and the existing persistence/state machine remains intact.
+
+**Decision** — createDocumentSession owns the existing reactive state, save queue/barriers, document generations and recovery lifecycle. editorStore instantiates one session with the UI selection port. Editor owns CodeMirror state and uses the session identity to reset history on actual document switches.
+
+**Reason** — This creates an isolated test boundary without changing saved formats, write preconditions, receipt warnings, save ordering or undo behavior.

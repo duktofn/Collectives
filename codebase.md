@@ -70,7 +70,7 @@ Backend dependency direction:
 `components/theme/ThemePanel.tsx` owns a local settings draft, validation, Apply/reset, and pending-operation locks. Its top-level categories are Appearance and Behavior; Appearance contains Theme and Typography sections. `SettingsSelect` supplies the shared dropdown behavior. `SettingsNumberInput` wraps native number inputs for Line height and Font scale with themed minus/plus buttons, positive minimum bounds, and decimal increments; it reports changes to ThemePanel's draft and inherits the form fieldset's disabled state.
 
 ## Stores and workflow coordination
-`editorStore` owns open path/content, dirty/mode/file-kind state, generation/revision checks, version tokens, serialized saves, conflict handling, recovery-session state, and pending navigation.
+`features/editor/documentSession.ts::createDocumentSession` owns open path/content, dirty/mode/file-kind state, generations/revisions, version tokens, the serialized save queue/barrier, conflicts and recovery lifecycle. `stores/editor.ts` exposes one session as `editorStore` and injects UI selection. Each session has independent request/queue/content-reader state; `sessionKey` identifies the current view lifetime. Editor owns the CodeMirror view and resets its history on a new session key.
 
 `collectionsStore` owns collections, active selection, validation, watcher synchronization, CRUD/archive flows, metadata caches, and legacy/v2 event listeners. `uiStore` owns tree selection/expansion and sidebar state.
 
@@ -88,7 +88,7 @@ Backend dependency direction:
 # Key Classes / State Owners
 - `EditorView` (CodeMirror): current document, selections, transactions, extensions, and rendered DOM.
 - `RenderPlugin`: rendered Markdown marks/replacements and atomic marker ranges.
-- `editorStore`, `collectionsStore`, `uiStore`: frontend state owners described above.
+- `createDocumentSession`, `editorStore`, `collectionsStore`, `uiStore`: session and frontend state owners described above.
 - `AppServices`: managed backend service composition using repository ports.
 - `SqliteMetadataRepository`, `MigrationService`: metadata persistence and migration/recovery boundaries.
 - `WatchManager`, `FileIdentityCache`: filesystem subscriptions/feed and identity tracking.
@@ -121,3 +121,5 @@ Backend dependency direction:
 - `fs_layer/owned_artifacts.rs` recognizes the exact three document staging/backup filename forms with canonical UUID v4. Watcher filters these before queueing and delivery, retaining real rename endpoints as modified; `fs_ops::read_children` excludes owned files from folder trees.
 
 - TASK-096 reimports the updated 27×27 logo from the same supplied path and regenerates Windows icons with reduced source padding. TASK-022 cleanup remains paused with no implementation retained; TASK-021 only filters owned artifact visibility/events.
+
+- TASK-109 / DEC-017: document-session extraction is present but paused pending complete native validation; consult task.md before treating it as accepted. TASK-110/111 are not implemented.

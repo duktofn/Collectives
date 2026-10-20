@@ -51,3 +51,18 @@ it("retains the current document and undo history when opening another file fail
   expect(undo(view)).toBe(true);
   expect(view.state.doc.toString()).toBe("# Heading");
 });
+
+it("resets A undo history before B can be edited or saved", async () => {
+  vi.mocked(api.readFile).mockResolvedValueOnce({ content: "Document A", versionToken: "a" });
+  await editorStore.openFile("a.md");
+  render(() => <Editor />);
+  const view = EditorView.findFromDOM(document.querySelector(".cm-editor")!)!;
+  view.dispatch({ changes: { from: view.state.doc.length, insert: " edited" } });
+  await editorStore.saveFile();
+  vi.mocked(api.readFile).mockResolvedValueOnce({ content: "Document B", versionToken: "b" });
+  await editorStore.openFile("b.md");
+  await waitFor(() => expect(view.state.doc.toString()).toBe("Document B"));
+  expect(undo(view)).toBe(false);
+  expect(view.state.doc.toString()).toBe("Document B");
+  expect(editorStore.state.openFilePath).toBe("b.md");
+});

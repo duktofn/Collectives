@@ -306,7 +306,7 @@ export function Editor() {
       view.focus();
       return true;
     });
-    documentSessionKey = `${editorStore.state.generation}:${editorStore.state.openFilePath ?? ""}`;
+    documentSessionKey = editorStore.sessionKey;
     documentViewStateKey = editorStore.state.openFilePath;
 
     unregisterMeasure = registerEditorMeasureRequest(() => {
@@ -376,7 +376,7 @@ export function Editor() {
   // Listen to openFilePath changes to load new content
   createEffect(
     on(
-      () => `${editorStore.state.generation}:${editorStore.state.openFilePath ?? ""}`,
+      () => editorStore.sessionKey,
       (sessionKey) => {
         if (!view || documentSessionKey === sessionKey) return;
         saveDocumentViewState(documentViewStateKey);
