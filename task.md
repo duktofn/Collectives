@@ -198,6 +198,8 @@ Local Windows with Node 20.19.0 / Git for Windows 2.56.0: `npm run test:hooks` a
 
 - 2026-10-20 — Restored only scripts/git/install-hooks.mjs and scripts/git/verify-pre-push.mjs; both exactly match 7ca559e (verified by empty git diff against that commit). Windows Node 24.20.0 / Git 2.55.0.windows.5: npm run test:hooks passes direct TS2322 rejection, real Git TS/lint blocking, clean push, fresh clone, custom-hook preservation and archive skipping. npm run check:ci-policy, npm run check:contracts and canonical frontend gate (typecheck/lint/297 tests/build) pass. Evidence: artifacts/task013/hook-verification.json; artifacts/phase0/quality-logs/quality-frontend-20261020034434994.json. G-REVIEW: no actionable findings. Unchanged backend/browser already passed at TASK-100 checkpoint with rustc 1.99.0 Windows MSVC (126+5 browser tests); no redundant rerun for hook-only integration. Paused only for combined hosted frontend result; no remote writes.
 
+- 2026-10-20 — Verified local integration checkpoint commit: `02acf03` (TASK-101), including exact TASK-098 prerequisites. Combined hosted frontend evidence remains pending.
+
 ## TASK-099 — Enforce main branch protection for Windows CI
 
 **State:** Paused
