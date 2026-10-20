@@ -109,7 +109,7 @@
 | TASK-096 | [Import updated logo and regenerate Windows icons](tasks/archive/TASK-096.md) | Done | 2026-10-19 |
 | TASK-097 | [Cancel unstarted rebuild backlog before major refactor](tasks/archive/TASK-097.md) | Done | 2026-10-19 |
 | TASK-098 | [Fix Phase A Windows pre-push hook regression](tasks/archive/TASK-098.md) | Done | 2026-10-19 |
-| TASK-099 | [Enforce main branch protection for Windows CI](tasks/archive/TASK-099.md) | Paused | 2026-10-19 |
+| TASK-099 | [Enforce main branch protection for Windows CI](tasks/archive/TASK-099.md) | Paused | 2026-10-20 |
 | TASK-100 | [Fix Windows theme picker alignment gate](tasks/archive/TASK-100.md) | Paused | 2026-10-20 |
 | TASK-101 | [Assert direct Windows pre-push hook invocation](tasks/archive/TASK-101.md) | Paused | 2026-10-20 |
 | TASK-102 | [Characterize data integrity before refactor](tasks/archive/TASK-102.md) | Done | 2026-10-19 |
@@ -203,7 +203,7 @@ Local Windows with Node 20.19.0 / Git for Windows 2.56.0: `npm run test:hooks` a
 ## TASK-099 — Enforce main branch protection for Windows CI
 
 **State:** Paused
-**Current Step:** Step 3 — Resolve pre-existing browser gate outside the approved file allowlist
+**Current Step:** Step 4 — Await authorized Phase A push and fresh hosted Windows evidence
 **Phase:** Refactor plan Phase A
 **Source ID:** Attached plan TASK-002
 
@@ -234,10 +234,10 @@ Ensure `main` requires the canonical Windows CI jobs, stays up to date with its 
 - [ ] Step 4 — Obtain a green fresh workflow after all required checks pass → verify: all four status contexts succeed.
 
 ### Handoff
-- Branch: `codex/phase-a-branch-protection`; base code commit: `2c04582`; task record is on `main` at `ec98a16`.
-- Uncommitted files: pre-existing `.gitignore` edit (`.opencode`), unrelated and preserved.
-- Next action: complete TASK-100 to restore the existing Windows browser gate, then resume Step 4 and verify a fresh green workflow.
-- Blockers: fresh workflow cannot be green because `e2e/editor-theme-library.spec.ts:70` fails locally and in hosted CI (1.655 px against a <1 px assertion). The owner approved a separate scoped TASK-100 for this existing browser gate; do not fold its files into TASK-099.
+- Branch: `codex/phase-a-performance-baseline`; current code checkpoint: `02acf03`; ledger checkpoint before this handoff: `68e21e5`.
+- Uncommitted files: unrelated pre-existing `.gitignore` edit preserved.
+- Next action: only after owner authorization, push the Phase A batch branch and open/update a PR targeting `main` to run all four required jobs. A plain push to this feature branch does not trigger `ci.yml`. Verify frontend/browser/phase0-smoke/backend Windows jobs on the same combined revision; after a separately authorized merge, verify a fresh green `main` workflow. Read back actual protection with an administration-capable credential.
+- Blockers: no push/merge authorized yet; connected GitHub branch-protection read returns 403 Resource not accessible by integration. Local policy validation is not proof of current remote enforcement. TASK-100 and TASK-101 local fixes are committed and verified; their combined hosted evidence is pending.
 
 ### Verification
 Checked-in policy/workflow align on four Windows checks: `frontend`, `browser`, `phase0-smoke`, and `backend (windows-latest)`, all from app 15368. Applied protection through the admin-authorized GitHub credential and read it back: strict=true, enforce_admins=true, exactly those four contexts, force pushes=false, deletions=false.
@@ -252,6 +252,9 @@ Negative probe PR #4 failed the required frontend job; GitHub API reported `merg
 
 
 
+
+- 2026-10-20 — Read-only primary-source diagnosis: latest run 39278459779 completed (not queued): frontend/backend/phase0-smoke succeeded; browser failed only at editor-theme-library.spec.ts:70 (1.65570068359375 px vs <1). Saved TASK-100 run 39276809449 browser/backend/smoke succeeded, frontend failed at code-block-pointer.test.ts:46 (2 expected, 0 received); the subsequent 39278459779 frontend passed all 291 tests. No hosted run exists for original Phase A base 30fa901. Actual branch protection read was denied by integration (403), so historical applied-policy evidence remains historical.
+- 2026-10-20 — Local prerequisite gates restored and checked on the combined branch: TASK-100 implementation 66610c4 / evidence 777fa84; TASK-101 integration 02acf03 / evidence 68e21e5 includes exact TASK-098 prerequisites. All local frontend/contract/hook/policy, 20 repeated focused cases, full 126+5 browser cases and Windows Rust 1.99.0 MSVC backend gates pass. TASK-106 files and unrelated .gitignore edit preserved. Remain Paused until authorized batch remote writes and fresh required CI/main evidence; no workflow, protection, or gate changes.
 
 ## TASK-100 — Fix Windows theme picker alignment gate
 
