@@ -347,6 +347,8 @@ thread_local! {
     static EXTERNAL_CHANGE_BEFORE_FINAL_COMPARE: std::cell::RefCell<Option<ExternalChangeBeforeFinalCompare>> = const { std::cell::RefCell::new(None) };
     #[cfg(windows)]
     static EXTERNAL_CHANGE_AFTER_FINAL_COMPARE: std::cell::RefCell<Option<ExternalChangeBeforeFinalCompare>> = const { std::cell::RefCell::new(None) };
+    #[cfg(windows)]
+    static EXTERNAL_CHANGE_AFTER_PUBLICATION: std::cell::RefCell<Option<ExternalChangeBeforeFinalCompare>> = const { std::cell::RefCell::new(None) };
 }
 
 #[cfg(test)]
@@ -394,7 +396,7 @@ fn apply_injected_external_change(
     result.map_err(|error| {
         SafetyError::new(
             "external_change_conflict",
-            format!("Injected external change failed before final comparison: {error}"),
+            format!("Injected external change failed during staged write: {error}"),
         )
     })
 }
@@ -408,6 +410,12 @@ fn inject_external_change_before_final_compare(path: &std::path::Path) -> Result
 #[cfg(all(test, windows))]
 fn inject_external_change_after_final_compare(path: &std::path::Path) -> Result<(), SafetyError> {
     let change = EXTERNAL_CHANGE_AFTER_FINAL_COMPARE.with(|change| change.borrow_mut().take());
+    apply_injected_external_change(path, change)
+}
+
+#[cfg(all(test, windows))]
+fn inject_external_change_after_publication(path: &std::path::Path) -> Result<(), SafetyError> {
+    let change = EXTERNAL_CHANGE_AFTER_PUBLICATION.with(|change| change.borrow_mut().take());
     apply_injected_external_change(path, change)
 }
 
@@ -544,7 +552,8 @@ fn write_file_with_cleanup(
     inject_write_failure("replace")?;
     #[cfg(all(test, windows))]
     inject_external_change_after_final_compare(path)?;
-    let mut warnings = replace_file_preserving(&tmp_path, path, &expected_token, cleanup)?;
+    let mut warnings =
+        replace_file_preserving(&tmp_path, path, &expected_token, &version_token, cleanup)?;
     // Kept mutable for the existing Unix durability warning branch.
     let _ = &mut warnings;
     #[cfg(unix)]
@@ -739,6 +748,7 @@ fn replace_file_preserving(
     replacement: &std::path::Path,
     destination: &std::path::Path,
     expected_original_token: &str,
+    expected_replacement_token: &str,
     cleanup: impl FnOnce(&std::path::Path) -> std::io::Result<()>,
 ) -> Result<Vec<DocumentWriteWarning>, SafetyError> {
     #[cfg(windows)]
@@ -764,23 +774,82 @@ fn replace_file_preserving(
             )
         })?;
 
+        #[cfg(test)]
+        inject_external_change_after_publication(destination)?;
+
         let backup_token = match file_version_token(&backup, "") {
             Ok(token) => token,
             Err(error) => {
-                restore_replaced_file(destination, &backup)?;
+                let retained =
+                    restore_replaced_file(destination, &backup, expected_replacement_token)?;
+                let recovery = retained
+                    .as_ref()
+                    .map(|path| {
+                        format!(
+                            " Bytes displaced during rollback remain at {}.",
+                            path.display()
+                        )
+                    })
+                    .unwrap_or_default();
                 return Err(SafetyError::new(
                     "external_change_conflict",
                     format!(
-                        "Could not verify the original file during replacement; its previous version was restored and the draft was retained: {error}"
+                        "Could not verify the original file during replacement; its previous version was restored and the draft was retained: {error}.{recovery}"
                     ),
                 ));
             }
         };
         if backup_token != expected_original_token {
-            restore_replaced_file(destination, &backup)?;
+            let retained = restore_replaced_file(destination, &backup, expected_replacement_token)?;
+            let recovery = retained
+                .as_ref()
+                .map(|path| {
+                    format!(
+                        " Bytes displaced during rollback remain at {}.",
+                        path.display()
+                    )
+                })
+                .unwrap_or_default();
             return Err(SafetyError::new(
                 "external_change_conflict",
-                "File changed after the final version check; the newer external version was restored and the draft was retained",
+                format!("File changed after the final version check; the preserved version was restored and the draft was retained.{recovery}"),
+            ));
+        }
+
+        let destination_token = match file_version_token(destination, "") {
+            Ok(token) => token,
+            Err(error) => {
+                let retained =
+                    restore_replaced_file(destination, &backup, expected_replacement_token)?;
+                let recovery = retained
+                    .as_ref()
+                    .map(|path| {
+                        format!(
+                            " Bytes displaced during rollback remain at {}.",
+                            path.display()
+                        )
+                    })
+                    .unwrap_or_default();
+                return Err(SafetyError::new(
+                    "external_change_conflict",
+                    format!("Could not verify the published file; the backup was restored and the draft was retained: {error}.{recovery}"),
+                ));
+            }
+        };
+        if destination_token != expected_replacement_token {
+            let retained = restore_replaced_file(destination, &backup, expected_replacement_token)?;
+            let recovery = retained
+                .as_ref()
+                .map(|path| {
+                    format!(
+                        " External bytes displaced during rollback were retained at {}.",
+                        path.display()
+                    )
+                })
+                .unwrap_or_default();
+            return Err(SafetyError::new(
+                "external_change_conflict",
+                format!("File changed outside the editor immediately after replacement; the original version was restored and the draft was retained.{recovery}"),
             ));
         }
 
@@ -794,7 +863,7 @@ fn replace_file_preserving(
     }
     #[cfg(not(windows))]
     {
-        let _ = (cleanup, expected_original_token);
+        let _ = (cleanup, expected_original_token, expected_replacement_token);
         std::fs::rename(replacement, destination)
             .map(|()| Vec::new())
             .map_err(|error| {
@@ -810,7 +879,8 @@ fn replace_file_preserving(
 fn restore_replaced_file(
     destination: &std::path::Path,
     backup: &std::path::Path,
-) -> Result<(), SafetyError> {
+    expected_replacement_token: &str,
+) -> Result<Option<std::path::PathBuf>, SafetyError> {
     let filename = destination
         .file_name()
         .and_then(|value| value.to_str())
@@ -826,15 +896,20 @@ fn restore_replaced_file(
             ),
         )
     })?;
-    std::fs::remove_file(&local_draft).map_err(|error| {
-        SafetyError::new(
-            "recoverable_transaction",
-            format!(
-                "The newer external version was restored; the rejected local draft remains at {}: {error}",
-                local_draft.display()
-            ),
-        )
-    })
+    if file_version_token(&local_draft, "").as_deref() == Ok(expected_replacement_token) {
+        std::fs::remove_file(&local_draft).map_err(|error| {
+            SafetyError::new(
+                "recoverable_transaction",
+                format!(
+                    "The original version was restored; the rejected local draft remains at {}: {error}",
+                    local_draft.display()
+                ),
+            )
+        })?;
+        Ok(None)
+    } else {
+        Ok(Some(local_draft))
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -939,6 +1014,7 @@ mod windows_replacement_tests {
             &replacement,
             &destination,
             blake3::hash(b"old").to_hex().as_ref(),
+            blake3::hash(b"new").to_hex().as_ref(),
             |backup| fs::remove_file(backup),
         )
         .unwrap();
@@ -1121,6 +1197,47 @@ mod write_precondition_tests {
                 !name.contains(".tmp-") && !name.contains(".collectives-backup-")
             }));
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn post_publication_external_bytes_survive_rollback_as_recovery_draft() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("note.md");
+        std::fs::write(&path, b"original A").unwrap();
+        let token = read_file(path.to_string_lossy().into_owned())
+            .unwrap()
+            .version_token;
+        EXTERNAL_CHANGE_AFTER_PUBLICATION.with(|pending| {
+            *pending.borrow_mut() = Some(ExternalChangeBeforeFinalCompare::Replace(
+                b"external B".to_vec(),
+            ));
+        });
+
+        let error = write_file(
+            path.to_string_lossy().into_owned(),
+            "local C".into(),
+            WritePrecondition::Version { token },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, "external_change_conflict");
+        assert_eq!(std::fs::read(&path).unwrap(), b"original A");
+        let recovered = root
+            .path()
+            .read_dir()
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .find(|candidate| {
+                candidate
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy().contains(".tmp-"))
+            })
+            .expect("external bytes should remain at a recoverable local-draft path");
+        assert_eq!(std::fs::read(&recovered).unwrap(), b"external B");
+        assert!(error
+            .message
+            .contains(&recovered.to_string_lossy().to_string()));
     }
 }
 
