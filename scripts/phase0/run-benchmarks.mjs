@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* global Buffer, console, document, fetch, performance, requestAnimationFrame, window */
+/* global console, document, fetch, performance, requestAnimationFrame, window */
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -193,7 +193,7 @@ function writeJson(path, value) {
 }
 
 function parseArgs(argv) {
-  const args = { nativeColdSamples: 5, nativeWarmSamples: 10, nativeUiSamples: 5, workloadSamples: 5, backendOnly: false };
+  const args = { nativeColdSamples: 5, nativeWarmSamples: 10, nativeUiSamples: 5, nativeTypingSamples: 20, workloadSamples: 5, backendOnly: false };
   for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index];
     if (key === '--fixture-root') args.fixtureRoot = argv[++index];
@@ -202,6 +202,7 @@ function parseArgs(argv) {
     else if (key === '--native-warm-samples') args.nativeWarmSamples = Number(argv[++index]);
     else if (key === '--workload-samples') args.workloadSamples = Number(argv[++index]);
     else if (key === '--native-ui-samples') args.nativeUiSamples = Number(argv[++index]);
+    else if (key === '--native-typing-samples') args.nativeTypingSamples = Number(argv[++index]);
     else if (key === '--native-smoke-fixture-root') args.nativeSmokeFixtureRoot = argv[++index];
     else if (key === '--native-large-fixture-root') args.nativeLargeFixtureRoot = argv[++index];
     else if (key === '--skip-native') args.skipNative = true;
@@ -369,14 +370,16 @@ function seedNativeAppData({ appDataRoot, fixtureRoots }) {
     throw new Error('The smoke fixture must contain deterministic native workload data. Regenerate it with the updated fixture generator.');
   }
   cpSync(nativeSource, nativeRoot, { recursive: true, errorOnExist: true, force: false });
-  writeFileSync(join(nativeRoot, 'typing-target.md'), '', { encoding: 'utf8', flag: 'wx' });
 
-  for (const filename of ['search-100.json', 'search-2000.json', 'ui-collection.json']) {
+  for (const filename of [
+    'search-100.json',
+    'search-2000.json',
+    'typing-100k-collection.json',
+    'typing-1m-collection.json',
+    'ui-collection.json',
+  ]) {
     const source = JSON.parse(readFileSync(join(nativeRoot, filename), 'utf8'));
     rebaseCollectionPaths(source.entries, appDataRoot);
-    if (filename === 'ui-collection.json') {
-      source.entries.push({ type: 'file', id: 'phase0-typing-target', path: join(nativeRoot, 'typing-target.md') });
-    }
     writeFileSync(join(collectionRoot, `${source.id}.json`), `${JSON.stringify(source, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
     collections.push(source);
   }
@@ -586,10 +589,48 @@ async function selectCollection(page, name, expectedEntries) {
   }
 }
 
+async function waitForEditorStable(page) {
+  await page.locator('.cm-content').waitFor({ state: 'visible', timeout: 15000 });
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    let previous = '';
+    let stableFrames = 0;
+    while (stableFrames < 5) {
+      await new Promise((resolvePromise) => requestAnimationFrame(resolvePromise));
+      const editor = document.querySelector('.cm-editor');
+      const content = document.querySelector('.cm-content');
+      if (!editor || !content) throw new Error('Editor disappeared while waiting for layout stability.');
+      const editorRect = editor.getBoundingClientRect();
+      const contentRect = content.getBoundingClientRect();
+      const style = window.getComputedStyle(content);
+      const signature = JSON.stringify([
+        content.textContent?.length ?? 0,
+        content.scrollHeight,
+        content.scrollLeft,
+        content.scrollTop,
+        editor.scrollHeight,
+        editor.scrollLeft,
+        editor.scrollTop,
+        editorRect.x,
+        editorRect.y,
+        editorRect.width,
+        editorRect.height,
+        contentRect.width,
+        contentRect.height,
+        style.font,
+      ]);
+      if (signature === previous) stableFrames += 1;
+      else stableFrames = 0;
+      previous = signature;
+    }
+  });
+  await page.waitForTimeout(100);
+}
+
 async function closeEditorThroughEmptyCollection(page) {
   await selectCollection(page, 'Phase 0 Empty', 0);
   await page.locator('.cm-content').waitFor({ state: 'detached', timeout: 15000 });
-  await selectCollection(page, 'Phase 0 Native UI', 4);
+  await selectCollection(page, 'Phase 0 Native UI', 3);
 }
 
 async function measureUiOperation(page, workloadName, details, operation) {
@@ -721,7 +762,7 @@ async function measureWatcherBurst({ page, nativeFixtureRoot, sessionName, sampl
   };
 }
 
-async function runNativeUiSession({ root, executable, appDataRoot, nativeFixtureRoot, sessionName, sampleCount }) {
+async function runNativeUiSession({ root, executable, appDataRoot, nativeFixtureRoot, sessionName, sampleCount, typingSampleCount }) {
   const session = await launchNativeApp({ executable, appDataRoot, runRoot: root, name: sessionName, mode: 'ui', index: 0 });
   const warmupSamples = [];
   const samplesByWorkload = new Map();
@@ -735,9 +776,27 @@ async function runNativeUiSession({ root, executable, appDataRoot, nativeFixture
     samplesByWorkload.get(name).push(sample);
   };
   const typingInputs = [
-    { name: 'editor-typing-100KiB', path: join(nativeFixtureRoot, 'typing-100k.md') },
-    { name: 'editor-typing-1MiB', path: join(nativeFixtureRoot, 'typing-1m.md') },
-  ].map((input) => ({ ...input, text: readFileSync(input.path, 'utf8') }));
+    {
+      name: 'editor-typing-100KiB',
+      collection_name: 'Phase 0 Typing 100 KiB',
+      entry_id: 'phase0-typing-100k',
+      path: join(nativeFixtureRoot, 'typing-100k.md'),
+    },
+    {
+      name: 'editor-typing-1MiB',
+      collection_name: 'Phase 0 Typing 1 MiB',
+      entry_id: 'phase0-typing-1m',
+      path: join(nativeFixtureRoot, 'typing-1m.md'),
+    },
+  ].map((input) => ({
+    ...input,
+    input_bytes: statSync(input.path).size,
+    expected_prefix: readFileSync(input.path, 'utf8').slice(0, 64),
+  }));
+  for (const input of typingInputs) {
+    const expectedBytes = input.name === 'editor-typing-100KiB' ? 100 * 1024 : 1024 * 1024;
+    if (input.input_bytes !== expectedBytes) throw new Error(`${input.name} fixture must be exactly ${expectedBytes} bytes; got ${input.input_bytes}.`);
+  }
 
   try {
     const resolvedAppDataRoot = await invokeTauri(session.page, 'plugin:path|resolve_directory', { directory: 14 });
@@ -745,7 +804,7 @@ async function runNativeUiSession({ root, executable, appDataRoot, nativeFixture
       throw new Error(`Tauri app-data root did not match the isolated fixture path: ${resolvedAppDataRoot}`);
     }
     const invokeCollections = await invokeTauri(session.page, 'get_collections');
-    const expectedCollectionIds = ['fixture-smoke', 'fixture-standard', 'fixture-large', 'phase0-search-100', 'phase0-search-2000', 'phase0-native-ui', 'phase0-native-empty'];
+    const expectedCollectionIds = ['fixture-smoke', 'fixture-standard', 'fixture-large', 'phase0-search-100', 'phase0-search-2000', 'phase0-typing-100k', 'phase0-typing-1m', 'phase0-native-ui', 'phase0-native-empty'];
     for (const id of expectedCollectionIds) {
       if (!invokeCollections.some((collection) => collection.id === id)) throw new Error(`Native app did not load fixture collection ${id}.`);
     }
@@ -754,30 +813,44 @@ async function runNativeUiSession({ root, executable, appDataRoot, nativeFixture
     const idleFinishedAt = Date.now();
     idleWindow = { started_at_epoch_ms: idleStartedAt, finished_at_epoch_ms: idleFinishedAt };
 
-    await selectCollection(session.page, 'Phase 0 Native UI', 4);
+    await selectCollection(session.page, 'Phase 0 Native UI', 3);
     for (const input of typingInputs) {
-      for (let index = -1; index < sampleCount; index += 1) {
-        await session.page.locator('[data-tree-item-id="entry:phase0-typing-target"]').click();
-        await session.page.locator('.cm-content').waitFor({ state: 'visible', timeout: 15000 });
-        await session.page.locator('.cm-content').click();
-        await session.page.keyboard.press('Control+A');
-        await session.page.keyboard.press('Backspace');
-        await session.page.waitForFunction(() => (document.querySelector('.cm-content')?.textContent ?? '').length === 0, null, { timeout: 15000 });
-        const sample = await measureUiOperation(session.page, input.name, { input_bytes: Buffer.byteLength(input.text), input_method: 'WebView2 CDP Input.insertText through Playwright keyboard.insertText' }, async () => {
-          await session.page.keyboard.insertText(input.text);
-          return {
-            editor_present: await session.page.locator('.cm-editor').count() === 1,
-            rendered_characters_in_dom: await session.page.locator('.cm-content').evaluate((element) => element.textContent?.length ?? 0),
-            virtualized_viewport: true,
-          };
+      await selectCollection(session.page, input.collection_name, 1);
+      await session.page.locator(`[data-tree-item-id="entry:${input.entry_id}"]`).click();
+      await session.page.waitForFunction(
+        (expectedPrefix) => document.querySelector('.cm-content')?.textContent?.startsWith(expectedPrefix) === true,
+        input.expected_prefix,
+        { timeout: 15000 },
+      );
+      await session.page.locator('.cm-content').click();
+      await session.page.keyboard.press('Control+End');
+      await waitForEditorStable(session.page);
+      for (let index = -5; index < typingSampleCount; index += 1) {
+        const sample = await measureUiOperation(session.page, input.name, {
+          input_bytes: input.input_bytes,
+          key: 'x',
+          key_count: 1,
+          input_method: 'WebView2 CDP keyDown/keyUp through Playwright keyboard.press',
+          document_preloaded: true,
+          font_layout_stable_frames_before_measurement: 5,
+          paint_barrier: 'two requestAnimationFrame callbacks',
+        }, async () => {
+          await session.page.keyboard.press('x');
+          return { dispatched_key_count: 1, dispatched_key: 'x' };
         });
+        await session.page.waitForFunction(
+          () => document.querySelector('.cm-content')?.textContent?.endsWith('x') === true,
+          null,
+          { timeout: 15000 },
+        );
+        sample.output.visible_after_paint = true;
         addSample(input.name, sample, index < 0);
       }
     }
 
     for (const [collectionName, expectedEntries] of [['Phase 0 smoke', 100], ['Phase 0 standard', 1_000], ['Phase 0 large', 10_000]]) {
       for (let index = -1; index < sampleCount; index += 1) {
-        await selectCollection(session.page, 'Phase 0 Native UI', 4);
+        await selectCollection(session.page, 'Phase 0 Native UI', 3);
         const sample = await measureUiOperation(session.page, `collection-render-${expectedEntries}`, { expected_entries: expectedEntries }, async () => {
           await session.page.locator('button[aria-label="Choose collection"]').click();
           await session.page.getByRole('option', { name: collectionName, exact: true }).click();
@@ -815,7 +888,7 @@ async function runNativeUiSession({ root, executable, appDataRoot, nativeFixture
     }
     await invokeTauri(session.page, 'plugin:event|unlisten', { event: 'filesystem-changes-v2', eventId: eventListenerId });
 
-    await selectCollection(session.page, 'Phase 0 Native UI', 4);
+    await selectCollection(session.page, 'Phase 0 Native UI', 3);
     for (const [entryId, workloadName, waitSelector] of [
       ['phase0-chart-reopen', 'chart-reopen-cycle', '.cm-chart-widget-container[data-chart-state="ready"]'],
       ['phase0-table-reopen', 'table-reopen-cycle', '.cm-table-widget'],
@@ -848,7 +921,7 @@ async function runNativeUiSession({ root, executable, appDataRoot, nativeFixture
       await session.page.locator('.cm-content').waitFor({ state: 'visible', timeout: 15000 });
       await selectCollection(session.page, 'Phase 0 Empty', 0);
       await session.page.locator('.cm-content').waitFor({ state: 'detached', timeout: 15000 });
-      await selectCollection(session.page, 'Phase 0 Native UI', 4);
+    await selectCollection(session.page, 'Phase 0 Native UI', 3);
     }
     const lifetimeElapsed = (await session.page.evaluate(() => performance.now())) - lifetimeStartedPerf;
     await sleep(2000);
@@ -878,7 +951,10 @@ async function runNativeUiSession({ root, executable, appDataRoot, nativeFixture
   const nativeWorkloads = [];
   for (const [name, rawSamples] of samplesByWorkload.entries()) {
     const samples = rawSamples.map((sample) => finalizeUiSample(sample, monitorRows));
-    nativeWorkloads.push(workloadArtifact(name, samples, `${sampleCount} measured repeats in each of two independent Windows sessions`));
+    const measurement = name.startsWith('editor-typing-')
+      ? `${typingSampleCount} recorded single-key samples plus 5 warmups in this independent Windows release session`
+      : `${sampleCount} measured repeats in this independent Windows release session`;
+    nativeWorkloads.push(workloadArtifact(name, samples, measurement));
   }
   const validRows = monitorRows.filter((row) => Number.isFinite(row.timestamp_epoch_ms) && Number.isFinite(row.rss_bytes) && Number.isFinite(row.cpu_seconds));
   const sessionMetrics = summarizeProcessWindow(monitorRows, validRows[0]?.timestamp_epoch_ms ?? session.startedAt, validRows.at(-1)?.timestamp_epoch_ms ?? session.readyAt);
@@ -938,6 +1014,7 @@ function summarizeStartupSamples(samples) {
 async function runNativePhaseA({ root, args, runId, fixture, commands, backendInfo }) {
   if (process.platform !== 'win32') throw new Error('Phase A native performance baseline is Windows-only.');
   if (!Number.isInteger(args.nativeUiSamples) || args.nativeUiSamples <= 0) throw new Error('--native-ui-samples must be a positive integer.');
+  if (!Number.isInteger(args.nativeTypingSamples) || args.nativeTypingSamples <= 0) throw new Error('--native-typing-samples must be a positive integer.');
   const fixtureRoots = nativeFixtureRoots(args, resolve(args.fixtureRoot));
   const sessions = [];
 
@@ -955,7 +1032,15 @@ async function runNativePhaseA({ root, args, runId, fixture, commands, backendIn
     const cold = await nativeSamples({ root, mode: 'cold', count: args.nativeColdSamples, executable: build.executable, appDataRoot: profile.appDataRoot, sessionName });
     const warm = await nativeSamples({ root, mode: 'warm', count: args.nativeWarmSamples, executable: build.executable, appDataRoot: profile.appDataRoot, sessionName });
     commands.push(...cold.commands, ...warm.commands);
-    const ui = await runNativeUiSession({ root, executable: build.executable, appDataRoot: profile.appDataRoot, nativeFixtureRoot: profile.fixtureSeed.native_fixture_root, sessionName, sampleCount: args.nativeUiSamples });
+    const ui = await runNativeUiSession({
+      root,
+      executable: build.executable,
+      appDataRoot: profile.appDataRoot,
+      nativeFixtureRoot: profile.fixtureSeed.native_fixture_root,
+      sessionName,
+      sampleCount: args.nativeUiSamples,
+      typingSampleCount: args.nativeTypingSamples,
+    });
 
     sessions.push({
       session: sessionName,
@@ -985,7 +1070,12 @@ async function runNativePhaseA({ root, args, runId, fixture, commands, backendIn
       combined.get(workload.workload).push(...workload.raw_samples);
     }
   }
-  const workloadSummaries = [...combined.entries()].map(([name, samples]) => workloadArtifact(name, samples, 'two independent Windows release-build sessions with fixed-seed fixtures'));
+  const workloadSummaries = [...combined.entries()].map(([name, samples]) => {
+    const measurement = name.startsWith('editor-typing-')
+      ? `${args.nativeTypingSamples} recorded single-key samples plus 5 warmups per size in each of two independent Windows release-build sessions (${samples.length} recorded keys total); fixed-seed documents were preloaded and settled before measurement`
+      : `${args.nativeUiSamples} measured repeats in each of two independent Windows release-build sessions with fixed-seed fixtures`;
+    return workloadArtifact(name, samples, measurement);
+  });
   const first = sessions[0];
   const freshAppDataColdSamples = sessions.flatMap((session) => session.cold_samples.filter((sample) => sample.app_data_fresh_for_session));
   const appDataIsolation = 'fresh per-session Tauri identifier and app-data profile; each repeat uses a separate native process and WebView2 user-data profile';
@@ -1001,6 +1091,16 @@ async function runNativePhaseA({ root, args, runId, fixture, commands, backendIn
     fresh_app_data_cold_samples: freshAppDataColdSamples,
     fresh_app_data_cold_summary: summarizeStartupSamples(freshAppDataColdSamples),
     task007_workload_summaries: workloadSummaries,
+    typing_protocol: {
+      document_sizes_bytes: { '100KiB': 100 * 1024, '1MiB': 1024 * 1024 },
+      document_preloaded_before_measurement: true,
+      document_stability: 'document.fonts.ready, five stable animation frames across virtualized text/layout/scroll geometry, then 100 ms idle',
+      warmups_per_size_per_session: 5,
+      recorded_keys_per_size_per_session: args.nativeTypingSamples,
+      input: 'one printable x key via WebView2 CDP keyDown/keyUp through Playwright keyboard.press',
+      paint_barrier: 'two requestAnimationFrame callbacks after each key dispatch',
+      post_paint_check: 'virtualized editor text ends with the inserted x after the paint barrier',
+    },
     dec_perf_01_budgets: {
       editor_1mib_typing_p95_ms: 120,
       optimized_cold_start_median_max_baseline_ratio: 1.2,
@@ -1044,10 +1144,10 @@ async function run() {
     return;
   }
   if (args.help || !args.fixtureRoot || !args.artifactRoot) {
-    console.log('Usage: node scripts/phase0/run-benchmarks.mjs --fixture-root <standard-dir> --native-smoke-fixture-root <smoke-dir> --native-large-fixture-root <large-dir> --artifact-root artifacts/phase0 [--native-cold-samples 5] [--native-warm-samples 10] [--native-ui-samples 5] [--workload-samples 5]');
+    console.log('Usage: node scripts/phase0/run-benchmarks.mjs --fixture-root <standard-dir> --native-smoke-fixture-root <smoke-dir> --native-large-fixture-root <large-dir> --artifact-root artifacts/phase0 [--native-cold-samples 5] [--native-warm-samples 10] [--native-ui-samples 5] [--native-typing-samples 20] [--workload-samples 5]');
     return;
   }
-  if ([args.nativeColdSamples, args.nativeWarmSamples, args.nativeUiSamples, args.workloadSamples].some((value) => !Number.isInteger(value) || value <= 0)) throw new Error('sample counts must be positive integers');
+  if ([args.nativeColdSamples, args.nativeWarmSamples, args.nativeUiSamples, args.nativeTypingSamples, args.workloadSamples].some((value) => !Number.isInteger(value) || value <= 0)) throw new Error('sample counts must be positive integers');
   const artifactRoot = safeArtifactRoot(args.artifactRoot);
   const fixtureRoot = resolve(args.fixtureRoot);
   const fixture = fixtureInfo(fixtureRoot);

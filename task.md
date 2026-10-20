@@ -236,7 +236,7 @@ Current 2026-10-20 evidence supersedes the earlier pending-CI/merge notes below:
 ## TASK-106 — Measure per-key latency in preloaded native documents
 
 **State:** On-Going
-**Current Step:** Step 1 — Replace the bulk-insert typing proxy with a preloaded, settled, single-key measurement
+**Current Step:** Commit the corrected TASK-106 baseline and close the audit follow-up
 **Phase:** Phase A audit follow-up, required before Phase B
 **Reopened:** 2026-10-20, limited to the typing measurement and its report; historical baseline evidence remains in `tasks/archive/TASK-106.md`.
 
@@ -257,28 +257,31 @@ Correct the Phase A native typing metric. Load each 100 KiB and 1 MiB Markdown d
 
 ### Requirements
 - [x] Preserve the completed baseline's non-typing measurements and original raw artifacts.
-- [ ] Preload fixed 100 KiB and 1 MiB documents, wait for editor/font/layout stability, and measure one real printable key plus two animation frames per sample.
-- [ ] Collect repeated typing samples in two independent Windows release sessions; report the corrected p50/p95 and provenance.
-- [ ] Relabel the prior whole-document `insertText` values as a bulk-insertion proxy and remove them as evidence against the per-key 120 ms budget.
-- [ ] Regenerate and validate the Windows release artifact matrix and run applicable Windows quality gates.
+- [x] Preload fixed 100 KiB and 1 MiB documents, wait for editor/font/layout stability, and measure one real printable key plus two animation frames per sample.
+- [x] Collect 5 typing warmups and at least 20 recorded samples per size in each of two independent Windows release sessions; report the corrected p50/p95 and provenance.
+- [x] Relabel the prior whole-document `insertText` values as a bulk-insertion proxy and remove them as evidence against the per-key 120 ms budget.
+- [x] Regenerate and validate the Windows release artifact matrix and run applicable Windows quality gates.
 
 ### Steps
-- [ ] Step 1 — Update deterministic typing collections and native harness → verify: fixtures expose preloaded 100 KiB/1 MiB documents; raw sample details record one key and the settled input-to-paint window.
-- [ ] Step 2 — Run two independent Windows release UI sessions and required backend coverage → verify: typing artifacts have the requested sample count, zero operation errors, and reproducible fixture hashes.
-- [ ] Step 3 — Correct the report and verify artifacts plus Windows gates → verify: old values remain identified as bulk insertion; corrected per-key metrics are compared with DEC-PERF-01.
+- [x] Step 1 — Update deterministic typing collections and native harness → verify: fixtures expose preloaded 100 KiB/1 MiB documents; raw sample details record 5 warmups plus 20 single-key samples and the settled input-to-paint window.
+- [x] Step 2 — Run two independent Windows release UI sessions and required backend coverage → verify: each typing workload has 40 recorded samples total, zero operation errors, and reproducible fixture hashes.
+- [x] Step 3 — Correct the report and verify artifacts plus Windows gates → verify: old values remain identified as bulk insertion; corrected per-key metrics are compared with DEC-PERF-01.
 
 ### Handoff
-- Branch: `codex/phase-a-audit-fixes`; base commit: `d6a97ae` (TASK-104 follow-up implementation).
-- Uncommitted files: task-ledger closure for TASK-104; pre-existing `.gitignore` edit remains unrelated and preserved. TASK-106 benchmark sources have not changed in this follow-up.
-- Next action: implement per-key native measurement in the fixture generator and harness, then update the Windows performance workflow and report.
+- Branch: `codex/phase-a-audit-fixes`; base commit: `8e98d28` (TASK-104 audit follow-up archived).
+- Uncommitted files: `scripts/phase0/generate-fixtures.mjs`, `scripts/phase0/run-benchmarks.mjs`, `.github/workflows/phase0-performance.yml`, `docs/rebuild/main-native-performance-baseline.md`, and `task.md`; pre-existing `.gitignore` edit remains unrelated and preserved.
+- Next action: stage only TASK-106 files, commit the corrected measurement/report, then record the hash and archive this follow-up before Phase B.
 - Blockers: none. The recorded 263.3 ms was produced by one 1 MiB `keyboard.insertText`; it is not a valid per-key latency baseline.
 
 ### Verification
-Not yet verified in this follow-up. Previous baseline and coverage evidence remains in `tasks/archive/TASK-106.md`; the typing rows do not validate the per-key budget.
+Windows 11 Pro, Node 24.20.0, Rust 1.99.0 MSVC. Targeted ESLint, Node syntax checks, `npm run check:ci-policy`, `git diff --check`, exact independent fixture-pair verification, and `verify-artifacts --require-release` pass. Corrected standard run `phase0-20261020123504178-5241dc7-d67f3473` passed two native release sessions with 20 recorded keys plus 5 warmups per size/session; all 40 samples per size report one key, two-frame paint barrier, visible-after-paint check, and zero operation errors. 1 MiB p95 is 267.3 ms combined (session p95: 179.5 and 305.1 ms), above the 120 ms target. Regenerated smoke and large backend runs `phase0-20261020125514177-5241dc7-b6abf04f` and `phase0-20261020125712051-5241dc7-53621c2f` pass. No Linux/macOS validation is claimed.
 
 ### Log
 - 2026-10-20 — Reopened only the typing measurement at user direction after audit showed it times a whole-file insertion. Other completed TASK-106 workloads and artifacts remain historical evidence.
 - 2026-10-20 — TASK-104 follow-up implementation passed its Windows gates and was committed as `d6a97ae`; begin the per-key benchmark correction from that base.
+- 2026-10-20 — Step 1 complete: fixtures now expose separate preloaded 100 KiB/1 MiB collections; harness waits for the correct fixture prefix, fonts, stable layout and idle, then measures one `x` key through two animation frames with 5 warmups and 20 recorded samples per session. Syntax, targeted lint, policy, and exact fixture-pair checks pass.
+- 2026-10-20 — Steps 2–3 complete: two native Windows release sessions recorded 40 valid samples per size; smoke/large coverage and `verify-artifacts --require-release` passed. Updated the report with per-key p50/p95 and session details, labeled old bulk-insertion values as a retired proxy, and recorded that 1 MiB p95 remains above budget. Task-scoped Windows gates pass; implementation commit and archive closure remain.
+- 2026-10-20 — TASK-104 archived follow-up note committed as `8e98d28`; TASK-106 remains scoped to the fixture, benchmark harness, workflow, report, and task ledger.
 
 ## Batch commit records
 
