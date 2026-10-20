@@ -111,7 +111,7 @@
 | TASK-098 | [Fix Phase A Windows pre-push hook regression](tasks/archive/TASK-098.md) | Done | 2026-10-19 |
 | TASK-099 | [Enforce main branch protection for Windows CI](tasks/archive/TASK-099.md) | Paused | 2026-10-19 |
 | TASK-100 | [Fix Windows theme picker alignment gate](tasks/archive/TASK-100.md) | Paused | 2026-10-20 |
-| TASK-101 | [Assert direct Windows pre-push hook invocation](tasks/archive/TASK-101.md) | Paused | 2026-10-19 |
+| TASK-101 | [Assert direct Windows pre-push hook invocation](tasks/archive/TASK-101.md) | Paused | 2026-10-20 |
 | TASK-102 | [Characterize data integrity before refactor](tasks/archive/TASK-102.md) | Done | 2026-10-19 |
 | TASK-103 | [Prevent silent settings loss on corrupt configuration](tasks/archive/TASK-103.md) | Done | 2026-10-19 |
 | TASK-104 | [Verify own-save and watcher collision safety](tasks/archive/TASK-104.md) | Done | 2026-10-19 |
@@ -153,7 +153,7 @@ Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task ch�
 ## TASK-101 — Assert direct Windows pre-push hook invocation
 
 **State:** Paused
-**Current Step:** Step 3 — Hosted result pending; user directed task switch
+**Current Step:** Step 3 — Local integration verified; await combined hosted frontend evidence
 **Phase:** Phase A Git hook follow-up
 **Source ID:** User-directed Windows CI hook fix
 
@@ -162,6 +162,8 @@ Strengthen the Windows hook regression fixture by invoking `pre-push.mjs` direct
 
 ### Scope
 - `scripts/git/verify-pre-push.mjs`
+- `scripts/git/install-hooks.mjs` (restore exact TASK-098 prerequisite omitted from this branch)
+- `task.md` (integration and verification evidence)
 
 ### Related
 - `task.md` → TASK-098 (canonical Windows path fix)
@@ -176,13 +178,13 @@ Strengthen the Windows hook regression fixture by invoking `pre-push.mjs` direct
 ### Steps
 - [x] Step 1 — Add direct hook invocation assertion after successful fixture setup → verify: direct process exits non-zero and reports TS2322.
 - [x] Step 2 — Run exact Windows hook fixture and quality gates → verify: negative and positive push cases remain meaningful.
-- [ ] Step 3 — Review scoped diff and hosted frontend CI → verify: only hook regression test changed and CI passes.
+- [ ] Step 3 — Review scoped diff and hosted frontend CI → verify: only the hook regression fixture and exact installer prerequisite changed; integrated frontend CI passes.
 
 ### Handoff
-- Branch: `codex/phase-a-hook-debug`; base code commit: `2c04582`; task commit: `7ca559e`.
-- Uncommitted files: pre-existing `.gitignore` edit (`.opencode`), unrelated and preserved.
-- Next action: resume only if the user requests this hook task again; the local checks are recorded and PR #3 remains reviewable.
-- Blockers: GitHub Actions run `39278459779` remained queued without a result; user directed moving to another task when CI does not pass.
+- Branch: `codex/phase-a-performance-baseline`; base commit: `777fa84`.
+- Uncommitted files: unrelated pre-existing `.gitignore` edit preserved.
+- Next action: after the owner authorizes the Phase A batch push, verify the combined branch hosted frontend job. The two hook files exactly match saved hosted-passing 7ca559e; all local checks and G-REVIEW passed.
+- Blockers: combined hosted evidence needs the deferred Phase A batch push. The prior TASK-101 hosted frontend already passed in run 39278459779, but is not evidence for the integrated current branch.
 
 ### Verification
 Local Windows with Node 20.19.0 / Git for Windows 2.56.0: `npm run test:hooks` and `npm run check:ci-policy` pass; frontend quality (typecheck, lint, 291 tests, build) and `npm run check:contracts` pass. Direct hook invocation returns non-zero with TS2322; actual type-error and lint-warning pushes are blocked; clean push succeeds. Hosted run 39278459779 is queued.
@@ -191,6 +193,10 @@ Local Windows with Node 20.19.0 / Git for Windows 2.56.0: `npm run test:hooks` a
 - 2026-10-19 — Created from the user’s narrowed hook-only instruction; prior TASK-098 CI root cause is already fixed and recorded.
 - 2026-10-19 — Direct hook invocation assertion added; all local Windows gates pass. Commit `7ca559e`; PR #3 workflow 39278459779 queued.
 - 2026-10-19 — Paused after local pass while hosted run `39278459779` remained queued; followed the user instruction to move to another task.
+
+- 2026-10-20 — Resumed by owner for combined Phase A CI. Read-only Git/source diagnosis confirmed this branch omits TASK-098 commits 9900d24/e457e81/a81e256/2c04582 and TASK-101 commit 7ca559e. Restore their exact two-file hook delta together as the prerequisite for the direct-invocation fixture; no new hook behavior or quality-gate relaxation. GitHub job 118148345680 in run 39278459779 passed hook, frontend (291 tests), and contract checks on Windows Rust 1.97.0 MSVC; original queued handoff is stale.
+
+- 2026-10-20 — Restored only scripts/git/install-hooks.mjs and scripts/git/verify-pre-push.mjs; both exactly match 7ca559e (verified by empty git diff against that commit). Windows Node 24.20.0 / Git 2.55.0.windows.5: npm run test:hooks passes direct TS2322 rejection, real Git TS/lint blocking, clean push, fresh clone, custom-hook preservation and archive skipping. npm run check:ci-policy, npm run check:contracts and canonical frontend gate (typecheck/lint/297 tests/build) pass. Evidence: artifacts/task013/hook-verification.json; artifacts/phase0/quality-logs/quality-frontend-20261020034434994.json. G-REVIEW: no actionable findings. Unchanged backend/browser already passed at TASK-100 checkpoint with rustc 1.99.0 Windows MSVC (126+5 browser tests); no redundant rerun for hook-only integration. Paused only for combined hosted frontend result; no remote writes.
 
 ## TASK-099 — Enforce main branch protection for Windows CI
 

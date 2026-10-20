@@ -12,10 +12,19 @@ const scratch = mkdtempSync(join(tmpdir(), 'collectives hook-check-'));
 const work = join(scratch, 'work');
 const remote = join(scratch, 'remote.git');
 const clone = join(scratch, 'clone');
+const fixtureEnv = { ...process.env };
+for (const name of Object.keys(fixtureEnv)) {
+  if (name.startsWith('GIT_')) delete fixtureEnv[name];
+}
+const runnerGitContext = Object.fromEntries(
+  ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_PREFIX', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_COUNT']
+    .filter((name) => process.env[name])
+    .map((name) => [name, process.env[name]]),
+);
 mkdirSync(work);
 
-function run(command, args, cwd = work) {
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8', shell: false });
+function run(command, args, cwd = work, env = fixtureEnv) {
+  const result = spawnSync(command, args, { cwd, encoding: 'utf8', shell: false, env });
   if (result.error) throw result.error;
   return result;
 }
@@ -23,6 +32,11 @@ function git(args, cwd = work) {
   const result = run('git', args, cwd);
   assert.equal(result.status, 0, result.stderr);
   return result.stdout.trim();
+}
+function gitDiagnostic(args, cwd = work) {
+  const result = run('git', args, cwd);
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim();
+  return `exit ${result.status ?? 1}: ${output || '<no output>'}`;
 }
 function commit(message) {
   git(['add', '--all']);
@@ -61,9 +75,39 @@ writeFileSync(join(work, 'fixture.ts'), "export const value: number = 'invalid';
 writeFileSync(join(work, 'fixture.js'), 'export const used = 1;\n');
 const installed = run(process.execPath, ['scripts/git/install-hooks.mjs']);
 assert.equal(installed.status, 0, installed.stderr);
+assert.match(installed.stdout, /Git pre-push checks installed/, [
+  'Hook installer did not install the fixture hook.',
+  `Expected root: ${work}`,
+  `Git root before install: ${gitDiagnostic(['rev-parse', '--show-toplevel'])}`,
+  `Inherited Git context: ${JSON.stringify(runnerGitContext)}`,
+  `stdout:\n${installed.stdout}`,
+  `stderr:\n${installed.stderr}`,
+].join('\n'));
+assert.equal(git(['config', '--local', '--get', 'core.hooksPath']), '.githooks');
+const direct = run(process.execPath, ['scripts/git/pre-push.mjs']);
+assert.notEqual(direct.status, 0, [
+  'Direct pre-push check unexpectedly passed the invalid TypeScript fixture.',
+  `stdout:\n${direct.stdout}`,
+  `stderr:\n${direct.stderr}`,
+].join('\n'));
+assert.match(direct.stdout + direct.stderr, /TS2322/);
 commit('fixture: type error');
-const typeError = run('git', ['push', 'origin', 'main']);
-assert.notEqual(typeError.status, 0);
+const typeError = run('git', ['push', 'origin', 'main'], work, {
+  ...fixtureEnv,
+  GIT_TRACE: '1',
+  GIT_TRACE_SETUP: '1',
+});
+assert.notEqual(typeError.status, 0, [
+  `Expected invalid TypeScript push to fail; git exited ${typeError.status}.`,
+  `Git: ${gitDiagnostic(['--version'])}`,
+  `Repository root: ${gitDiagnostic(['rev-parse', '--show-toplevel'])}`,
+  `core.hooksPath: ${gitDiagnostic(['config', '--show-origin', '--get-all', 'core.hooksPath'])}`,
+  `Tracked hook: ${gitDiagnostic(['ls-files', '--stage', '.githooks/pre-push'])}`,
+  `Git context environment: ${JSON.stringify(Object.fromEntries(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_PREFIX', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_COUNT'].filter((key) => process.env[key]).map((key) => [key, process.env[key]])))}`,
+  `Installer stdout:\n${installed.stdout}`,
+  `stdout:\n${typeError.stdout}`,
+  `stderr:\n${typeError.stderr}`,
+].join('\n'));
 assert.match(typeError.stdout + typeError.stderr, /TS2322/);
 assert.notEqual(run('git', ['--git-dir', remote, 'rev-parse', '--verify', 'refs/heads/main']).status, 0);
 
