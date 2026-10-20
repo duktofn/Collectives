@@ -1,6 +1,6 @@
 # Codebase Context
 Last Updated: 2026-10-21
-Last Reviewed Commit: 3dbe5e4
+Last Reviewed Commit: dc4e3c3
 
 The editor and settings sections describe the current code-block and typography-control implementation. Source code takes precedence. Backend descriptions summarize existing boundaries; this session did not audit backend behavior.
 

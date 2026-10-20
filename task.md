@@ -130,6 +130,8 @@ Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task ch�
 
 ## Commit log
 
+- TASK-109 paused checkpoint: `dc4e3c3` (2026-10-21); code/frontend/backend/browser gates pass, native acceptance remains incomplete.
+
 - TASK-108 implementation: `3dbe5e4` (2026-10-21); Windows gates and native smoke passed.
 | Task | Commit | Ngày |
 |---|---|---|
@@ -261,7 +263,7 @@ Implement the corresponding approved v1.4 plan task sequentially on Windows, pre
 - Branch: `codex/phase-b-08-11`; original main base: `119ce0e`; predecessor closure: `39a3216`.
 - TASK-108 (plan 008) is Done: implementation `3dbe5e4`, evidence/closure `39a3216`.
 - TASK-109 (plan 009) is implemented and verified by local code/backend/browser gates, but NOT Done: native acceptance and the additional metadata benchmark setup are unresolved.
-- The coherent TASK-109 changes are saved in a focused pause commit, recorded in the Commit log and below; no push or PR was made.
+- Paused implementation commit: `dc4e3c3`. Uncommitted implementation files: none. No push or PR was made.
 - Next action on explicit resume: inspect the paused commit/diff and diagnostic evidence; isolate the native metadata probe independently of document-session code before repeating a full release benchmark. Finish TASK-109 verification/closure before changing TASK-110 source.
 - Native evidence helpers and logs are ignored local artifacts: `artifacts/phase0/phase-b-native-runner.mjs`, `phase-b-diagnostic.mjs`, `phase-b-diagnostic-ui.mjs`, `phase-b-diagnostic-stable.mjs`, `task109-native.log`, `task109-focused.log`, `task109-frontend.log`, `task109-contracts.log`, `task109-backend.log`, `task109-clippy.log`, and `task109-browser.log`.
 - Fixed-seed input roots: `%TEMP%/collectives-phaseb-08-11-fixtures/{smoke,standard,large}`. Failed run profiles have `.phase0-owner` markers under `%APPDATA%/com.collectives.phase0.*`; they are isolated test data and have NOT been deleted, moved, reset or repaired. Never touch the production profile.
@@ -287,6 +289,8 @@ Native validation is NOT complete. Extended benchmark attempts failed during set
 
 
 - 2026-10-21 — User explicitly requested saving current state and pausing. TASK-109 is Paused, native verification unfinished; TASK-110/111 have no source changes. No matching task-owned validation runner was still active at the pause audit. Coherent verified code will be committed without marking the task Done.
+
+- 2026-10-21 — Saved the paused implementation as `dc4e3c3`. Ledger records completed local checks and unresolved native evidence; user-requested pause is in effect.
 
 ## TASK-110 — Incremental metadata projections
 
