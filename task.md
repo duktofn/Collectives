@@ -155,6 +155,7 @@ Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task ch�
 | TASK-099 (authorized PR #6 merge; fresh main CI) | `f604239` | 2026-10-20 |
 | TASK-099 (post-merge evidence and remaining flags) | `af4ded7` | 2026-10-20 |
 | TASK-099 (PR #7 follow-up CI and merge) | `48fb04a` | 2026-10-20 |
+| TASK-099 (final protection readback and Phase A closure) | `4c525c7` | 2026-10-21 |
 | TASK-100 | `66610c4` | 2026-10-20 |
 | TASK-107 | `02da522` | 2026-10-20 |
 | TASK-101 (local hook integration) | `02acf03` | 2026-10-20 |
