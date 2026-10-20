@@ -146,8 +146,8 @@ function repeatedBytes(text, byteLength) {
 }
 
 function addNativeWorkloadFixtures(output, seed, state) {
-  writeFile(output, 'native/typing-100k.md', repeatedBytes(`Phase 0 editor typing fixture ${seed}. `, 100 * 1024), state);
-  writeFile(output, 'native/typing-1m.md', repeatedBytes(`Phase 0 editor typing fixture ${seed}. `, 1024 * 1024), state);
+  writeFile(output, 'native/typing-100k.md', repeatedBytes(`Phase 0 editor typing 100 KiB fixture ${seed}. `, 100 * 1024), state);
+  writeFile(output, 'native/typing-1m.md', repeatedBytes(`Phase 0 editor typing 1 MiB fixture ${seed}. `, 1024 * 1024), state);
 
   const searchEntries = [];
   for (let index = 0; index < 2_000; index += 1) {
@@ -168,6 +168,12 @@ function addNativeWorkloadFixtures(output, seed, state) {
     entries,
     metadata: null,
   });
+  writeFile(output, 'native/typing-100k-collection.json', `${JSON.stringify(collection('phase0-typing-100k', 'Phase 0 Typing 100 KiB', [
+    { type: 'file', id: 'phase0-typing-100k', path: 'native/typing-100k.md' },
+  ]), null, 2)}\n`, state);
+  writeFile(output, 'native/typing-1m-collection.json', `${JSON.stringify(collection('phase0-typing-1m', 'Phase 0 Typing 1 MiB', [
+    { type: 'file', id: 'phase0-typing-1m', path: 'native/typing-1m.md' },
+  ]), null, 2)}\n`, state);
   writeFile(output, 'native/search-100.json', `${JSON.stringify(collection('phase0-search-100', 'Phase 0 Search 100', searchEntries.slice(0, 100)), null, 2)}\n`, state);
   writeFile(output, 'native/search-2000.json', `${JSON.stringify(collection('phase0-search-2000', 'Phase 0 Search 2000', searchEntries), null, 2)}\n`, state);
 
@@ -188,6 +194,7 @@ function addNativeWorkloadFixtures(output, seed, state) {
 
   return {
     typing_bytes: { '100k': 100 * 1024, '1m': 1024 * 1024 },
+    typing_collections: ['phase0-typing-100k', 'phase0-typing-1m'],
     search_markdown_files: [100, 2_000],
     watcher_burst_files: [100, 1_000],
     ui_documents: ['native/chart-reopen.md', 'native/table-reopen.md', 'native/editor-lifetime-proxy.md'],

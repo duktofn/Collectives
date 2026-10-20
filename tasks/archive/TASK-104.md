@@ -55,3 +55,11 @@ Windows 10.0.26300.0 with NTFS, Node 24.20.0 and Rust 1.99.0. Frontend quality p
 - 2026-10-19 — The red Windows seam test reproduced an overwrite when a same-path external write landed after the final token compare but before `ReplaceFileW`. The writer now verifies the atomic replacement backup against the expected token, restores newer external bytes on mismatch, and refuses to recreate a deleted path; replace/delete/recreate regressions pass.
 - 2026-10-19 — Windows frontend, backend and IPC contract gates passed; 1,000 real saves and before/after-token external replace/delete/recreate schedules pass.
 - 2026-10-19 — TASK-104 code committed as `707f906`; push remains deferred until Phase A is complete.
+
+### Reopened follow-up — 2026-10-20
+
+The Phase A audit found a missing post-publication schedule: an external write after the first `ReplaceFileW` could be displaced during rollback and deleted as though it were the rejected local draft. The Windows writer now verifies the published destination against the staged replacement token. Rollback removes a displaced file only when its hash matches that rejected local replacement; otherwise it retains the file at a `.tmp-<uuid>` recovery path and includes the path in the conflict message.
+
+The new regression was red on the prior implementation (the write incorrectly returned success) and passes after the fix. Windows verification on Rust 1.99.0 MSVC: `cargo fmt --all -- --check`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked --all-targets -j 1` (109 tests), and `git diff --check` all pass. Parallel all-target compilation initially hit the Windows pagefile limit; serialized execution passed. No Linux/macOS result is claimed.
+
+Follow-up implementation commit: `d6a97ae`.

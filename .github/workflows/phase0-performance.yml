@@ -46,6 +46,7 @@ jobs:
             --native-cold-samples 5 `
             --native-warm-samples 10 `
             --native-ui-samples 5 `
+            --native-typing-samples 20 `
             --workload-samples 5 `
             --run-id-file (Join-Path $env:RUNNER_TEMP 'phase0-standard.run-id')
       - name: Run native release smoke coverage for 100 entries and 10KB I/O
