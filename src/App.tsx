@@ -1,3 +1,5 @@
+import { createAppLifecycleWorkflow } from "./workflows/AppLifecycleWorkflow";
+import { createNavigationWorkflow } from "./workflows/NavigationWorkflow";
 import { createSignal, Show, For, createEffect, onMount, onCleanup, lazy } from "solid-js";
 import { collectionsStore } from "./stores/collections";
 import { uiStore } from "./stores/ui";
@@ -14,9 +16,9 @@ import { WorkspaceHome } from "./components/shell/WorkspaceHome";
 import * as settingsApi from "./features/settings";
 import * as archiveApi from "./features/archive";
 import * as editorApi from "./features/editor";
-import { pickDirectory, pickZipFile, getCurrentAppWindow } from "./platform";
+import { pickDirectory, pickZipFile } from "./platform";
 import { FolderRefReadinessNotice } from "./components/common/FolderRefReadinessNotice";
-import { applyThemeSettings, registerCustomFonts } from "./lib/themeEngine";
+import { applyThemeSettings } from "./lib/themeEngine";
 import { cancelFolderRefReadiness, getFolderRefReadiness, resolveFolderRefIntent, retryFolderRefChild, folderRefReadiness } from "./features/filesystem/folderRefReadiness";
 import { formatIpcError } from "./shared/ipc/errors";
 import { createOperationLeaseRegistry } from "./workflows/operationLease";
@@ -27,10 +29,9 @@ import { TreeWorkspace } from "./workflows/TreeWorkspace";
 import { CollectionWorkspace } from "./workflows/CollectionWorkspace";
 import { DocumentWorkspace } from "./workflows/DocumentWorkspace";
 import { requestFolderRefChild } from "./features/filesystem/folderRefReadiness";
-import { announcementKey, announcer, mountAnnouncer } from "./a11y/announcer";
-import { flushPendingRecoveryDraft, listRecoveryDrafts, removeRecoveryDraft, type RecoveryDraft } from "./features/editor/recovery";
-import { canNavigateBack, canNavigateForward, cancelHistoryNavigation, peekHistoryTarget, recordNavigation } from "./features/editor/navigationHistory";
-import type { ContentSearchResult } from "./features/links";
+import { announcementKey, announcer } from "./a11y/announcer";
+import { listRecoveryDrafts, removeRecoveryDraft, type RecoveryDraft } from "./features/editor/recovery";
+import { canNavigateBack, canNavigateForward, recordNavigation } from "./features/editor/navigationHistory";
 import { QuickOpenDialog } from './components/search/QuickOpenDialog';
 import { ContentSearchDialog } from './components/search/ContentSearchDialog';
 import { registerNoteContentSearch } from './lib/editorCommands';
@@ -56,43 +57,7 @@ const DEFAULT_SETTINGS: Settings = {
   fontScale: 1.0,
 };
 
-export function createCloseRequestHandler(
-  close: () => Promise<boolean>,
-  destroy: () => Promise<void>,
-  onError: (error: unknown) => void = () => {},
-) {
-  let closeInProgress = false;
-  return async (event: { preventDefault: () => void }) => {
-    event.preventDefault();
-    if (closeInProgress) return;
-    closeInProgress = true;
-    try {
-      const closed = await close();
-      if (closed) await destroy();
-      else closeInProgress = false;
-    } catch (error) {
-      closeInProgress = false;
-      onError(error);
-    }
-  };
-}
-
-export function createAppCloseTransactionHandler(
-  operationLeaseRegistry: ReturnType<typeof createOperationLeaseRegistry>,
-  flush: () => Promise<boolean>,
-  destroy: () => Promise<void>,
-  onError: (error: unknown) => void = () => {},
-) {
-  return createCloseRequestHandler(
-    async () => {
-      await operationLeaseRegistry.waitForIdle();
-      return flush();
-    },
-    destroy,
-    onError,
-  );
-}
-
+export { createCloseRequestHandler, createAppCloseTransactionHandler } from "./workflows/AppLifecycleWorkflow";
 
 export default function App() {
   onMount(() => {
@@ -190,248 +155,12 @@ export default function App() {
     if (pending.length > 0) setIsRecoveryReviewOpen(true);
   };
 
-  onMount(async () => {
-    const disposeAnnouncer = mountAnnouncer(document.querySelector<HTMLElement>("[data-app-shell-root]") ?? document.body);
-    const handleGlobalError = (event: ErrorEvent) => {
-      console.error("Caught global error:", event.error);
-      setGlobalError({
-        message: event.message || "Unhandled JavaScript Error",
-        stack: event.error?.stack,
-      });
-      announcer.alert(event.message || "Unhandled JavaScript error", announcementKey("urgent-error", "", event.message));
-    };
-    window.addEventListener("error", handleGlobalError);
-
-    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      console.error("Caught unhandled promise rejection:", event.reason);
-      setGlobalError({
-        message: event.reason?.message || String(event.reason) || "Unhandled Promise Rejection",
-        stack: event.reason?.stack,
-      });
-      announcer.alert(event.reason?.message || String(event.reason) || "Unhandled promise rejection", announcementKey("urgent-error", "", String(event.reason)));
-    };
-    window.addEventListener("unhandledrejection", handleUnhandledRejection);
-    window.addEventListener("pagehide", flushPendingRecoveryDraft);
-    window.addEventListener("beforeunload", flushPendingRecoveryDraft);
-
-    const handleMissingWikilink = (event: Event) => {
-      const noteName = (event as CustomEvent<{ noteName?: string }>).detail?.noteName;
-      if (!noteName) return;
-      setMissingLinkName(noteName);
-      setIsMissingLinkOpen(true);
-    };
-    const handleWikilinkError = (event: Event) => {
-      const message = (event as CustomEvent<{ message?: string }>).detail?.message;
-      showAppNotice("WikiLink lookup failed", message || "Collectives could not check this link in the active collection.");
-    };
-    window.addEventListener("collectives:wikilink-missing", handleMissingWikilink);
-    window.addEventListener("collectives:wikilink-error", handleWikilinkError);
-    const handleWikilinkPreview = (event: Event) => {
-      const detail = (event as CustomEvent<WikiLinkPreviewState>).detail;
-      if (!detail || typeof detail.noteName !== "string") return;
-      setWikiLinkPreview(detail);
-    };
-    const handleWikilinkPreviewHide = () => setWikiLinkPreview(null);
-    window.addEventListener("collectives:wikilink-preview", handleWikilinkPreview);
-    window.addEventListener("collectives:wikilink-preview-hide", handleWikilinkPreviewHide);
-
-    const handleGlobalShortcut = (event: KeyboardEvent) => {
-      if (event.isComposing || document.querySelector("[data-modal-focus-scope='true']")) return;
-      const target = event.target instanceof HTMLElement ? event.target : null;
-      const textEditing = Boolean(target?.isContentEditable || target?.closest("input, textarea, [contenteditable='true']"));
-      if (event.altKey && event.key === "ArrowLeft") {
-        if (textEditing) return;
-        event.preventDefault();
-        void navigateHistory("back");
-        return;
-      }
-      if (event.altKey && event.key === "ArrowRight") {
-        if (textEditing) return;
-        event.preventDefault();
-        void navigateHistory("forward");
-        return;
-      }
-      if (event.altKey || !(event.ctrlKey || event.metaKey)) return;
-      const key = event.key.toLowerCase();
-      if (key === "p" && !event.shiftKey) {
-        event.preventDefault();
-        if (collectionsStore.state.activeCollectionId) setIsQuickOpen(true);
-        else showAppNotice("Choose a collection first", "Quick Open searches the active collection.");
-      } else if (key === "f" && event.shiftKey) {
-        event.preventDefault();
-        if (collectionsStore.state.activeCollectionId) openContentSearch();
-        else showAppNotice("Choose a collection first", "Content search searches the active collection.");
-      } else if (key === "n" && !event.shiftKey) {
-        event.preventDefault();
-        void handleNewNoteStart();
-      }
-    };
-    window.addEventListener("keydown", handleGlobalShortcut);
-
-    let unlistenClose: (() => void) | undefined;
-    if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined) {
-      try {
-        const appWindow = getCurrentAppWindow();
-        unlistenClose = await appWindow.onCloseRequested(
-          createAppCloseTransactionHandler(
-            operationLeaseRegistry,
-            () => editorStore.closeFile(),
-            () => appWindow.destroy(),
-            (error) => showAppNotice("Close blocked", error),
-          ),
-        );
-      } catch (err) {
-        console.error("Failed to register close request listener:", err);
-      }
-    }
-
-    onCleanup(() => {
-      disposeAnnouncer();
-      window.removeEventListener("error", handleGlobalError);
-      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
-      window.removeEventListener("pagehide", flushPendingRecoveryDraft);
-      window.removeEventListener("beforeunload", flushPendingRecoveryDraft);
-      window.removeEventListener("collectives:wikilink-missing", handleMissingWikilink);
-      window.removeEventListener("collectives:wikilink-error", handleWikilinkError);
-      window.removeEventListener("collectives:wikilink-preview", handleWikilinkPreview);
-      window.removeEventListener("collectives:wikilink-preview-hide", handleWikilinkPreviewHide);
-      window.removeEventListener("keydown", handleGlobalShortcut);
-      if (unlistenClose) {
-        unlistenClose();
-      }
-    });
-
-    try {
-      await collectionsStore.loadCollections();
-      const lastActiveId = localStorage.getItem("lastActiveCollectionId");
-      if (lastActiveId && collectionsStore.state.collections.some(c => c.id === lastActiveId)) {
-        let lastSelectedId = localStorage.getItem("lastSelectedEntryId");
-        await collectionsStore.openCollection(lastActiveId);
-        const activeCol = collectionsStore.activeCollection();
-        const findById = (entries: Entry[], id: string): Entry | null => {
-          for (const entry of entries) {
-            if (entry.id === id) return entry;
-            if (entry.type === "group") {
-              const nested = findById(entry.children, id);
-              if (nested) return nested;
-            }
-          }
-          return null;
-        };
-        const priorEntry = activeCol && lastSelectedId ? findById(activeCol.entries, lastSelectedId) : null;
-        const priorPath = priorEntry?.type === "file"
-          ? priorEntry.path
-          : !priorEntry && lastSelectedId && /[/\\]/.test(lastSelectedId)
-            ? lastSelectedId
-            : null;
-        const staleEntryId = Boolean(lastSelectedId && !priorEntry && !/[/\\]/.test(lastSelectedId));
-        if (priorPath || staleEntryId) {
-          try {
-            if (!priorPath) throw new Error("The last selected collection entry is no longer available.");
-            await editorApi.readFile(priorPath);
-          } catch (error) {
-            lastSelectedId = null;
-            if (!lastSelectedId) {
-              showAppNotice("Last note unavailable", `${formatIpcError(error)}. Choose another note from the collection.`);
-            }
-          }
-        }
-        if (lastSelectedId) {
-          await editorStore.selectEntry(lastSelectedId);
-          if (activeCol) {
-            const selectedId = lastSelectedId;
-            const findAndExpand = (entries: Entry[], parentIds: string[]): boolean => {
-              for (const entry of entries) {
-                if (entry.id === selectedId) {
-                  for (const pid of parentIds) {
-                    uiStore.setExpanded(pid, true);
-                  }
-                  return true;
-                }
-                if (entry.type === "group") {
-                  if (findAndExpand(entry.children, [...parentIds, entry.id])) {
-                    return true;
-                  }
-                }
-              }
-              return false;
-            };
-
-            const findFolderRefAndExpand = (entries: Entry[], parentIds: string[]): boolean => {
-              for (const entry of entries) {
-                if (entry.type === "folder-ref") {
-                  const cleanEntryPath = entry.path.replace(/\\/g, "/").toLowerCase();
-                  const cleanTargetId = selectedId.replace(/\\/g, "/").toLowerCase();
-                  if (cleanTargetId.startsWith(cleanEntryPath)) {
-                    uiStore.setExpanded(entry.id, true);
-                    for (const pid of parentIds) {
-                      uiStore.setExpanded(pid, true);
-                    }
-                    const relativePath = selectedId.slice(entry.path.length);
-                    const parts = relativePath.split(/[/\\]/).filter(Boolean);
-                    let currentPath = entry.path;
-                    for (let i = 0; i < parts.length - 1; i++) {
-                      currentPath += (currentPath.endsWith("/") || currentPath.endsWith("\\") ? "" : "/") + parts[i];
-                      uiStore.setExpanded(currentPath, true);
-                    }
-                    return true;
-                  }
-                }
-                if (entry.type === "group") {
-                  if (findFolderRefAndExpand(entry.children, [...parentIds, entry.id])) {
-                    return true;
-                  }
-                }
-              }
-              return false;
-            };
-
-            if (!findAndExpand(activeCol.entries, [])) {
-              findFolderRefAndExpand(activeCol.entries, []);
-            }
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Failed to load collections on mount", err);
-    }
-
-    let unlisten: (() => void) | undefined;
-    try {
-      unlisten = await collectionsStore.initializeListeners();
-    } catch (err) {
-      console.error("Failed to initialize collection listeners", err);
-    }
-
-    try {
-      const loaded = await settingsApi.loadSettings();
-      setSettings(loaded);
-      applyThemeSettings(loaded);
-      try {
-        const fontsDir = await settingsApi.getFontsDir();
-        registerCustomFonts(loaded.customFonts, fontsDir);
-      } catch (err) {
-        showAppNotice("Could not load custom fonts", err);
-      }
-    } catch (err) {
-      console.error("Failed to load settings on mount", err);
-      setSettings(DEFAULT_SETTINGS);
-      applyThemeSettings(DEFAULT_SETTINGS);
-      if (settingsApi.isSettingsRecoveryError(err)) {
-        setSettingsLoadIssue(formatIpcError(err) || String(err));
-        setSettingsRecoveryError("");
-        setIsSettingsRecoveryDialogOpen(true);
-      } else {
-        showAppNotice("Could not load settings", err);
-      }
-    }
-    await refreshRecoveryDrafts();
-
-    onCleanup(() => {
-      if (unlisten) {
-        unlisten();
-      }
-    });
+  createAppLifecycleWorkflow({
+    setGlobalError, setMissingLinkName, setIsMissingLinkOpen, setWikiLinkPreview,
+    navigateHistory: (direction) => navigateHistory(direction), setIsQuickOpen, openContentSearch,
+    handleNewNoteStart: () => handleNewNoteStart(), operationLeaseRegistry, showAppNotice,
+    setSettings, setSettingsLoadIssue, setSettingsRecoveryError, setIsSettingsRecoveryDialogOpen,
+    refreshRecoveryDrafts,
   });
 
   const collectionNotes = () => {
@@ -530,27 +259,7 @@ export default function App() {
     }
   };
 
-  let selectionTransition: Promise<void> = Promise.resolve();
-  const restoreDisplayedSelection = () => {
-    const path = editorStore.state.openFilePath;
-    if (!path) return;
-    const findFile = (entries: Entry[]): string | null => {
-      for (const entry of entries) {
-        if (entry.type === "file" && entry.path === path) return entry.id;
-        if (entry.type === "group") {
-          const found = findFile(entry.children);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
-    uiStore.selectEntry(findFile(collectionsStore.activeCollection()?.entries ?? []) ?? path);
-  };
-  const queueSelectionTransition = (transition: () => Promise<void>) => {
-    selectionTransition = selectionTransition
-      .then(transition)
-      .catch((error) => showAppNotice("Selection transition failed", error));
-  };
+  const { queueSelectionTransition, restoreDisplayedSelection, openQuickCandidate, openContentResult, navigateHistory } = createNavigationWorkflow(showAppNotice);
 
   // Synchronize selection store with editor store
   let lastFolderRefAnnouncement = "";
@@ -813,38 +522,6 @@ export default function App() {
     }
   };
 
-  const openQuickCandidate = async (candidate: ResolveCandidate): Promise<boolean> => {
-    const collectionId = collectionsStore.state.activeCollectionId;
-    const selected = await editorStore.selectEntry(candidate.entryId);
-    if (!selected) return false;
-    // Selection already queues a file open; let it settle before any fallback read.
-    await selectionTransition;
-    if (uiStore.state.selectedEntryId !== candidate.entryId
-      || collectionsStore.state.activeCollectionId !== collectionId) return false;
-    if (editorStore.state.openFilePath !== candidate.path) await editorStore.openFile(candidate.path);
-    return editorStore.state.openFilePath === candidate.path;
-  };
-
-  const openContentResult = async (result: ContentSearchResult): Promise<boolean> => {
-    const opened = await openQuickCandidate({
-      displayName: result.displayName,
-      entryId: result.entryId,
-      path: result.path,
-      entryType: "file",
-    });
-    if (opened) editorStore.navigateToPosition(result.path, result.lineNumber, result.columnUtf16);
-    return opened;
-  };
-
-  const navigateHistory = async (direction: "back" | "forward") => {
-    const collectionId = collectionsStore.state.activeCollectionId;
-    if (!collectionId) return false;
-    const target = peekHistoryTarget(collectionId, direction);
-    if (!target) return false;
-    const opened = await openQuickCandidate(target);
-    if (!opened) cancelHistoryNavigation(collectionId);
-    return opened;
-  };
 
   const handleRestoreRecoveryDraft = async (draft: RecoveryDraft) => {
     setIsRecoveryRestorePending(true);

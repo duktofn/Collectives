@@ -1,7 +1,8 @@
-import { render, fireEvent } from '@solidjs/testing-library';
+import { render, fireEvent, waitFor } from '@solidjs/testing-library';
 import { describe, it, expect, vi } from 'vitest';
 import App from './App';
 import { uiStore } from './stores/ui';
+import { collectionsStore } from './stores/collections';
 
 // Mock Tauri APIs
 vi.mock("./features/collections", () => ({
@@ -83,5 +84,24 @@ describe('App Component', () => {
     const { container } = render(() => <App />);
     const resizer = container.querySelector('.sidebar-resizer');
     expect(resizer).not.toBeNull();
+  });
+});
+
+
+describe('App lifecycle ownership', () => {
+  it('disposes listeners that finish registering after the App has unmounted', async () => {
+    let resolve!: (dispose: () => void) => void;
+    const subscription = new Promise<() => void>((done) => { resolve = done; });
+    const initialize = vi.spyOn(collectionsStore, 'initializeListeners').mockReturnValueOnce(subscription);
+    const dispose = vi.fn();
+    const app = render(() => <App />);
+    try {
+      await waitFor(() => expect(initialize).toHaveBeenCalled());
+      app.unmount();
+      resolve(dispose);
+      await waitFor(() => expect(dispose).toHaveBeenCalledOnce());
+    } finally {
+      initialize.mockRestore();
+    }
   });
 });
