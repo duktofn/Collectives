@@ -150,6 +150,7 @@ Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task ch�
 | TASK-105 | `a1b9553` | 2026-10-19 |
 | TASK-106 | `f0eb16f` | 2026-10-20 |
 | TASK-099 (green PR CI/readback evidence) | `f54bac8` | 2026-10-20 |
+| TASK-099 (authorized PR #6 merge; fresh main CI) | `f604239` | 2026-10-20 |
 | TASK-100 | `66610c4` | 2026-10-20 |
 | TASK-107 | `02da522` | 2026-10-20 |
 | TASK-101 (local hook integration) | `02acf03` | 2026-10-20 |
@@ -160,7 +161,7 @@ Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task ch�
 ## TASK-099 — Enforce main branch protection for Windows CI
 
 **State:** Paused
-**Current Step:** Step 4 — PR CI green; protection readback denied and fresh main evidence awaits authorized merge
+**Current Step:** Step 5 — Fresh main CI verified; detailed protection flags remain unreadable
 **Phase:** Refactor plan Phase A
 **Source ID:** Attached plan TASK-002
 
@@ -179,28 +180,36 @@ Ensure `main` requires the canonical Windows CI jobs, stays up to date with its 
 - `task.md` → TASK-099
 
 ### Requirements
-- [x] Actual `main` protection matches the checked-in policy: strict, four Windows checks from GitHub Actions, administrators enforced, no force pushes or deletions.
+- [x] Historical 2026-10-19 application/readback matched the checked-in policy: strict, four Windows checks from GitHub Actions, administrators enforced, no force pushes or deletions.
 - [x] A deliberately failing PR cannot merge under the effective rule.
-- [ ] A fresh `main` workflow is green after the protection is set.
+- [x] A fresh `main` workflow is green after the protection is set.
 - [x] `npm run check:ci-policy` passes on Windows.
+- [ ] Current detailed protection readback reconfirms strict/up-to-date, administrator, force-push and deletion flags; the integration currently returns HTTP 403. Public protected=true and the four required checks are verified separately.
 
 ### Steps
 - [x] Step 1 — Read current policy, workflow, and repository protection → verify: recorded unprotected `main` before the change.
 - [x] Step 2 — Apply only the approved Windows rule and read it back → verify: API reports exact four contexts and flags.
 - [x] Step 3 — Run the failed-PR probe and policy gate → verify: PR #4 frontend check failed, GitHub reported `mergeable_state=blocked`, PR closed unmerged and probe branch deleted.
-- [ ] Step 4 — Obtain a green fresh workflow after all required checks pass → verify: all four status contexts succeed.
+- [x] Step 4 — Obtain a green fresh workflow after all required checks pass → verify: all four status contexts succeed.
+
+- [ ] Step 5 — Reconfirm the remaining detailed protection flags without changing settings → verify: administration-capable readback matches the historical policy; no unverified current flags are claimed.
 
 ### Handoff
-- Branch: `codex/phase-a-performance-baseline`; PR #6 hosted-tested head: `32a5d20`; implementation fix: `02da522`.
-- Uncommitted files: unrelated pre-existing `.gitignore` edit preserved. Local task-closure commits after hosted head are documentation only and have not been pushed to avoid triggering another validation attempt.
-- Next action: an administration-capable GitHub connection must read actual main branch protection. If the user separately authorizes merge, verify a fresh green main workflow afterward. No further code changes, reruns, push, merge, or protection setting changes are required/authorized in this completed CI validation session.
-- Blockers: after all PR CI jobs passed, the authorized connector read of /repos/duktofn/Collectives/branches/main/protection returned HTTP 403 Resource not accessible by integration. Fresh main workflow evidence is also unavailable because PR #6 remains unmerged; user has not authorized merge. Keep TASK-099 Paused and do not equate green PR checks or local policy validation with verified current remote enforcement.
+- Branch: `codex/phase-a-performance-baseline`; final PR head: `34c9b9c`; main merge commit: `f6042394fbec4c114ed9c5a8c8fd302429b92cbb`.
+- Uncommitted files: unrelated pre-existing `.gitignore` edit preserved. This post-merge evidence update is documentation only and will be committed locally; no additional remote update or PR is needed for the verified CI result.
+- Next action: use an administration-capable connection to read /repos/duktofn/Collectives/branches/main/protection and confirm the remaining strict/up-to-date, administrator, force-push and deletion flags. No code, gate, merge or branch-protection mutation remains authorized/necessary.
+- Blockers: detailed protection endpoint still returns HTTP 403 Resource not accessible by integration. The public main summary confirms protected=true and the exact four required checks/app 15368 with enforcement_level=everyone. Final PR CI and fresh merged-main CI both passed; PR #6 is merged. Keep Paused only for the unreadable detailed flags; do not claim those current flags were verified or archive as fully Done.
 
 ### Verification
 Checked-in policy/workflow align on four Windows checks: `frontend`, `browser`, `phase0-smoke`, and `backend (windows-latest)`, all from app 15368. Applied protection through the admin-authorized GitHub credential and read it back: strict=true, enforce_admins=true, exactly those four contexts, force pushes=false, deletions=false.
 
 Negative probe PR #4 failed the required frontend job; GitHub API reported `mergeable_state=blocked`. PR #4 was closed unmerged and its temporary remote branch deleted. `npm run check:ci-policy` passes. PR #3 frontend, backend and smoke jobs pass; its browser job failed twice on `e2e/editor-theme-library.spec.ts:70`. Local Windows reproduction fails at the same assertion (1.6553 px vs <1 px). The unrelated E2E file is outside this task's allowlist, so a fresh all-green workflow remains outstanding.
 
+Current 2026-10-20 evidence supersedes the earlier pending-CI/merge notes below:
+- Final PR #6 head `34c9b9c36d2a219c0b8697b15252c810a6fe3682`: run [39385833931](https://github.com/duktofn/Collectives/actions/runs/39385833931) SUCCESS. Jobs frontend `118505336232`, browser `118505336560`, backend Windows `118505336511`, and smoke `118505336474` all SUCCESS.
+- Normal merge of PR #6, guarded by that exact expected head, succeeded as `f6042394fbec4c114ed9c5a8c8fd302429b92cbb`; no admin override or protection mutation. PR readback is closed/merged.
+- Fresh `main` push run [39417711656](https://github.com/duktofn/Collectives/actions/runs/39417711656) at that merge commit completed SUCCESS. Jobs frontend `118610679389` (297 unit tests plus hook/policy/typecheck/lint/build/contracts), browser `118610679353` (126 main + 5 Phase 6), backend Windows `118610679687` (fmt/Clippy/locked all-target tests), smoke `118610679069` (fixtures/harness/schema; 4 JSON artifacts) all SUCCESS. Hosted compiler: Rust 1.97.0 x86_64-pc-windows-msvc. No Linux/macOS result is claimed.
+- Current public branch summary: `protected=true`, protection enabled, enforcement_level `everyone`, exact contexts `frontend`, `browser`, `phase0-smoke`, `backend (windows-latest)`, each GitHub Actions app `15368`. Current detailed protection endpoint: HTTP 403 `Resource not accessible by integration`; strict/up-to-date, administrator, force-push and deletion flags are not independently reverified now. Their earlier successful application/readback remains historical evidence only.
 ### Log
 - 2026-10-19 — Started Phase A / plan TASK-002 after TASK-098 passed Windows frontend CI and review.
 
@@ -218,6 +227,9 @@ Negative probe PR #4 failed the required frontend job; GitHub API reported `merg
 - 2026-10-20 — User authorized the Phase A batch push: fd9c171 was pushed normally and PR #6 opened against main. Fresh run 39382427686 passed frontend/backend/smoke; browser found a different table-test forced-click visibility race. Created TASK-107 before its one-line spec-only fix; 20 focused repeats, 126+5 browser cases, 297 unit tests, frontend/contracts/policy gates and G-REVIEW all passed locally. User explicitly authorized one follow-up push/final validation attempt; normal pre-push typecheck/lint passed and 32a5d20 (fix 02da522 plus task record) was pushed. No gates were weakened, no benchmark/Rust/application/workflow files changed in the follow-up.
 - 2026-10-20 — FINAL HOSTED EVIDENCE: PR #6 https://github.com/duktofn/Collectives/pull/6, head 32a5d20a28e3908fd2db757f872dd062b4f8d3db; run 39383835890 https://github.com/duktofn/Collectives/actions/runs/39383835890 completed SUCCESS. Jobs: frontend 118498860705 SUCCESS (297 tests, hook/policy/frontend/contracts); browser 118498860935 SUCCESS (126 main + 5 Phase 6); backend (windows-latest) 118498860914 SUCCESS (Rust 1.97.0 x86_64-pc-windows-msvc fmt/Clippy/locked all-target tests); phase0-smoke 118498860873 SUCCESS (fixture reproducibility, harness and schema; 4 JSON artifacts). The evidence-based fix passed this final attempt; no further code change or gate audit was triggered. TASK-107 and TASK-100 are Done, archived locally in 01296a2 and f6e2e44; these documentation-only closures are not additional PR code changes.
 - 2026-10-20 — After all four jobs passed, attempted only the authorized main protection readback through the GitHub connector. It returned HTTP 403 Resource not accessible by integration. PR readback confirms open/unmerged at 32a5d20. Leave TASK-099 Paused for that exact integration-permission blocker and separately unauthorized merge/fresh-main evidence. PR description updated with the successful run and blocker. No merge, branch-protection mutation or extra CI rerun; unrelated .gitignore and completed TASK-106 baseline files preserved.
+
+- 2026-10-20 — User explicitly authorized merge and fresh main CI. Pushed only the committed ledger records (32a5d20..34c9b9c), preserving unrelated .gitignore; normal pre-push typecheck/lint passed. Waited for all four final PR jobs to succeed. Re-read PR open/head34c9b9c, mergeable=true and mergeable_state=clean; merged PR #6 normally with expected_head_sha guard. Merge SHA f6042394fbec4c114ed9c5a8c8fd302429b92cbb. No override, settings change or other PR merge.
+- 2026-10-20 — Waited for fresh main run 39417711656 to complete; all four Windows jobs SUCCESS. Public main readback confirms f6042394fbec4c114ed9c5a8c8fd302429b92cbb, protected=true and the four required GitHub Actions checks. Detailed protection readback again returns HTTP 403 Resource not accessible by integration. Fresh-main requirement and Step 4 are complete; TASK-099 remains Paused solely for unverified current detailed flags, not CI or merge. No speculative code changes or gate weakening; TASK-106 baseline and pre-existing .gitignore edit preserved.
 
 ## Batch commit records
 
