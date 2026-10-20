@@ -256,6 +256,8 @@ Negative probe PR #4 failed the required frontend job; GitHub API reported `merg
 - 2026-10-20 — Read-only primary-source diagnosis: latest run 39278459779 completed (not queued): frontend/backend/phase0-smoke succeeded; browser failed only at editor-theme-library.spec.ts:70 (1.65570068359375 px vs <1). Saved TASK-100 run 39276809449 browser/backend/smoke succeeded, frontend failed at code-block-pointer.test.ts:46 (2 expected, 0 received); the subsequent 39278459779 frontend passed all 291 tests. No hosted run exists for original Phase A base 30fa901. Actual branch protection read was denied by integration (403), so historical applied-policy evidence remains historical.
 - 2026-10-20 — Local prerequisite gates restored and checked on the combined branch: TASK-100 implementation 66610c4 / evidence 777fa84; TASK-101 integration 02acf03 / evidence 68e21e5 includes exact TASK-098 prerequisites. All local frontend/contract/hook/policy, 20 repeated focused cases, full 126+5 browser cases and Windows Rust 1.99.0 MSVC backend gates pass. TASK-106 files and unrelated .gitignore edit preserved. Remain Paused until authorized batch remote writes and fresh required CI/main evidence; no workflow, protection, or gate changes.
 
+- 2026-10-20 — CI diagnosis and current handoff recorded in commit `a521371` (TASK-099). No remote writes performed.
+
 ## TASK-100 — Fix Windows theme picker alignment gate
 
 **State:** Paused
