@@ -136,6 +136,64 @@ function writeFile(root, relativePath, content, state) {
   state.files.push({ path: relativePath.replaceAll('\\', '/'), bytes: data.length, sha256: sha256(data) });
 }
 
+function repeatedBytes(text, byteLength) {
+  const block = Buffer.from(text, 'utf8');
+  const output = Buffer.allocUnsafe(byteLength);
+  for (let offset = 0; offset < byteLength; offset += block.length) {
+    block.copy(output, offset, 0, Math.min(block.length, byteLength - offset));
+  }
+  return output;
+}
+
+function addNativeWorkloadFixtures(output, seed, state) {
+  writeFile(output, 'native/typing-100k.md', repeatedBytes(`Phase 0 editor typing fixture ${seed}. `, 100 * 1024), state);
+  writeFile(output, 'native/typing-1m.md', repeatedBytes(`Phase 0 editor typing fixture ${seed}. `, 1024 * 1024), state);
+
+  const searchEntries = [];
+  for (let index = 0; index < 2_000; index += 1) {
+    const id = `search-${String(index).padStart(4, '0')}`;
+    const path = `native/search/${id}.md`;
+    const marker = index % 20 === 0 ? ' phase0-search-needle' : '';
+    const content = `# Search fixture ${index}\n\nSeed ${seed}.${marker}\n`;
+    writeFile(output, path, content, state);
+    searchEntries.push({ type: 'file', id, path });
+  }
+
+  const collection = (id, name, entries) => ({
+    id,
+    schemaVersion: 1,
+    name,
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    entries,
+    metadata: null,
+  });
+  writeFile(output, 'native/search-100.json', `${JSON.stringify(collection('phase0-search-100', 'Phase 0 Search 100', searchEntries.slice(0, 100)), null, 2)}\n`, state);
+  writeFile(output, 'native/search-2000.json', `${JSON.stringify(collection('phase0-search-2000', 'Phase 0 Search 2000', searchEntries), null, 2)}\n`, state);
+
+  for (let index = 0; index < 1_000; index += 1) {
+    writeFile(output, `native/watcher-burst/file-${String(index).padStart(4, '0')}.md`, `# Watcher burst ${index}\n\nSeed ${seed}.\n`, state);
+  }
+
+  const chart = '# Chart reopen fixture\n\n```chart\ntype: bar\nlabels: [A, B]\nseries:\n  - name: Values\n    data: [1, 2]\n```\n';
+  const table = '# Table reopen fixture\n\n| Name | Value |\n| --- | ---: |\n| Alpha | 1 |\n| Beta | 2 |\n';
+  writeFile(output, 'native/chart-reopen.md', chart, state);
+  writeFile(output, 'native/table-reopen.md', table, state);
+  writeFile(output, 'native/editor-lifetime-proxy.md', '# Editor lifetime proxy\n\nRepeated open and close fixture.\n', state);
+  writeFile(output, 'native/ui-collection.json', `${JSON.stringify(collection('phase0-native-ui', 'Phase 0 Native UI', [
+    { type: 'file', id: 'phase0-chart-reopen', path: 'native/chart-reopen.md' },
+    { type: 'file', id: 'phase0-table-reopen', path: 'native/table-reopen.md' },
+    { type: 'file', id: 'phase0-editor-lifetime', path: 'native/editor-lifetime-proxy.md' },
+  ]), null, 2)}\n`, state);
+
+  return {
+    typing_bytes: { '100k': 100 * 1024, '1m': 1024 * 1024 },
+    search_markdown_files: [100, 2_000],
+    watcher_burst_files: [100, 1_000],
+    ui_documents: ['native/chart-reopen.md', 'native/table-reopen.md', 'native/editor-lifetime-proxy.md'],
+  };
+}
+
 function buildFixture(args) {
   const template = JSON.parse(readFileSync(args.manifest ?? manifestPath, 'utf8'));
   const profile = template.profiles[args.profile];
@@ -147,7 +205,7 @@ function buildFixture(args) {
   const randomValue = random(args.seed);
   const state = { bytes: 0, files: [], profile };
   const collectionEntries = [];
-  const trustedAssetEntries = [];
+  const trustedArchiveEntries = [];
   for (let index = 0; index < profile.collection_entries; index += 1) {
     const depth = index % profile.max_depth;
     const directory = `notes/level-${depth}`;
@@ -158,7 +216,8 @@ function buildFixture(args) {
     const path = `${directory}/${id}.md`;
     writeFile(output, path, markdown, state);
     collectionEntries.push({ type: 'file', id, path });
-    trustedAssetEntries.push([`assets/${id}.md`, markdown]);
+    const archiveId = `a${index.toString(36)}`;
+    trustedArchiveEntries.push([`assets/${archiveId}.md`, markdown]);
   }
   const collectionDefinition = { id: `fixture-${args.profile}`, schemaVersion: 1, name: `Phase 0 ${args.profile}`, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', entries: collectionEntries, metadata: null };
   writeFile(output, 'collection/collection.json', `${JSON.stringify(collectionDefinition, null, 2)}\n`, state);
@@ -169,9 +228,16 @@ function buildFixture(args) {
   writeFile(output, 'index/index.jsonl', indexLines, state);
   const watcherLines = Array.from({ length: profile.watcher_events }, (_, index) => JSON.stringify({ event: 'modify', path: `notes/level-${index % profile.max_depth}/entry-${String(index % profile.collection_entries).padStart(6, '0')}.md` })).join('\n') + '\n';
   writeFile(output, 'watcher/events.jsonl', watcherLines, state);
-  const trustedManifest = { ...collectionDefinition, entries: collectionEntries.map(({ type, id }) => ({ type, id, path: `assets/${id}.md` })) };
-  const zipManifest = JSON.stringify(trustedManifest, null, 2);
-  writeFile(output, 'trusted/fixture.zip', trustedZip([['manifest.json', zipManifest], ...trustedAssetEntries]), state);
+  const trustedManifest = {
+    ...collectionDefinition,
+    entries: collectionEntries.map(({ type }, index) => {
+      const archiveId = `a${index.toString(36)}`;
+      return { type, id: archiveId, path: `assets/${archiveId}.md` };
+    }),
+  };
+  const zipManifest = JSON.stringify(trustedManifest);
+  writeFile(output, 'trusted/fixture.zip', trustedZip([['manifest.json', zipManifest], ...trustedArchiveEntries]), state);
+  const nativeWorkloads = args.profile === 'smoke' ? addNativeWorkloadFixtures(output, args.seed, state) : null;
   state.files.sort((left, right) => left.path.localeCompare(right.path));
   const contentRoot = sha256(state.files.map((file) => `${file.path}\0${file.sha256}\n`).join(''));
   const contentFiles = [...state.files];
@@ -184,6 +250,7 @@ function buildFixture(args) {
     generated_cap_bytes: profile.generated_cap_bytes,
     free_space_preflight_bytes: profile.free_space_preflight_bytes,
     profile_definition: profile,
+    native_workloads: nativeWorkloads,
     generated_bytes: contentBytes,
     content_root_sha256: contentRoot,
     files: contentFiles,

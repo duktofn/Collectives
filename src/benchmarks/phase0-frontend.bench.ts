@@ -19,6 +19,10 @@ const wikilinkInputs = [
   '[[Note 3#^block123]]',
   '[[A note with spaces]]',
 ];
+const editorTypingInputs = [
+  { label: '100KiB', content: 'Phase 0 typing. '.repeat(Math.ceil((100 * 1024) / 16)).slice(0, 100 * 1024) },
+  { label: '1MiB', content: 'Phase 0 typing. '.repeat(Math.ceil((1024 * 1024) / 16)).slice(0, 1024 * 1024) },
+];
 const resolverState = EditorState.create({ doc: '# Target\n\nA paragraph\n^block123\n' });
 const resolverView = {
   state: resolverState,
@@ -27,6 +31,22 @@ const resolverView = {
 } as unknown as EditorView;
 
 describe('Phase 0 frontend benchmarks — pure-algorithm', () => {
+  for (const input of editorTypingInputs) {
+    bench(`pure-algorithm/EditorState-insert-${input.label}`, () => {
+      const state = EditorState.create({ doc: '' });
+      const next = state.update({ changes: { from: 0, insert: input.content } });
+      if (next.state.doc.length !== input.content.length) throw new Error('EditorState benchmark lost inserted text');
+    });
+  }
+
+  for (const size of [100, 1_000, 10_000]) {
+    const rows = Array.from({ length: size }, (_, index) => ({ id: `entry-${index}`, label: `Note ${index}` }));
+    bench(`pure-algorithm/collection-projection-${size}`, () => {
+      const labels = rows.map((row) => row.label);
+      if (labels.length !== size) throw new Error(`Collection projection expected ${size} rows`);
+    });
+  }
+
   bench('pure-algorithm/parser-and-label-roundtrip', () => {
     for (const input of wikilinkInputs) {
       const token = parseWikilink(input);
