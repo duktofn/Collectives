@@ -22,6 +22,7 @@ import { formatIpcError } from "./shared/ipc/errors";
 import { createOperationLeaseRegistry } from "./workflows/operationLease";
 import { ArchiveWorkflow, runArchiveOperation } from "./workflows/ArchiveWorkflow";
 import { SettingsWorkflow } from "./workflows/SettingsWorkflow";
+import { SettingsRecoveryDialog } from "./components/theme/ThemePanel";
 import { TreeWorkspace } from "./workflows/TreeWorkspace";
 import { CollectionWorkspace } from "./workflows/CollectionWorkspace";
 import { DocumentWorkspace } from "./workflows/DocumentWorkspace";
@@ -49,6 +50,11 @@ interface WikiLinkPreviewState {
   x: number;
   y: number;
 }
+
+const DEFAULT_SETTINGS: Settings = {
+  theme: "dark",
+  fontScale: 1.0,
+};
 
 export function createCloseRequestHandler(
   close: () => Promise<boolean>,
@@ -121,10 +127,11 @@ export default function App() {
   const [isMovePromptPending, setIsMovePromptPending] = createSignal(false);
 
   const [isSettingsOpen, setIsSettingsOpen] = createSignal(false);
-  const [settings, setSettings] = createSignal<Settings>({
-    theme: "dark",
-    fontScale: 1.0,
-  });
+  const [settings, setSettings] = createSignal<Settings>(DEFAULT_SETTINGS);
+  const [settingsLoadIssue, setSettingsLoadIssue] = createSignal<string | null>(null);
+  const [settingsRecoveryError, setSettingsRecoveryError] = createSignal("");
+  const [settingsRecoveryPending, setSettingsRecoveryPending] = createSignal(false);
+  const [isSettingsRecoveryDialogOpen, setIsSettingsRecoveryDialogOpen] = createSignal(false);
 
   const [globalError, setGlobalError] = createSignal<{ message: string; stack?: string } | null>(null);
 
@@ -132,6 +139,29 @@ export default function App() {
     const message = formatIpcError(err) || "Something went wrong";
     setAppNotice({ title, message });
     announcer.alert(message, announcementKey("urgent-error", "", message));
+  };
+
+  const recoverSettings = async () => {
+    if (!settingsLoadIssue() || settingsRecoveryPending()) return;
+    setSettingsRecoveryPending(true);
+    setSettingsRecoveryError("");
+    try {
+      const backupPath = await settingsApi.saveSettings(DEFAULT_SETTINGS, true);
+      setSettings(DEFAULT_SETTINGS);
+      applyThemeSettings(DEFAULT_SETTINGS);
+      setSettingsLoadIssue(null);
+      setIsSettingsRecoveryDialogOpen(false);
+      showAppNotice(
+        "Settings reset",
+        backupPath
+          ? `The original settings file was preserved at ${backupPath}.`
+          : "Settings were reset to defaults."
+      );
+    } catch (error) {
+      setSettingsRecoveryError(formatIpcError(error) || String(error));
+    } finally {
+      setSettingsRecoveryPending(false);
+    }
   };
 
   const closeEditorForTransition = async () => {
@@ -369,15 +399,31 @@ export default function App() {
     let unlisten: (() => void) | undefined;
     try {
       unlisten = await collectionsStore.initializeListeners();
+    } catch (err) {
+      console.error("Failed to initialize collection listeners", err);
+    }
+
+    try {
       const loaded = await settingsApi.loadSettings();
-      const effectiveSettings = loaded;
-      setSettings(effectiveSettings);
-      applyThemeSettings(effectiveSettings);
-      
-      const fontsDir = await settingsApi.getFontsDir();
-      registerCustomFonts(effectiveSettings.customFonts, fontsDir);
+      setSettings(loaded);
+      applyThemeSettings(loaded);
+      try {
+        const fontsDir = await settingsApi.getFontsDir();
+        registerCustomFonts(loaded.customFonts, fontsDir);
+      } catch (err) {
+        showAppNotice("Could not load custom fonts", err);
+      }
     } catch (err) {
       console.error("Failed to load settings on mount", err);
+      setSettings(DEFAULT_SETTINGS);
+      applyThemeSettings(DEFAULT_SETTINGS);
+      if (settingsApi.isSettingsRecoveryError(err)) {
+        setSettingsLoadIssue(formatIpcError(err) || String(err));
+        setSettingsRecoveryError("");
+        setIsSettingsRecoveryDialogOpen(true);
+      } else {
+        showAppNotice("Could not load settings", err);
+      }
     }
     await refreshRecoveryDrafts();
 
@@ -851,7 +897,10 @@ export default function App() {
           }}
           onImportFolderClick={handleImportFolderClick}
           onImportZipClick={handleImportZipClick}
-          onSettingsClick={() => setIsSettingsOpen(true)}
+          onSettingsClick={() => {
+            if (settingsLoadIssue()) setIsSettingsRecoveryDialogOpen(true);
+            else setIsSettingsOpen(true);
+          }}
           requestSelect={(entryId) => editorStore.selectEntry(entryId)}
           requestFolderRefSelect={requestFolderRefChild}
           onReviewMovePrompt={() => collectionsStore.reviewMovePrompt()}
@@ -1067,6 +1116,15 @@ export default function App() {
           await handleNewNoteStart(name);
         }}
         onClose={() => setIsMissingLinkOpen(false)}
+      />
+
+      <SettingsRecoveryDialog
+        isOpen={isSettingsRecoveryDialogOpen() && Boolean(settingsLoadIssue())}
+        message={settingsLoadIssue() ?? ""}
+        errorMessage={settingsRecoveryError()}
+        pending={settingsRecoveryPending()}
+        onRecover={recoverSettings}
+        onKeepFile={() => setIsSettingsRecoveryDialogOpen(false)}
       />
 
       <SettingsWorkflow

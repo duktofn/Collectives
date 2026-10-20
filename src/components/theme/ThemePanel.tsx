@@ -1,6 +1,7 @@
 import { createSignal, Show, For, createUniqueId, onMount, onCleanup } from 'solid-js';
 import { Settings, CustomFont, ImportedThemeFont } from '../../types';
 import { Icon } from '../common/Icon';
+import { Dialog } from '../common/Dialog';
 import { ModalLayer } from '../common/ModalLayer';
 import type { OperationLeaseRegistry } from '../../workflows/operationLease';
 import * as settingsApi from '../../features/settings';
@@ -24,6 +25,32 @@ interface ThemePanelProps {
   settings: Settings;
   onSettingsChange: (newSettings: Settings) => void;
   operationLeaseRegistry?: OperationLeaseRegistry;
+}
+
+interface SettingsRecoveryDialogProps {
+  isOpen: boolean;
+  message: string;
+  errorMessage?: string;
+  pending?: boolean;
+  onRecover: () => void | Promise<void>;
+  onKeepFile: () => void;
+}
+
+export function SettingsRecoveryDialog(props: SettingsRecoveryDialogProps) {
+  return (
+    <Dialog
+      isOpen={props.isOpen}
+      title="Settings need recovery"
+      type="confirm"
+      message={`${props.message}\n\nThe existing file has not been changed. Resetting settings first saves an exact copy of that file for diagnosis.`}
+      errorMessage={props.errorMessage}
+      pending={props.pending}
+      confirmLabel={props.pending ? 'Backing up…' : 'Back up and reset'}
+      cancelLabel="Keep existing file"
+      onConfirm={props.onRecover}
+      onClose={props.onKeepFile}
+    />
+  );
 }
 
 function validateSettings(settings: Settings): string | null {

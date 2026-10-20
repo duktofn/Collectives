@@ -69,7 +69,7 @@ fn publication_rename_keeps_real_note_without_renaming_to_internal_path() {
 }
 
 #[test]
-fn one_hundred_real_saves_hide_internal_events_and_tree_entries() {
+fn one_thousand_real_saves_hide_internal_events_and_tree_entries() {
     let root = tempfile::tempdir().unwrap();
     let note = root.path().join("note.md");
     fs::write(&note, "initial").unwrap();
@@ -86,7 +86,7 @@ fn one_hundred_real_saves_hide_internal_events_and_tree_entries() {
     let mut token = read_file(note.to_string_lossy().into_owned())
         .unwrap()
         .version_token;
-    for index in 0..100 {
+    for index in 0..1_000 {
         token = write_file(
             note.to_string_lossy().into_owned(),
             format!("revision {index}"),
@@ -96,7 +96,7 @@ fn one_hundred_real_saves_hide_internal_events_and_tree_entries() {
         .version_token;
     }
     let mut events = Vec::new();
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {
         match receiver.recv_timeout(Duration::from_millis(500)) {
             Ok(event) => events.push(event),
@@ -145,5 +145,5 @@ fn one_hundred_real_saves_hide_internal_events_and_tree_entries() {
     let children = tauri_app_lib::fs_ops::read_children(root.path()).unwrap();
     assert_eq!(children.len(), 2);
     assert!(children.iter().any(|child| child.name == "user.tmp-draft"));
-    assert_eq!(fs::read_to_string(note).unwrap(), "revision 99");
+    assert_eq!(fs::read_to_string(note).unwrap(), "revision 999");
 }

@@ -145,6 +145,86 @@ describe("Phase 1 committed selection", () => {
     expect(editorStore.state.isDirty).toBe(false);
   });
 
+  it("ignores the own-save watcher event before its receipt and saves the next revision with that receipt token", async () => {
+    const api = await import("../features/editor");
+    await editorStore.openFile("a.md");
+    editorStore.updateContent("revision A");
+
+    let resolveA!: (receipt: { versionToken: string }) => void;
+    vi.mocked(api.writeFile)
+      .mockReset()
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveA = resolve; }))
+      .mockImplementationOnce(async () => ({ versionToken: "receipt-B" }));
+    const save = editorStore.saveFile();
+    await Promise.resolve();
+    expect(api.writeFile).toHaveBeenCalledOnce();
+
+    editorStore.updateContent("revision B");
+    vi.mocked(api.readFile).mockResolvedValueOnce({
+      content: "revision A",
+      versionToken: "receipt-A",
+    });
+    expect(await editorStore.handleFilesystemChange("a.md")).toBe(false);
+    expect(editorStore.state.conflictKind).toBe(null);
+
+    resolveA({ versionToken: "receipt-A" });
+    await save;
+
+    expect(vi.mocked(api.writeFile).mock.calls.map(([, content]) => content)).toEqual([
+      "revision A",
+      "revision B",
+    ]);
+    expect(vi.mocked(api.writeFile).mock.calls[1]?.[2]).toEqual({
+      kind: "version",
+      token: "receipt-A",
+    });
+    expect(editorStore.state.openFileContent).toBe("revision B");
+    expect(editorStore.state.currentContent).toBe("revision B");
+    expect(editorStore.state.versionToken).toBe("receipt-B");
+    expect(editorStore.state.isDirty).toBe(false);
+    expect(editorStore.state.conflictKind).toBe(null);
+
+    editorStore.updateContent("revision C");
+    vi.mocked(api.readFile).mockResolvedValueOnce({
+      content: "revision B",
+      versionToken: "receipt-B",
+    });
+    expect(await editorStore.handleFilesystemChange("a.md")).toBe(false);
+    expect(editorStore.state.currentContent).toBe("revision C");
+    expect(editorStore.state.isDirty).toBe(true);
+    expect(editorStore.state.conflictKind).toBe(null);
+  });
+
+  it("retains a dirty draft when an external watcher version arrives during an in-flight save", async () => {
+    const api = await import("../features/editor");
+    await editorStore.openFile("a.md");
+    editorStore.updateContent("local revision");
+
+    let rejectWrite!: (error: unknown) => void;
+    vi.mocked(api.writeFile).mockReset().mockImplementationOnce(() => new Promise((_, reject) => {
+      rejectWrite = reject;
+    }));
+    const save = editorStore.saveFile();
+    await Promise.resolve();
+    expect(api.writeFile).toHaveBeenCalledOnce();
+
+    vi.mocked(api.readFile).mockResolvedValueOnce({
+      content: "external revision",
+      versionToken: "external-token",
+    });
+    expect(await editorStore.handleFilesystemChange("a.md")).toBe(false);
+    expect(editorStore.state.conflictKind).toBe("file");
+    expect(editorStore.state.currentContent).toBe("local revision");
+
+    rejectWrite({ code: "external_change_conflict", message: "File changed before replace" });
+    await expect(save).rejects.toBeTruthy();
+    expect(api.writeFile).toHaveBeenCalledOnce();
+    expect(editorStore.state.currentContent).toBe("local revision");
+    expect(editorStore.state.openFileContent).toBe("content:a.md");
+    expect(editorStore.state.isDirty).toBe(true);
+    expect(editorStore.state.conflictKind).toBe("file");
+  });
+
   it("retains revision B when revision A fails and retries B without discarding it", async () => {
     const api = await import("../features/editor");
     await editorStore.openFile("a.md");

@@ -55,9 +55,13 @@ export const IPC_COMMANDS = [
       {
         "name": "settings",
         "type": "Settings"
+      },
+      {
+        "name": "recoveryConfirmed",
+        "type": "boolean | undefined"
       }
     ],
-    "result": "void"
+    "result": "string | null"
   },
   {
     "name": "read_folder_children",

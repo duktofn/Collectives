@@ -7,7 +7,7 @@
     {"name":"update_collection","handler":"ipc::commands::collections::update_collection","args":[{"name":"collection","type":"Collection"}],"result":"void"},
     {"name":"delete_collection","handler":"ipc::commands::collections::delete_collection","args":[{"name":"id","type":"string"}],"result":"void"},
     {"name":"load_settings","handler":"ipc::commands::settings::load_settings","args":[],"result":"Settings"},
-    {"name":"save_settings","handler":"ipc::commands::settings::save_settings","args":[{"name":"settings","type":"Settings"}],"result":"void"},
+    {"name":"save_settings","handler":"ipc::commands::settings::save_settings","args":[{"name":"settings","type":"Settings"},{"name":"recoveryConfirmed","type":"boolean | undefined"}],"result":"string | null"},
     {"name":"read_folder_children","handler":"ipc::commands::filesystem::read_folder_children","args":[{"name":"path","type":"string"}],"result":"FsEntry[]"},
     {"name":"add_entry","handler":"ipc::commands::collections::add_entry","args":[{"name":"collectionId","type":"string"},{"name":"parentPath","type":"number[]"},{"name":"entry","type":"Entry"}],"result":"void"},
     {"name":"remove_entry","handler":"ipc::commands::collections::remove_entry","args":[{"name":"collectionId","type":"string"},{"name":"entryId","type":"string"}],"result":"Entry"},

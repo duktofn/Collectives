@@ -161,6 +161,7 @@ test("row and column controls delete the active index and preserve a valid table
   await expect(deleteLastColumn).toHaveCount(2);
   await expect(deleteLastColumn.nth(0)).toBeDisabled();
   await expect(deleteLastColumn.nth(1)).toBeDisabled();
+  await expect(deleteLastColumn.nth(1)).toBeVisible();
   await deleteLastColumn.nth(1).click({ force: true });
   await expect(table.locator("thead th")).toHaveCount(1);
 });

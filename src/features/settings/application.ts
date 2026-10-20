@@ -7,3 +7,8 @@ export const deleteFont = settingsIpcAdapter.deleteFont;
 export const getFontsDir = settingsIpcAdapter.getFontsDir;
 export const exportTheme = settingsIpcAdapter.exportTheme;
 export const importTheme = settingsIpcAdapter.importTheme;
+
+export function isSettingsRecoveryError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /^settings_(?:read_error|invalid_file|future_version|storage_unavailable):/.test(message);
+}

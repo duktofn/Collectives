@@ -21,4 +21,31 @@ describe("Phase 1 ZIP conflict resolution", () => {
     await fireEvent.click(screen.getByText("Confirm Import"));
     expect(onConfirm).toHaveBeenCalledWith({ c1: "rename" });
   });
+
+  it("requires an explicit choice before overwriting an existing destination", async () => {
+    const onConfirm = vi.fn();
+    render(() => (
+      <ZipConflictDialog
+        isOpen
+        conflicts={[{
+          conflictId: "note",
+          entryId: "note",
+          displayName: "note.md",
+          targetPath: "dest/note.md",
+          originMembers: ["assets/note.md"],
+          allowedResolutions: ["overwrite", "rename", "skip"],
+          kind: "destination-existing",
+        }]}
+        onConfirm={onConfirm}
+        onClose={() => undefined}
+      />
+    ));
+
+    await fireEvent.click(screen.getByRole("button", { name: "Confirm Import" }));
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    await fireEvent.click(screen.getAllByRole("button", { name: "Overwrite" })[1]);
+    await fireEvent.click(screen.getByRole("button", { name: "Confirm Import" }));
+    expect(onConfirm).toHaveBeenCalledWith({ note: "overwrite" });
+  });
 });

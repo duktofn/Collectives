@@ -3,12 +3,28 @@ use crate::ipc::dto::{CustomFontDto, SettingsDto};
 use tauri::State;
 
 #[tauri::command]
-pub fn load_settings(state: State<'_, AppServices>) -> SettingsDto {
-    crate::application::services::load_settings(&state).into()
+pub fn load_settings(state: State<'_, AppServices>) -> Result<SettingsDto, String> {
+    let app = state
+        .app
+        .as_ref()
+        .ok_or_else(|| "Settings storage is unavailable".to_string())?;
+    crate::settings::load_settings_checked(app).map(Into::into)
 }
 #[tauri::command]
-pub fn save_settings(state: State<'_, AppServices>, settings: SettingsDto) -> Result<(), String> {
-    crate::application::services::save_settings(&state, settings.into())
+pub fn save_settings(
+    state: State<'_, AppServices>,
+    settings: SettingsDto,
+    recovery_confirmed: Option<bool>,
+) -> Result<Option<String>, String> {
+    let settings = settings.into();
+    if recovery_confirmed.unwrap_or(false) {
+        let app = state.app.as_ref().ok_or_else(|| {
+            "Settings recovery requires the application settings file".to_string()
+        })?;
+        crate::settings::recover_settings(app, settings)
+    } else {
+        crate::application::services::save_settings(&state, settings).map(|_| None)
+    }
 }
 #[tauri::command]
 pub fn import_font(
