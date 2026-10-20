@@ -129,6 +129,8 @@
 Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task chưa bắt đầu) chuyển sang Cancelled theo yêu cầu chuẩn bị refactor lớn. TASK-014, TASK-022 và TASK-086 giữ Paused. Xem [bản review lưu trữ](tasks/plans/collectives-fix-rebuild-review.md).
 
 ## Commit log
+
+- TASK-108 implementation: `3dbe5e4` (2026-10-21); Windows gates and native smoke passed.
 | Task | Commit | Ngày |
 |---|---|---|
 | TASK-006 | `7e8fbed` | 2026-10-18 |

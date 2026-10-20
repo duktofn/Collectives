@@ -39,3 +39,4 @@ Windows, Rust 1.99.0 MSVC: frontend quality (298 tests, typecheck, lint, build),
 
 - 2026-10-21 — Extracted lifecycle/navigation owners (DEC-016); App shrank by about 250 lines without JSX changes. Frontend quality passed 298 tests/typecheck/lint/build; contract and Windows Rust fmt/Clippy/all-target gates pass. Awaiting browser and isolated native release smoke.
 
+- 2026-10-21 — Implementation committed as `3dbe5e4`; all required local Windows verification complete.
