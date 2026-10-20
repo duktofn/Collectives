@@ -149,6 +149,7 @@ Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task ch�
 | TASK-104 | `707f906` | 2026-10-19 |
 | TASK-105 | `a1b9553` | 2026-10-19 |
 | TASK-106 | `f0eb16f` | 2026-10-20 |
+| TASK-099 (green PR CI/readback evidence) | `f54bac8` | 2026-10-20 |
 | TASK-100 | `66610c4` | 2026-10-20 |
 | TASK-107 | `02da522` | 2026-10-20 |
 | TASK-101 (local hook integration) | `02acf03` | 2026-10-20 |
