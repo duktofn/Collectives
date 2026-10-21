@@ -123,7 +123,7 @@
 | TASK-108 | [Phase B plan TASK-008: Extract lifecycle and navigation workflows](tasks/archive/TASK-108.md) | Done | 2026-10-21 |
 | TASK-109 | [Phase B plan TASK-009: Own document session coordination](tasks/archive/TASK-109.md) | Done | 2026-10-21 |
 | TASK-110 | [Phase B plan TASK-010: Incremental metadata projections](tasks/archive/TASK-110.md) | Done | 2026-10-21 |
-| TASK-111 | Phase B plan TASK-011: Stable watcher subscriptions | On-Going | 2026-10-21 |
+| TASK-111 | Phase B plan TASK-011: Stable watcher subscriptions | Done | 2026-10-21 |
 
 | TASK-112 | Investigate slow dev startup | Done | 2026-10-21 |
 
@@ -131,6 +131,8 @@
 Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task chưa bắt đầu) chuyển sang Cancelled theo yêu cầu chuẩn bị refactor lớn. TASK-014, TASK-022 và TASK-086 giữ Paused. Xem [bản review lưu trữ](tasks/plans/collectives-fix-rebuild-review.md).
 
 ## Commit log
+
+- TASK-111: `0b0a8fa` (2026-10-21), Windows regression and two-session native performance gates passed; see its archive.
 
 - TASK-112: `13c3716` (2026-10-21), dev startup fix and Windows frontend/browser verification recorded in its archive.
 
@@ -236,51 +238,3 @@ Close the old rebuild plan’s unfinished proposals in preparation for a major r
 ### Log
 - 2026-10-19 — User requested clearing unfinished tasks ahead of a major refactor; cancelled TASK-023–TASK-083 and updated the review summary.
 - 2026-10-19 — Commit `06a3cfc` records the cancellation and review updates.
-
-## TASK-111 — Stable watcher subscriptions
-
-**State:** On-Going
-**Current Step:** Step 3 — Final native rebuild and two-session performance/regression run
-**Source ID:** Phase B plan TASK-011
-
-### Description
-Implement the corresponding approved v1.4 plan task sequentially on Windows, preserving data, UI and recovery semantics.
-
-### Scope
-- `src/stores/collections.ts`
-- `src/features/collections/metadataCache.ts` and `.test.ts` (cursor gap/replay validation)
-- `src/components/tree/FolderRefNode.tsx` (route traced legacy and v2 hints through the same reload scheduler)
-- `src/features/filesystem/folderRefFeed.ts`
-- `src/features/filesystem/folderRefReadiness.ts`
-- `src-tauri/src/fs_layer/watcher.rs`
-- `src-tauri/build.rs` (Windows test harness common-controls manifest required by WatchManager regression)
-- `src/stores/collections.phase3.test.ts`
-- `src/features/filesystem/folderRefFeed.test.ts`
-- `src-tauri/tests/phase3_watcher.rs`
-- `src-tauri/tests/phase6_watcher_stress.rs`
-- Task ledger, codebase.md and decisions.md for the changed ownership boundaries.
-
-### Requirements
-- [ ] Task-specific acceptance cases from the v1.4 plan pass.
-- [ ] Applicable Windows code, data, UX and performance gates have recorded evidence.
-- [ ] Scoped change reviewed; focused commit recorded before the next task starts.
-
-### Steps
-- [ ] Step 1 — Trace existing ownership and establish baseline → verify: existing regressions and measured work identified.
-- [ ] Step 2 — Implement only the approved boundary/projection change → verify: focused regressions pass.
-- [ ] Step 3 — Run Windows gates and review diff → verify: exact results and limits recorded.
-
-### Handoff
-- Branch: `codex/phase-b-08-11`; initial base: `119ce0e`.
-- Uncommitted: watcher.rs, FolderRefNode.tsx, metadataCache.ts/test, folderRefFeed.ts/test, collections.ts/phase3.test, task.md.
-- Next action: rebuild the native release with stable FolderRef rows, run two fresh sessions and compare watcher/metadata metrics. TASK-112 browser coverage has passed with the documented isolated reruns.
-- Blockers: none; TASK-112 restored the cold browser load gate. Final native run must include the stable FolderRef row fix.
-
-### Verification
-Frontend: typecheck/lint/build and 321 tests pass (`task111-frontend-stable-rows.log`). Backend: formatting/Clippy/all-targets and 112 tests pass on Rust 1.99.0 MSVC (`task111-backend-final.log`). Earlier draft assertion corrected to check currentContent; test harness links the application common-controls resource to resolve its startup failure. Two browser runs each passed 12/13; first page load exceeded 30 seconds, also reproduced independently by TASK-112 (78.1 and 56.2 seconds, small mocked collection). No assertion/timeout relaxed. Native release first session verified missing-file removal through UI and persisted metadata. Second session exposed unchanged FolderRef row remounts; fixed by retaining unchanged FsEntry identities, with 1,000-row regression. Native rebuild/rerun and performance gate remain pending. No remote writes.
-
-### Log
-- 2026-10-21 — Created from the user's direct implementation request for plan tasks 008–011. No remote writes authorized or performed.
-- 2026-10-21 — Paused after the running focused checks finished, as requested. TASK-108–110 remain completed; resume TASK-111 before investigating dev startup in TASK-112.
-- 2026-10-21 — Checkpoint `0b0a8fa`: 321 frontend and 112 Windows backend tests pass; final native/performance and cold browser gates remain pending. Continue TASK-112 to unblock the latter.
-
