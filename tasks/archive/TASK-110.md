@@ -36,3 +36,5 @@ Windows Rust 1.99.0 MSVC: frontend quality 313 tests/typecheck/lint/build, contr
 
 ### Log
 - 2026-10-21 — Created from the user's direct implementation request for plan tasks 008–011. No remote writes authorized or performed.
+
+- Implementation commit: `47aa9d8`.

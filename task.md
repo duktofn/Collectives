@@ -130,6 +130,8 @@ Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task ch�
 
 ## Commit log
 
+- TASK-110: `47aa9d8` (2026-10-21), Windows gates and native comparison passed.
+
 - TASK-109 paused checkpoint: `dc4e3c3` (2026-10-21); code/frontend/backend/browser gates pass, native acceptance remains incomplete.
 
 - TASK-108 implementation: `3dbe5e4` (2026-10-21); Windows gates and native smoke passed.
