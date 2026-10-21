@@ -108,7 +108,7 @@ Backend dependency direction:
 - `npm run test -- --run src/lib/cm-extensions` runs editor unit regressions. `npx playwright test e2e/editor-inline-formatting.spec.ts` exercises actual typing, arrow navigation, list continuation, and pointer insertion.
 - Full frontend commands: `npm run typecheck`, `npm run lint`, `npm run test -- --run`, `npm run build`.
 - Releases use `npm run release:build`; English entries go under Unreleased in `CHANGELOG.md` unless a target version is requested.
-- `AGENTS.md` is tracked from TASK-085 so repository policies travel with commits. `codebase.md`, `task.md`, `decisions.md`, and `CHANGELOG.md` remain locally ignored by `.gitignore`; changes still exist on disk.
+- `AGENTS.md`, `task.md`, `codebase.md` and `decisions.md` are tracked. Existing ignore patterns still match context files/new task archives, so newly created archives may require explicit force-staging. `CHANGELOG.md` remains locally ignored.
 - Frontend validation baseline (2026-10-18): `npm run typecheck` and `npm run lint` pass with zero warnings after TASK-006 corrected the two test-only diagnostics.
 - Backend Windows baseline (2026-10-18, Rust 1.99.0): canonical backend fmt/clippy/test gates pass after TASK-008. Native Linux/macOS checks in TASK-086 are paused under DEC-013; Windows CI still uses pinned Rust 1.97.0. TASK-087 resolves LNK4098 with opt-level=1 only for libz-ng-sys in dev (also inherited by test); rebuilt native zlib-ng uses MSVCRT. The full backend gate rerun passes without LNK4098.
 
@@ -122,4 +122,4 @@ Backend dependency direction:
 
 - TASK-096 reimports the updated 27×27 logo from the same supplied path and regenerates Windows icons with reduced source padding. TASK-022 cleanup remains paused with no implementation retained; TASK-021 only filters owned artifact visibility/events.
 
-- TASK-109 / DEC-017: document-session extraction is present but paused pending complete native validation; consult task.md before treating it as accepted. TASK-110/111 are not implemented.
+- TASK-109 / DEC-017: document-session extraction passed local gates and clean native validation; consult task.md before treating it as accepted. TASK-110/111 are not implemented.
