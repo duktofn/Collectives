@@ -8,6 +8,8 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [solid({ hot: !process.env.VITEST })],
   build: { sourcemap: false },
+  // Scan application pages rather than generated Tauri HTML under target/.
+  optimizeDeps: { entries: ["index.html", "e2e/*.html"] },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
@@ -26,8 +28,9 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // Generated native profiles and reports can contain tens of thousands of
+      // files. Watching them delays the first module request and UI startup.
+      ignored: ["**/src-tauri/**", "**/artifacts/**", "**/release/**", "**/test-results/**"],
     },
   },
   test: {
