@@ -5,6 +5,17 @@ import type { Collection } from "../../types";
 const collection: Collection = { id: "c", schemaVersion: 1, name: "C", createdAt: "", updatedAt: "", entries: [{ type: "group", id: "g", name: "G", children: [{ type: "file", id: "a", path: "a.md" }] }] };
 
 describe("metadata cache v2", () => {
+  it("detects a missing first envelope and ignores already applied replays", () => {
+    const state = replaceMetadataSnapshot(collection, 1);
+    const envelope = { collectionId: "c", streamId: "s", subscriptionEpoch: "e", sequence: 1, overflow: false, changes: [] };
+    expect(applyFilesystemFeed(state, { ...envelope, sequence: 2 }).needsSnapshot).toBe(true);
+    const first = applyFilesystemFeed(state, envelope);
+    const replay = applyFilesystemFeed(first.state, envelope);
+    expect(replay.accepted).toBe(false);
+    expect(replay.needsSnapshot).toBe(false);
+    expect(replay.state).toBe(first.state);
+    expect(applyFilesystemFeed(first.state, { ...envelope, sequence: 1.5 }).needsSnapshot).toBe(true);
+  });
   it("rejects a parent cycle and preserves the last valid snapshot", () => {
     const state = replaceMetadataSnapshot(collection, 1);
     const result = applyCollectionDelta(state, {

@@ -9,7 +9,7 @@ import { Dialog } from "../common/Dialog";
 import { message, pickDirectory } from "../../platform";
 import { readFolderChildren, watchFolder, unwatchFolder } from "../../features/filesystem";
 import { listenEvent } from "../../shared/ipc/events";
-import { createFolderRefFeedSubscription } from "../../features/filesystem/folderRefFeed";
+import { createFolderRefFeedSubscription, reconcileFolderRefChildren } from "../../features/filesystem/folderRefFeed";
 import { cancelFolderRefReadiness, retryFolderRefChildFromEvent } from "../../features/filesystem/folderRefReadiness";
 import { FolderRefChildRow } from "./FolderRefChildRow";
 import { treeItemIdentity } from "./treeAccessibility";
@@ -49,7 +49,7 @@ export function FolderRefNode(props: FolderRefNodeProps) {
     setLoading(true);
     try {
       const contents = await readFolderChildren(entry().path);
-      setChildren(contents);
+      setChildren(previous => reconcileFolderRefChildren(previous, contents));
       setLocalBroken(false);
     } catch (err) {
       console.error("Failed to reload folder children", err);
@@ -93,12 +93,12 @@ export function FolderRefNode(props: FolderRefNodeProps) {
       reloadChildren();
     }
 
-    const unlistenPromise = listenEvent("folder-changed", (event) => {
-      if (event.payload.path === entry().path && isExpanded() && !isBroken()) {
-        reloadChildren();
-      }
+    const feedSubscription = createFolderRefFeedSubscription(() => {
+      if (isExpanded() && !isBroken()) return reloadChildren();
     });
-    const feedSubscription = createFolderRefFeedSubscription(reloadChildren);
+    const unlistenPromise = listenEvent("folder-changed", (event) => {
+      feedSubscription.handle({ kind: "folder-changed", path: event.payload.path }, entry().path, entry().id, isExpanded(), isBroken());
+    });
     const unlistenV2Promise = listenEvent("filesystem-changes-v2", (event) => {
       for (const change of event.payload.changes) feedSubscription.handle(change, entry().path, entry().id, isExpanded(), isBroken());
       retryFolderRefChildFromEvent(event.payload, entry().path, entry().id);

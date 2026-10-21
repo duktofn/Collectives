@@ -123,7 +123,9 @@
 | TASK-108 | [Phase B plan TASK-008: Extract lifecycle and navigation workflows](tasks/archive/TASK-108.md) | Done | 2026-10-21 |
 | TASK-109 | [Phase B plan TASK-009: Own document session coordination](tasks/archive/TASK-109.md) | Done | 2026-10-21 |
 | TASK-110 | [Phase B plan TASK-010: Incremental metadata projections](tasks/archive/TASK-110.md) | Done | 2026-10-21 |
-| TASK-111 | Phase B plan TASK-011: Stable watcher subscriptions | Not Started | 2026-10-21 |
+| TASK-111 | Phase B plan TASK-011: Stable watcher subscriptions | Paused | 2026-10-21 |
+
+| TASK-112 | Investigate slow dev startup | On-Going | 2026-10-21 |
 
 ## Pending review
 Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task chưa bắt đầu) chuyển sang Cancelled theo yêu cầu chuẩn bị refactor lớn. TASK-014, TASK-022 và TASK-086 giữ Paused. Xem [bản review lưu trữ](tasks/plans/collectives-fix-rebuild-review.md).
@@ -235,8 +237,8 @@ Close the old rebuild plan’s unfinished proposals in preparation for a major r
 
 ## TASK-111 — Stable watcher subscriptions
 
-**State:** Not Started
-**Current Step:** Step 1 — Inspect ownership and regression coverage
+**State:** Paused
+**Current Step:** Step 3 — Checkpoint verified changes before TASK-112 fixes the blocking dev load gate
 **Source ID:** Phase B plan TASK-011
 
 ### Description
@@ -244,9 +246,12 @@ Implement the corresponding approved v1.4 plan task sequentially on Windows, pre
 
 ### Scope
 - `src/stores/collections.ts`
+- `src/features/collections/metadataCache.ts` and `.test.ts` (cursor gap/replay validation)
+- `src/components/tree/FolderRefNode.tsx` (route traced legacy and v2 hints through the same reload scheduler)
 - `src/features/filesystem/folderRefFeed.ts`
 - `src/features/filesystem/folderRefReadiness.ts`
 - `src-tauri/src/fs_layer/watcher.rs`
+- `src-tauri/build.rs` (Windows test harness common-controls manifest required by WatchManager regression)
 - `src/stores/collections.phase3.test.ts`
 - `src/features/filesystem/folderRefFeed.test.ts`
 - `src-tauri/tests/phase3_watcher.rs`
@@ -265,11 +270,19 @@ Implement the corresponding approved v1.4 plan task sequentially on Windows, pre
 
 ### Handoff
 - Branch: `codex/phase-b-08-11`; initial base: `119ce0e`.
-- Next action: inspect the allowlisted implementation for this task after its predecessor is committed.
-- Blockers: none.
+- Uncommitted: watcher.rs, FolderRefNode.tsx, metadataCache.ts/test, folderRefFeed.ts/test, collections.ts/phase3.test, task.md.
+- Next action: finish the two-session native run, record its metrics and focused commit. Browser cold-page load is blocked by the separately reproduced TASK-112 dev startup defect; recheck after its fix.
+- Blockers: browser cold-load gate depends on TASK-112; final native run must include the stable FolderRef row fix.
 
 ### Verification
-Not yet verified.
+Frontend: typecheck/lint/build and 321 tests pass (`task111-frontend-stable-rows.log`). Backend: formatting/Clippy/all-targets and 112 tests pass on Rust 1.99.0 MSVC (`task111-backend-final.log`). Earlier draft assertion corrected to check currentContent; test harness links the application common-controls resource to resolve its startup failure. Two browser runs each passed 12/13; first page load exceeded 30 seconds, also reproduced independently by TASK-112 (78.1 and 56.2 seconds, small mocked collection). No assertion/timeout relaxed. Native release first session verified missing-file removal through UI and persisted metadata. Second session exposed unchanged FolderRef row remounts; fixed by retaining unchanged FsEntry identities, with 1,000-row regression. Native rebuild/rerun and performance gate remain pending. No remote writes.
 
 ### Log
 - 2026-10-21 — Created from the user's direct implementation request for plan tasks 008–011. No remote writes authorized or performed.
+- 2026-10-21 — Paused after the running focused checks finished, as requested. TASK-108–110 remain completed; resume TASK-111 before investigating dev startup in TASK-112.
+
+## TASK-112 — Investigate slow dev startup
+**State:** On-Going
+**Scope:** vite.config.ts, focused startup regression/measurement helpers; other startup paths only if measurements justify them.
+**Request:** Dev window opens in 5–6 seconds, then UI takes 30–60 seconds to become usable even with a small active collection.
+**Next action:** Measure cold Vite module loading with isolated mocked data while TASK-111 native build runs. Keep production edits and commit separate from TASK-111.

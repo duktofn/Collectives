@@ -98,10 +98,11 @@ export function deriveMetadataDeltas(before: MetadataCacheState, after: Metadata
 export interface FilesystemFeedV2 { collectionId: string; streamId: string; subscriptionEpoch: string; sequence: number; overflow: boolean; changes: unknown[] }
 
 export function applyFilesystemFeed(state: MetadataCacheState, feed: FilesystemFeedV2): { state: MetadataCacheState; accepted: boolean; needsSnapshot: boolean } {
-  if (feed.collectionId !== state.collectionId || feed.overflow || !Array.isArray(feed.changes) || feed.changes.some((change) => !isRecord(change) || typeof change.kind !== "string" || typeof change.path !== "string") || feed.sequence < 1) return fallback(state);
+  if (feed.collectionId !== state.collectionId || feed.overflow || !Array.isArray(feed.changes) || feed.changes.some((change) => !isRecord(change) || typeof change.kind !== "string" || typeof change.path !== "string") || !Number.isInteger(feed.sequence) || feed.sequence < 1) return fallback(state);
   const mismatchedCursor = Boolean(state.filesystemStreamId && (feed.streamId !== state.filesystemStreamId || feed.subscriptionEpoch !== state.filesystemSubscriptionEpoch));
   if (mismatchedCursor) return state.filesystemCursorTrusted ? { state, accepted: false, needsSnapshot: false } : fallback(state);
-  if (state.filesystemSequence > 0 && feed.sequence !== state.filesystemSequence + 1) return fallback(state);
+  if (state.filesystemStreamId && feed.sequence <= state.filesystemSequence) return { state, accepted: false, needsSnapshot: false };
+  if (feed.sequence !== state.filesystemSequence + 1) return fallback(state);
   return { state: { ...state, filesystemStreamId: feed.streamId, filesystemSubscriptionEpoch: feed.subscriptionEpoch, filesystemSequence: feed.sequence, filesystemCursorTrusted: false }, accepted: true, needsSnapshot: false };
 }
 

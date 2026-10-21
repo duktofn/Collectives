@@ -10,11 +10,16 @@ import { uiStore } from "./ui";
 import { clearWikilinkCache } from "../lib/cm-extensions/wikilink-decoration";
 import { applyCollectionDelta, applyFilesystemFeed, deriveMetadataDeltas, installMetadataSnapshot, materializeCollection, replaceMetadataSnapshot, type MetadataCacheState } from "../features/collections/metadataCache";
 
+let pendingWatch: { id: string; specs: Array<{ path: string; entryId: string; recursive: boolean }>; signature: string } | null = null;
+let watchDrain: Promise<void> | null = null;
+let installedWatchSignature: string | null = null;
+let watchVersion = 0;
+
 const normalizedCaches = new Map<string, MetadataCacheState>();
 const collectionOperations = new Map<string, Promise<unknown>>();
 const reconciliationInFlight = new Map<string, Promise<void>>();
 
-export function resetNormalizedCachesForTests(): void { normalizedCaches.clear(); }
+export function resetNormalizedCachesForTests(): void { normalizedCaches.clear(); pendingWatch = null; watchDrain = null; installedWatchSignature = null; watchVersion += 1; }
 export function getNormalizedCacheForTests(collectionId: string): MetadataCacheState | undefined { return normalizedCaches.get(collectionId); }
 
 interface CollectionsState {
@@ -59,6 +64,10 @@ function watchSpecsForCollection(collection: Collection): Array<{ path: string; 
   return specs;
 }
 
+function watchSignature(id: string, specs: Array<{ path: string; entryId: string; recursive: boolean }>): string {
+  return id + "\0" + specs.map(spec => `${spec.path}\0${spec.entryId}\0${spec.recursive}`).sort().join("\n");
+}
+
 async function reconcileCollectionSnapshot(collectionId: string): Promise<void> {
   const existing = reconciliationInFlight.get(collectionId);
   if (existing) return existing;
@@ -99,7 +108,7 @@ export async function handleCollectionDeltaV2(payload: { collectionId: string; r
 }
 
 export async function handleFilesystemChangesV2(payload: { collectionId: string; streamId: string; subscriptionEpoch: string; sequence: number; overflow: boolean; changes: unknown[] }): Promise<{ accepted: boolean; needsSnapshot: boolean }> {
-  if (reconciliationInFlight.has(payload.collectionId)) { await reconcileCollectionSnapshot(payload.collectionId); return { accepted: false, needsSnapshot: false }; }
+  if (reconciliationInFlight.has(payload.collectionId)) await reconcileCollectionSnapshot(payload.collectionId);
   const collection = state.collections.find((item) => item.id === payload.collectionId);
   if (!collection) return { accepted: false, needsSnapshot: false };
   const current = normalizedCaches.get(collection.id) ?? replaceMetadataSnapshot(collection, 0);
@@ -108,15 +117,22 @@ export async function handleFilesystemChangesV2(payload: { collectionId: string;
   if (!applied.accepted) {
     if (!applied.needsSnapshot) return { accepted: false, needsSnapshot: false };
     await reconcileCollectionSnapshot(payload.collectionId);
+    const path = editorStore.state.openFilePath;
+    if (state.activeCollectionId === payload.collectionId && path && await editorStore.handleFilesystemChange(path)
+      && editorStore.state.openFilePath === path && !editorStore.state.isDirty) await editorStore.openFile(path, editorStore.state.isReadOnly);
     return { accepted: false, needsSnapshot: true };
   }
   if (payload.changes.length > 0) clearWikilinkCache();
+  const paths = new Map<string, boolean>();
   for (const change of payload.changes) {
     if (!change || typeof change !== "object") continue;
     const value = change as { kind?: string; path?: string; changedFilePath?: string };
-    const changedPath = value.changedFilePath ?? value.path;
-    if (changedPath && !await editorStore.handleFilesystemChange(changedPath)) continue;
-    if (value.kind === "modified" && changedPath === editorStore.state.openFilePath && !editorStore.state.isDirty) await editorStore.openFile(changedPath, editorStore.state.isReadOnly);
+    const path = value.changedFilePath ?? value.path;
+    if (typeof path === "string") paths.set(path, Boolean(paths.get(path)) || value.kind === "modified");
+  }
+  for (const [path, modified] of paths) {
+    if (!await editorStore.handleFilesystemChange(path)) continue;
+    if (modified && path === editorStore.state.openFilePath && !editorStore.state.isDirty) await editorStore.openFile(path, editorStore.state.isReadOnly);
   }
   return { accepted: true, needsSnapshot: false };
 }
@@ -277,6 +293,9 @@ export const collectionsStore = {
         setState("activeCollectionId", null);
         setState("brokenEntries", []);
         localStorage.removeItem("lastActiveCollectionId");
+        installedWatchSignature = null;
+        if (watchDrain) await watchDrain;
+        if (state.activeCollectionId === null) await filesystemApi.clearWatches();
       }
     } catch (err: unknown) {
       const msg = String(err) || "Failed to delete collection";
@@ -456,16 +475,43 @@ export const collectionsStore = {
   
   async watchActiveCollection() {
     const activeCol = this.activeCollection();
-    if (!activeCol) return;
     const activeId = state.activeCollectionId;
-    if (!activeId) return;
-    try {
-      const cursor = await filesystemApi.syncCollectionWatches(activeId, watchSpecsForCollection(activeCol));
-      const cache = normalizedCaches.get(activeId);
-      if (cache) normalizedCaches.set(activeId, { ...cache, filesystemStreamId: cursor.streamId, filesystemSubscriptionEpoch: cursor.subscriptionEpoch, filesystemSequence: cursor.sequence, filesystemCursorTrusted: true });
-    } catch (err) {
-      console.error("Failed to set up active collection watches", err);
+    if (!activeCol || !activeId) return;
+    const specs = watchSpecsForCollection(activeCol);
+    const signature = watchSignature(activeId, specs);
+    if (!watchDrain && signature === installedWatchSignature) return;
+    pendingWatch = { id: activeId, specs, signature };
+    if (!watchDrain) {
+      const version = watchVersion;
+      const drain = Promise.resolve().then(async () => {
+        while (pendingWatch && version === watchVersion) {
+          const request = pendingWatch;
+          pendingWatch = null;
+          if (state.activeCollectionId !== request.id || installedWatchSignature === request.signature) continue;
+          installedWatchSignature = null;
+          try {
+            const cursor = await filesystemApi.syncCollectionWatches(request.id, request.specs);
+            if (version !== watchVersion) return;
+            const current = collectionsStore.activeCollection();
+            if (!current || state.activeCollectionId !== request.id || watchSignature(request.id, watchSpecsForCollection(current)) !== request.signature) continue;
+            if (!cursor || typeof cursor.streamId !== "string" || typeof cursor.subscriptionEpoch !== "string" || !Number.isSafeInteger(cursor.sequence) || cursor.sequence < 0) throw new Error("Invalid watcher cursor");
+            const cache = normalizedCaches.get(request.id);
+            if (cache) {
+              const sameEpoch = cache.filesystemStreamId === cursor.streamId && cache.filesystemSubscriptionEpoch === cursor.subscriptionEpoch;
+              // A sync response is not a filesystem snapshot: never skip an
+              // envelope that is queued for an already-known epoch.
+              // A new epoch begins at zero. Events emitted before this response
+              // may still be queued; a missing first event must trigger fallback.
+              if (!sameEpoch) normalizedCaches.set(request.id, { ...cache, filesystemStreamId: cursor.streamId, filesystemSubscriptionEpoch: cursor.subscriptionEpoch, filesystemSequence: 0, filesystemCursorTrusted: true });
+            }
+            installedWatchSignature = request.signature;
+          } catch (error) { console.error("Failed to set up active collection watches", error); }
+        }
+      });
+      watchDrain = drain;
+      void drain.finally(() => { if (watchDrain === drain) watchDrain = null; });
     }
+    await watchDrain;
   },
 
   clearMovePrompt() {

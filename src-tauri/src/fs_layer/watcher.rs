@@ -118,6 +118,32 @@ impl WatchFeed {
     }
 }
 
+fn coalesce_changes(changes: Vec<FilesystemChangeV2>) -> (Vec<FilesystemChangeV2>, bool) {
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
+    for change in changes {
+        if matches!(change.kind.as_str(), "modified" | "folder-changed") {
+            let key = (
+                change.kind.clone(),
+                change.entry_id.clone(),
+                change.path.clone(),
+                change.old_path.clone(),
+                change.changed_file_path.clone(),
+            );
+            if !seen.insert(key) {
+                continue;
+            }
+        } else {
+            // Renames/deletes/creates are causal boundaries, never coalesced away.
+            seen.clear();
+        }
+        result.push(change);
+    }
+    let overflow = result.len() > WATCH_BATCH_MAX;
+    result.truncate(WATCH_BATCH_MAX);
+    (result, overflow)
+}
+
 impl WatchBatchCursor {
     pub fn new() -> Self {
         Self {
@@ -142,6 +168,9 @@ impl WatchBatchCursor {
         overflow: bool,
         changes: Vec<FilesystemChangeV2>,
     ) -> FilesystemChangesV2 {
+        let (changes, bounded_overflow) = coalesce_changes(changes);
+        let overflow = overflow || bounded_overflow;
+
         if let Some(shared) = &self.shared {
             let cursor = shared.lock().unwrap().clone();
             self.stream_id = cursor.stream_id;
@@ -341,13 +370,22 @@ impl WatchManager {
         collection_id: String,
         paths: Vec<PathBuf>,
     ) -> Result<(), String> {
+        let desired: HashSet<_> = paths.iter().cloned().collect();
+        let unchanged = *self.collection_id.lock().unwrap() == collection_id && {
+            let files = self.watched_files.lock().unwrap();
+            files.len() == desired.len() && files.keys().all(|path| desired.contains(path))
+        };
+        if unchanged {
+            return Ok(());
+        }
+        self.sync_paths(paths)?;
         *self.collection_id.lock().unwrap() = collection_id;
         *self.cursor.lock().unwrap() = WatchCursor {
             stream_id: Uuid::new_v4().to_string(),
             subscription_epoch: Uuid::new_v4().to_string(),
             sequence: 0,
         };
-        self.sync_paths(paths)
+        Ok(())
     }
 
     pub fn sync_collection_specs(
@@ -355,48 +393,74 @@ impl WatchManager {
         collection_id: String,
         specs: Vec<WatchSpec>,
     ) -> Result<(), String> {
-        *self.collection_id.lock().unwrap() = collection_id;
-        *self.cursor.lock().unwrap() = WatchCursor {
-            stream_id: Uuid::new_v4().to_string(),
-            subscription_epoch: Uuid::new_v4().to_string(),
-            sequence: 0,
-        };
-        let desired_files: HashMap<PathBuf, String> = specs
+        if self.watcher.is_none() && !specs.is_empty() {
+            return Err("Watcher not initialized".into());
+        }
+        let desired_files: HashMap<_, _> = specs
             .iter()
             .filter(|spec| !spec.recursive)
             .map(|spec| (spec.path.clone(), spec.entry_id.clone()))
             .collect();
-        let desired_folders: HashMap<PathBuf, String> = specs
+        let desired_folders: HashMap<_, _> = specs
             .iter()
             .filter(|spec| spec.recursive)
             .map(|spec| (spec.path.clone(), spec.entry_id.clone()))
             .collect();
-        let existing_files: Vec<PathBuf> =
-            self.watched_files.lock().unwrap().keys().cloned().collect();
-        let existing_folders: Vec<PathBuf> = self
-            .watched_folders
-            .lock()
-            .unwrap()
-            .keys()
-            .cloned()
-            .collect();
-        for path in existing_files {
-            if !desired_files.contains_key(&path) {
-                self.unwatch_file(path)?;
+        let existing_files = self.watched_files.lock().unwrap().clone();
+        let existing_folders = self.watched_folders.lock().unwrap().clone();
+        if *self.collection_id.lock().unwrap() == collection_id
+            && existing_files == desired_files
+            && existing_folders == desired_folders
+        {
+            return Ok(());
+        }
+        let result = (|| -> Result<(), String> {
+            for path in existing_files.keys() {
+                if !desired_files.contains_key(path) {
+                    self.unwatch_file(path.clone())?;
+                }
             }
-        }
-        for path in existing_folders {
-            if !desired_folders.contains_key(&path) {
-                self.unwatch_folder(path)?;
+            for path in existing_folders.keys() {
+                if !desired_folders.contains_key(path) {
+                    self.unwatch_folder(path.clone())?;
+                }
             }
+            for (path, entry_id) in desired_files {
+                if existing_files.get(&path) == Some(&entry_id) {
+                    continue;
+                }
+                if let Err(error) = self.watch_file(path.clone(), entry_id) {
+                    // A missing reference must not prevent a metadata snapshot/removal.
+                    // Keep it out of the installed set so recreation can be retried.
+                    if !matches!(path.try_exists(), Ok(false)) {
+                        return Err(error);
+                    }
+                }
+            }
+            for (path, entry_id) in desired_folders {
+                if existing_folders.get(&path) == Some(&entry_id) {
+                    continue;
+                }
+                if let Err(error) = self.watch_folder(path.clone(), entry_id) {
+                    if !matches!(path.try_exists(), Ok(false)) {
+                        return Err(error);
+                    }
+                }
+            }
+            Ok(())
+        })();
+        let changed = *self.collection_id.lock().unwrap() != collection_id
+            || *self.watched_files.lock().unwrap() != existing_files
+            || *self.watched_folders.lock().unwrap() != existing_folders;
+        if changed {
+            *self.collection_id.lock().unwrap() = collection_id;
+            *self.cursor.lock().unwrap() = WatchCursor {
+                stream_id: Uuid::new_v4().to_string(),
+                subscription_epoch: Uuid::new_v4().to_string(),
+                sequence: 0,
+            };
         }
-        for (path, entry_id) in desired_files {
-            self.watch_file(path, entry_id)?;
-        }
-        for (path, entry_id) in desired_folders {
-            self.watch_folder(path, entry_id)?;
-        }
-        Ok(())
+        result
     }
 
     pub fn current_cursor(&self) -> WatchCursor {
@@ -637,6 +701,112 @@ pub fn clear_watches(state: State<'_, WatchState>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Retaining WatchManager also retains Tauri UI imports which require
+    // common-controls v6, supplied by the same resource as the application.
+    #[cfg(target_env = "msvc")]
+    #[link(name = "resource", kind = "static")]
+    extern "C" {}
+
+    fn spec(path: &std::path::Path, entry: &str) -> WatchSpec {
+        WatchSpec {
+            path: path.into(),
+            entry_id: entry.into(),
+            recursive: false,
+        }
+    }
+
+    #[test]
+    fn unchanged_subscriptions_preserve_cursor_and_missing_references_do_not_block_removal() {
+        let dir = tempfile::tempdir().unwrap();
+        let existing = dir.path().join("existing.md");
+        let missing = dir.path().join("deleted.md");
+        std::fs::write(&existing, "existing").unwrap();
+        let mut manager = WatchManager::new();
+        manager.watcher =
+            Some(recommended_watcher(|_: Result<notify::Event, notify::Error>| {}).unwrap());
+        let specs = vec![spec(&existing, "a"), spec(&missing, "b")];
+        manager
+            .sync_collection_specs("c".into(), specs.clone())
+            .unwrap();
+        manager.cursor.lock().unwrap().sequence = 7;
+        let cursor = manager.current_cursor();
+        let mut reversed = specs.clone();
+        reversed.reverse();
+        manager.sync_collection_specs("c".into(), reversed).unwrap();
+        assert_eq!(manager.current_cursor(), cursor);
+        assert!(!missing.exists());
+        assert_eq!(manager.watched_files.lock().unwrap().len(), 1);
+        // Metadata removal supplies the previous graph to reconcile. A missing
+        // file must not abort that snapshot or prevent removing the reference.
+        std::fs::remove_file(&existing).unwrap();
+        manager.sync_collection_specs("c".into(), specs).unwrap();
+        manager.sync_collection_specs("c".into(), vec![]).unwrap();
+        assert!(manager.watched_files.lock().unwrap().is_empty());
+        assert_ne!(
+            manager.current_cursor().subscription_epoch,
+            cursor.subscription_epoch
+        );
+        let empty_cursor = manager.current_cursor();
+        manager
+            .sync_collection_specs("c".into(), vec![spec(&missing, "b")])
+            .unwrap();
+        assert_eq!(manager.current_cursor(), empty_cursor);
+        std::fs::write(&missing, "recreated").unwrap();
+        manager
+            .sync_collection_specs("c".into(), vec![spec(&missing, "b")])
+            .unwrap();
+        assert_eq!(
+            manager.watched_files.lock().unwrap().get(&missing),
+            Some(&"b".into())
+        );
+        let recreated_cursor = manager.current_cursor();
+        manager
+            .sync_collection_specs("c".into(), vec![spec(&missing, "new-binding")])
+            .unwrap();
+        assert_ne!(
+            manager.current_cursor().subscription_epoch,
+            recreated_cursor.subscription_epoch
+        );
+        let rebound = manager.current_cursor();
+        manager
+            .sync_collection_specs("other".into(), vec![spec(&missing, "new-binding")])
+            .unwrap();
+        assert_ne!(
+            manager.current_cursor().subscription_epoch,
+            rebound.subscription_epoch
+        );
+        manager.clear_all();
+    }
+
+    #[test]
+    fn coalescing_preserves_causal_boundaries_and_bounds_unique_changes() {
+        let change = |kind: &str, path: &str| FilesystemChangeV2 {
+            kind: kind.into(),
+            entry_id: Some("a".into()),
+            path: path.into(),
+            old_path: None,
+            changed_file_path: None,
+        };
+        let (changes, overflow) = coalesce_changes(vec![
+            change("modified", "a"),
+            change("modified", "a"),
+            change("deleted", "a"),
+            change("modified", "a"),
+        ]);
+        assert!(!overflow);
+        assert_eq!(
+            changes.iter().map(|c| c.kind.as_str()).collect::<Vec<_>>(),
+            vec!["modified", "deleted", "modified"]
+        );
+        let (changes, overflow) = coalesce_changes(
+            (0..1000)
+                .map(|i| change("folder-changed", &i.to_string()))
+                .collect(),
+        );
+        assert!(overflow);
+        assert_eq!(changes.len(), WATCH_BATCH_MAX);
+    }
 
     #[test]
     fn batch_cursor_is_bounded_and_monotonic() {

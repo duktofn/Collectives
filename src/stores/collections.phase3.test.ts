@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getCollections: vi.fn(),
   reconcileCollectionSnapshot: vi.fn(),
-  syncCollectionWatches: vi.fn(async () => undefined),
+  syncCollectionWatches: vi.fn<(...args: unknown[]) => Promise<{ streamId: string; subscriptionEpoch: string; sequence: number } | undefined>>(async () => undefined),
   readFile: vi.fn(async (path: string) => ({ content: `content:${path}`, versionToken: `token:${path}` })),
   writeFile: vi.fn(async () => undefined),
   asSafetyError: vi.fn(() => null),
@@ -29,7 +29,8 @@ describe("live Phase 3 collection/feed integration", () => {
     mocks.getCollections.mockResolvedValue([baseCollection()]);
     mocks.reconcileCollectionSnapshot.mockReset();
     mocks.reconcileCollectionSnapshot.mockResolvedValue({ collection: baseCollection(), revision: 5, cursor: { streamId: "snapshot-stream", subscriptionEpoch: "snapshot-epoch", sequence: 0 } });
-    mocks.syncCollectionWatches.mockClear();
+    mocks.syncCollectionWatches.mockReset();
+    mocks.syncCollectionWatches.mockResolvedValue({ streamId: "s", subscriptionEpoch: "e", sequence: 0 });
     resetNormalizedCachesForTests();
     await collectionsStore.loadCollections();
   });
@@ -40,6 +41,54 @@ describe("live Phase 3 collection/feed integration", () => {
     expect(collectionsStore.state.collections[0].entries[0]).toEqual({ type: "file", id: "entry", path: "renamed.md" });
     expect(collectionsStore.state.collections[0].entries[1]).toEqual({ type: "group", id: "group", name: "Group", children: [] });
     expect(mocks.syncCollectionWatches).not.toHaveBeenCalled();
+  });
+
+  it("keeps an unchanged watch graph through repeated requests and group rename", async () => {
+    await collectionsStore.openCollection("live");
+    expect(mocks.syncCollectionWatches).toHaveBeenCalledOnce();
+    await Promise.all(Array.from({ length: 100 }, () => collectionsStore.watchActiveCollection()));
+    await handleCollectionDeltaV2({ collectionId: "live", revision: 1, mutationId: "group-name", origin: "ui", changes: [{ kind: "updated", entryId: "group", entry: { id: "group", parentId: null, entryType: "group", name: "Renamed", sortOrder: 0 } }] });
+    expect(mocks.syncCollectionWatches).toHaveBeenCalledOnce();
+    expect((await handleFilesystemChangesV2({ collectionId: "live", streamId: "s", subscriptionEpoch: "e", sequence: 1, overflow: false, changes: [] })).accepted).toBe(true);
+  });
+
+  it("bounds queued sync work and preserves undelivered envelopes in the same epoch", async () => {
+    await collectionsStore.openCollection("live");
+    let finish!: (cursor: { streamId: string; subscriptionEpoch: string; sequence: number }) => void;
+    mocks.syncCollectionWatches.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const changed = handleCollectionDeltaV2({ collectionId: "live", revision: 1, mutationId: "path", origin: "ui", changes: [{ kind: "updated", entryId: "entry", entry: { id: "entry", parentId: "group", entryType: "file", path: "new.md", sortOrder: 0 } }] });
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    const requests = Array.from({ length: 100 }, () => collectionsStore.watchActiveCollection());
+    finish({ streamId: "s", subscriptionEpoch: "e", sequence: 4 });
+    await Promise.all([changed, ...requests]);
+    expect(mocks.syncCollectionWatches).toHaveBeenCalledTimes(2);
+    expect(getNormalizedCacheForTests("live")?.filesystemSequence).toBe(0);
+    expect((await handleFilesystemChangesV2({ collectionId: "live", streamId: "s", subscriptionEpoch: "e", sequence: 1, overflow: false, changes: [] })).accepted).toBe(true);
+  });
+
+  it("does not skip queued events when the first sync response is already ahead", async () => {
+    mocks.syncCollectionWatches.mockResolvedValueOnce({ streamId: "s", subscriptionEpoch: "e", sequence: 4 });
+    await collectionsStore.openCollection("live");
+    expect(getNormalizedCacheForTests("live")?.filesystemSequence).toBe(0);
+    expect((await handleFilesystemChangesV2({ collectionId: "live", streamId: "s", subscriptionEpoch: "e", sequence: 1, overflow: false, changes: [] })).accepted).toBe(true);
+  });
+
+  it("reads each affected open path once per envelope and refreshes clean content on overflow", async () => {
+    await collectionsStore.openCollection("live");
+    await editorStore.openFile("old.md");
+    const read = vi.spyOn(editorStore, "handleFilesystemChange");
+    await handleFilesystemChangesV2({ collectionId: "live", streamId: "s", subscriptionEpoch: "e", sequence: 1, overflow: false, changes: Array.from({ length: 100 }, () => ({ kind: "modified", path: "old.md" })) });
+    expect(read).toHaveBeenCalledOnce();
+    mocks.readFile.mockResolvedValueOnce({ content: "external version", versionToken: "new-token" });
+    mocks.readFile.mockResolvedValueOnce({ content: "external version", versionToken: "new-token" });
+    await handleFilesystemChangesV2({ collectionId: "live", streamId: "s", subscriptionEpoch: "e", sequence: 2, overflow: true, changes: [] });
+    expect(editorStore.state.openFileContent).toBe("external version");
+    editorStore.updateContent("draft retained");
+    await handleFilesystemChangesV2({ collectionId: "live", streamId: "snapshot-stream", subscriptionEpoch: "snapshot-epoch", sequence: 1, overflow: true, changes: [] });
+    expect(editorStore.state.currentContent).toBe("draft retained");
+    expect(editorStore.state.openFileContent).toBe("external version");
+    expect(editorStore.state.isDirty).toBe(true);
+    read.mockRestore();
   });
 
   it("keeps selection/editor continuity across move and clean rename/delete, but retains dirty conflict", async () => {
