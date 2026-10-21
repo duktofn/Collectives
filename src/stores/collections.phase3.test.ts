@@ -101,3 +101,45 @@ describe("live Phase 3 collection/feed integration", () => {
     expect(nextFeed.accepted).toBe(true);
   });
 });
+
+
+it("applies a newer queued delta after installing an in-flight snapshot", async () => {
+  await editorStore.closeFile(true);
+  resetNormalizedCachesForTests();
+  mocks.getCollections.mockResolvedValue([baseCollection()]);
+  await collectionsStore.loadCollections();
+  let release!: (value: unknown) => void;
+  mocks.reconcileCollectionSnapshot.mockImplementationOnce(() => new Promise(resolve => { release=resolve; }));
+  const gap=handleCollectionDeltaV2({collectionId:"live",revision:3,mutationId:"gap",origin:"watch",changes:[]});
+  const newer=handleCollectionDeltaV2({collectionId:"live",revision:6,mutationId:"new",origin:"watch",changes:[{kind:"updated",entryId:"entry",entry:{id:"entry",parentId:"group",entryType:"file",path:"latest.md",sortOrder:0}}]});
+  release({collection:baseCollection(),revision:5,cursor:{streamId:"s",subscriptionEpoch:"e",sequence:0}});
+  await gap;
+  expect((await newer).accepted).toBe(true);
+  expect(getNormalizedCacheForTests("live")?.activeRevision).toBe(6);
+  expect(getNormalizedCacheForTests("live")?.entries["live:entry"].path).toBe("latest.md");
+});
+
+it("serializes entry CRUD behind validation and reloads only the affected collection", async () => {
+  const api=await import("../features/collections");
+  await editorStore.closeFile(true);
+  resetNormalizedCachesForTests();
+  mocks.getCollections.mockResolvedValue([baseCollection()]);
+  await collectionsStore.loadCollections();
+  await collectionsStore.openCollection("live");
+  mocks.getCollections.mockClear();
+  const validate=vi.spyOn(api,"validateEntries");
+  let finish!: (value: []) => void;
+  validate.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+  const pending=collectionsStore.validateActiveCollection();
+  await vi.waitFor(()=>expect(finish).toBeDefined());
+  vi.mocked(api.renameGroup).mockClear();
+  const renamed=collectionsStore.renameGroup("group","Renamed");
+  await Promise.resolve();
+  expect(api.renameGroup).not.toHaveBeenCalled();
+  finish([]);
+  await pending;
+  await renamed;
+  expect(api.renameGroup).toHaveBeenCalledWith("live","group","Renamed");
+  expect(mocks.getCollections).not.toHaveBeenCalled();
+  validate.mockRestore();
+});

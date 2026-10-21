@@ -122,7 +122,7 @@
 
 | TASK-108 | [Phase B plan TASK-008: Extract lifecycle and navigation workflows](tasks/archive/TASK-108.md) | Done | 2026-10-21 |
 | TASK-109 | [Phase B plan TASK-009: Own document session coordination](tasks/archive/TASK-109.md) | Done | 2026-10-21 |
-| TASK-110 | Phase B plan TASK-010: Incremental metadata projections | Not Started | 2026-10-21 |
+| TASK-110 | [Phase B plan TASK-010: Incremental metadata projections](tasks/archive/TASK-110.md) | Done | 2026-10-21 |
 | TASK-111 | Phase B plan TASK-011: Stable watcher subscriptions | Not Started | 2026-10-21 |
 
 ## Pending review
@@ -230,44 +230,6 @@ Close the old rebuild plan’s unfinished proposals in preparation for a major r
 ### Log
 - 2026-10-19 — User requested clearing unfinished tasks ahead of a major refactor; cancelled TASK-023–TASK-083 and updated the review summary.
 - 2026-10-19 — Commit `06a3cfc` records the cancellation and review updates.
-
-## TASK-110 — Incremental metadata projections
-
-**State:** Not Started
-**Current Step:** Step 1 — Inspect ownership and regression coverage
-**Source ID:** Phase B plan TASK-010
-
-### Description
-Implement the corresponding approved v1.4 plan task sequentially on Windows, preserving data, UI and recovery semantics.
-
-### Scope
-- `src/features/collections/metadataCache.ts`
-- `src/features/collections/metadataCache.test.ts`
-- `src/stores/collections.ts`
-- `src/stores/collections.phase3.test.ts`
-- `src/benchmarks/metadata-delta.bench.ts`
-- Task ledger, codebase.md and decisions.md for the changed ownership boundaries.
-
-### Requirements
-- [ ] Task-specific acceptance cases from the v1.4 plan pass.
-- [ ] Applicable Windows code, data, UX and performance gates have recorded evidence.
-- [ ] Scoped change reviewed; focused commit recorded before the next task starts.
-
-### Steps
-- [ ] Step 1 — Trace existing ownership and establish baseline → verify: existing regressions and measured work identified.
-- [ ] Step 2 — Implement only the approved boundary/projection change → verify: focused regressions pass.
-- [ ] Step 3 — Run Windows gates and review diff → verify: exact results and limits recorded.
-
-### Handoff
-- Branch: `codex/phase-b-08-11`; initial base: `119ce0e`.
-- Next action: inspect the allowlisted implementation for this task after its predecessor is committed.
-- Blockers: none.
-
-### Verification
-Not yet verified.
-
-### Log
-- 2026-10-21 — Created from the user's direct implementation request for plan tasks 008–011. No remote writes authorized or performed.
 
 ## TASK-111 — Stable watcher subscriptions
 

@@ -11,6 +11,7 @@ import { clearWikilinkCache } from "../lib/cm-extensions/wikilink-decoration";
 import { applyCollectionDelta, applyFilesystemFeed, deriveMetadataDeltas, installMetadataSnapshot, materializeCollection, replaceMetadataSnapshot, type MetadataCacheState } from "../features/collections/metadataCache";
 
 const normalizedCaches = new Map<string, MetadataCacheState>();
+const collectionOperations = new Map<string, Promise<unknown>>();
 const reconciliationInFlight = new Map<string, Promise<void>>();
 
 export function resetNormalizedCachesForTests(): void { normalizedCaches.clear(); }
@@ -66,6 +67,7 @@ async function reconcileCollectionSnapshot(collectionId: string): Promise<void> 
     if (!currentCollection) return;
     const previous = normalizedCaches.get(collectionId);
     const snapshot = await collectionsApi.reconcileCollectionSnapshot(collectionId, watchSpecsForCollection(currentCollection));
+    if (snapshot.revision < (normalizedCaches.get(collectionId)?.activeRevision ?? 0)) return;
     const installed = installMetadataSnapshot(snapshot.collection, snapshot.revision, snapshot.cursor, previous?.fallbackCount ?? 0);
     normalizedCaches.set(collectionId, installed);
     setState("collections", (items) => items.map((item) => item.id === collectionId ? snapshot.collection : item));
@@ -77,7 +79,7 @@ async function reconcileCollectionSnapshot(collectionId: string): Promise<void> 
 }
 
 export async function handleCollectionDeltaV2(payload: { collectionId: string; revision: number; mutationId: string; changes: unknown; origin: string }): Promise<{ accepted: boolean; needsSnapshot: boolean }> {
-  if (reconciliationInFlight.has(payload.collectionId)) { await reconcileCollectionSnapshot(payload.collectionId); return { accepted: false, needsSnapshot: false }; }
+  if (reconciliationInFlight.has(payload.collectionId)) await reconcileCollectionSnapshot(payload.collectionId);
   const collection = state.collections.find((item) => item.id === payload.collectionId);
   if (!collection) return { accepted: false, needsSnapshot: false };
   const current = normalizedCaches.get(collection.id) ?? replaceMetadataSnapshot(collection, payload.revision - 1);
@@ -117,6 +119,42 @@ export async function handleFilesystemChangesV2(payload: { collectionId: string;
     if (value.kind === "modified" && changedPath === editorStore.state.openFilePath && !editorStore.state.isDirty) await editorStore.openFile(changedPath, editorStore.state.isReadOnly);
   }
   return { accepted: true, needsSnapshot: false };
+}
+
+async function runCollectionOperation<T>(id: string, operation: () => Promise<T>): Promise<T> {
+  const previous = collectionOperations.get(id) ?? Promise.resolve();
+  const current = previous.catch(() => {}).then(operation);
+  collectionOperations.set(id, current);
+  try { return await current; }
+  finally { if (collectionOperations.get(id) === current) collectionOperations.delete(id); }
+}
+
+async function validateCollectionNow(activeId: string): Promise<void> {
+    try {
+      const broken = await collectionsApi.validateEntries(activeId);
+      if (state.activeCollectionId !== activeId) return;
+      setState("brokenEntries", broken);
+
+      // Run move detection for broken entries
+      for (const brokenEntry of broken) {
+        if (state.movePrompt?.entryId !== brokenEntry.id) {
+      const detectedPath = await collectionsApi.detectMovedEntry(activeId, brokenEntry.id, brokenEntry.path);
+          if (detectedPath) {
+            setState("movePrompt", {
+              entryId: brokenEntry.id,
+              oldPath: brokenEntry.path,
+              newPath: detectedPath,
+              fileName: brokenEntry.path.split(/[/\\]/).pop() || brokenEntry.path,
+            });
+            setState("movePromptDeferred", false);
+            break; // Show one prompt at a time
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to validate entries", err);
+    }
+
 }
 
 export const collectionsStore = {
@@ -251,30 +289,32 @@ export const collectionsStore = {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      if (parentGroupId) {
-        const collection = this.activeCollection();
-        const findGroupPath = (entries: Entry[], parentPath: number[] = []): number[] | null => {
-          for (let index = 0; index < entries.length; index++) {
-            const entry = entries[index];
-            if (entry?.type !== "group") continue;
-            const groupPath = [...parentPath, index];
-            if (entry.id === parentGroupId) return groupPath;
-            const nested = findGroupPath(entry.children, groupPath);
-            if (nested) return nested;
+      await runCollectionOperation(activeId, async () => {
+        if (parentGroupId) {
+          const collection = this.activeCollection();
+          const findGroupPath = (entries: Entry[], parentPath: number[] = []): number[] | null => {
+            for (let index = 0; index < entries.length; index++) {
+              const entry = entries[index];
+              if (entry?.type !== "group") continue;
+              const groupPath = [...parentPath, index];
+              if (entry.id === parentGroupId) return groupPath;
+              const nested = findGroupPath(entry.children, groupPath);
+              if (nested) return nested;
+            }
+            return null;
+          };
+          const parentPath = collection ? findGroupPath(collection.entries) : null;
+          if (!parentPath) throw new Error("The selected group is no longer available. Choose where to add the note again.");
+          for (const path of paths) {
+            await collectionsApi.addEntry(activeId, parentPath, { type: "file", id: crypto.randomUUID(), path });
           }
-          return null;
-        };
-        const parentPath = collection ? findGroupPath(collection.entries) : null;
-        if (!parentPath) throw new Error("The selected group is no longer available. Choose where to add the note again.");
-        for (const path of paths) {
-          await collectionsApi.addEntry(activeId, parentPath, { type: "file", id: crypto.randomUUID(), path });
+        } else {
+          await collectionsApi.addFileEntries(activeId, paths);
         }
-      } else {
-        await collectionsApi.addFileEntries(activeId, paths);
-      }
-      await this.reloadActiveCollection();
-      await this.validateActiveCollection();
-      await this.watchActiveCollection();
+        await reconcileCollectionSnapshot(activeId);
+        await validateCollectionNow(activeId);
+        await this.watchActiveCollection();
+      });
     } catch (err: unknown) {
       setState("error", String(err) || "Failed to add files");
       throw err;
@@ -285,10 +325,12 @@ export const collectionsStore = {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      await collectionsApi.addFolderRef(activeId, path);
-      await this.reloadActiveCollection();
-      await this.validateActiveCollection();
-      await this.watchActiveCollection();
+      await runCollectionOperation(activeId, async () => {
+        await collectionsApi.addFolderRef(activeId, path);
+        await reconcileCollectionSnapshot(activeId);
+        await validateCollectionNow(activeId);
+        await this.watchActiveCollection();
+      });
     } catch (err: unknown) {
       setState("error", String(err) || "Failed to add folder");
       throw err;
@@ -299,9 +341,11 @@ export const collectionsStore = {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      await collectionsApi.createGroup(activeId, name, parentPath);
-      await this.reloadActiveCollection();
-      await this.watchActiveCollection();
+      await runCollectionOperation(activeId, async () => {
+        await collectionsApi.createGroup(activeId, name, parentPath);
+        await reconcileCollectionSnapshot(activeId);
+        await this.watchActiveCollection();
+      });
     } catch (err: unknown) {
       const msg = String(err) || "Failed to create group";
       setState("error", msg);
@@ -313,9 +357,11 @@ export const collectionsStore = {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      await collectionsApi.renameGroup(activeId, groupId, newName);
-      await this.reloadActiveCollection();
-      await this.watchActiveCollection();
+      await runCollectionOperation(activeId, async () => {
+        await collectionsApi.renameGroup(activeId, groupId, newName);
+        await reconcileCollectionSnapshot(activeId);
+        await this.watchActiveCollection();
+      });
     } catch (err: unknown) {
       const msg = String(err) || "Failed to rename group";
       setState("error", msg);
@@ -327,10 +373,12 @@ export const collectionsStore = {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      await collectionsApi.removeEntry(activeId, entryId);
-      await this.reloadActiveCollection();
-      await this.validateActiveCollection();
-      await this.watchActiveCollection();
+      await runCollectionOperation(activeId, async () => {
+        await collectionsApi.removeEntry(activeId, entryId);
+        await reconcileCollectionSnapshot(activeId);
+        await validateCollectionNow(activeId);
+        await this.watchActiveCollection();
+      });
     } catch (err: unknown) {
       const msg = String(err) || "Failed to remove entry";
       setState("error", msg);
@@ -342,10 +390,12 @@ export const collectionsStore = {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      await collectionsApi.deleteGroupAndPromote(activeId, groupId);
-      await this.reloadActiveCollection();
-      await this.validateActiveCollection();
-      await this.watchActiveCollection();
+      await runCollectionOperation(activeId, async () => {
+        await collectionsApi.deleteGroupAndPromote(activeId, groupId);
+        await reconcileCollectionSnapshot(activeId);
+        await validateCollectionNow(activeId);
+        await this.watchActiveCollection();
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setState("error", msg || "Failed to delete group");
@@ -357,9 +407,11 @@ export const collectionsStore = {
     const activeId = state.activeCollectionId;
     if (!activeId) return;
     try {
-      await collectionsApi.moveEntry(activeId, entryId, newParentPath, newIndex);
-      await this.reloadActiveCollection();
-      await this.watchActiveCollection();
+      await runCollectionOperation(activeId, async () => {
+        await collectionsApi.moveEntry(activeId, entryId, newParentPath, newIndex);
+        await reconcileCollectionSnapshot(activeId);
+        await this.watchActiveCollection();
+      });
     } catch (err: unknown) {
       const msg = String(err) || "Failed to move entry";
       setState("error", msg);
@@ -430,43 +482,12 @@ export const collectionsStore = {
 
   async validateActiveCollection() {
     const activeId = state.activeCollectionId;
-    if (!activeId) return;
-    try {
-      const broken = await collectionsApi.validateEntries(activeId);
-      setState("brokenEntries", broken);
-
-      // Run move detection for broken entries
-      for (const brokenEntry of broken) {
-        if (state.movePrompt?.entryId !== brokenEntry.id) {
-      const detectedPath = await collectionsApi.detectMovedEntry(activeId, brokenEntry.id, brokenEntry.path);
-          if (detectedPath) {
-            setState("movePrompt", {
-              entryId: brokenEntry.id,
-              oldPath: brokenEntry.path,
-              newPath: detectedPath,
-              fileName: brokenEntry.path.split(/[/\\]/).pop() || brokenEntry.path,
-            });
-            setState("movePromptDeferred", false);
-            break; // Show one prompt at a time
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Failed to validate entries", err);
-    }
+    if (activeId) await runCollectionOperation(activeId, () => validateCollectionNow(activeId));
   },
-  
+
   async reloadActiveCollection() {
     const activeId = state.activeCollectionId;
-    if (!activeId) return;
-    try {
-      const cols = await collectionsApi.getCollections();
-      setState("collections", cols);
-      for (const collection of cols) normalizedCaches.set(collection.id, replaceMetadataSnapshot(collection, normalizedCaches.get(collection.id)?.activeRevision ?? 0));
-      clearWikilinkCache();
-    } catch (err) {
-      console.error("Failed to reload collection", err);
-    }
+    if (activeId) await reconcileCollectionSnapshot(activeId);
   },
 
   async reloadCollectionSnapshot(collectionId: string, revision?: number) {

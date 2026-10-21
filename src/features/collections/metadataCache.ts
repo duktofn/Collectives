@@ -32,6 +32,8 @@ export interface CollectionDeltaV2 {
   origin: string;
 }
 
+const projectedEntries = new WeakMap<NormalizedEntry, Entry>();
+
 const rootKey = "__root__";
 const keyFor = (collectionId: string, entryId: string) => `${collectionId}:${entryId}`;
 
@@ -52,6 +54,7 @@ export function replaceMetadataSnapshot(collection: Collection, revision: number
       : { collectionId: collection.id, id, parentId, entryType: entry.type, name: null, path: entry.path, sortOrder };
     const key = keyFor(collection.id, id);
     state.entries[key] = normalized;
+    projectedEntries.set(normalized, entry);
     const parentKey = parentId ? keyFor(collection.id, parentId) : rootKey;
     (state.childrenByParent[parentKey] ??= []).push(key);
     if (entry.type === "group") visit(entry.children, id);
@@ -60,16 +63,20 @@ export function replaceMetadataSnapshot(collection: Collection, revision: number
   return state;
 }
 
-export function materializeCollection(cache: MetadataCacheState, template: Collection): Collection {
-  const build = (parentId: string | null): Entry[] => {
-    const parentKey = parentId ? keyFor(cache.collectionId, parentId) : rootKey;
-    return (cache.childrenByParent[parentKey] ?? []).map((key) => {
-      const entry = cache.entries[key];
-      if (entry.entryType === "group") return { type: "group", id: entry.id, name: entry.name ?? "", children: build(entry.id) };
-      if (entry.entryType === "folder-ref") return { type: "folder-ref", id: entry.id, path: entry.path ?? "" };
-      return { type: "file", id: entry.id, path: entry.path ?? "" };
-    });
+export function materializeCollection(cache: MetadataCacheState, template: Collection, onBuild?: (id: string) => void): Collection {
+  const buildEntry = (key: string): Entry => {
+    const normalized = cache.entries[key];
+    const existing = projectedEntries.get(normalized);
+    if (existing) return existing;
+    onBuild?.(normalized.id);
+    const entry: Entry = normalized.entryType === "group"
+      ? { type: "group", id: normalized.id, name: normalized.name ?? "", children: build(normalized.id) }
+      : { type: normalized.entryType, id: normalized.id, path: normalized.path ?? "" };
+    projectedEntries.set(normalized, entry);
+    return entry;
   };
+  const build = (parentId: string | null): Entry[] =>
+    (cache.childrenByParent[parentId === null ? rootKey : keyFor(cache.collectionId, parentId)] ?? []).map(buildEntry);
   return { ...template, entries: build(null) };
 }
 
@@ -101,34 +108,80 @@ export function applyFilesystemFeed(state: MetadataCacheState, feed: FilesystemF
 export function applyCollectionDelta(state: MetadataCacheState, delta: CollectionDeltaV2): { state: MetadataCacheState; accepted: boolean; needsSnapshot: boolean } {
   if (delta.collectionId !== state.collectionId || delta.revision !== state.activeRevision + 1 || !Array.isArray(delta.changes)) return fallback(state);
   const entries = { ...state.entries };
+  const changed = new Set<string>();
+  const structuralParents = new Set<string>();
+  const parentKey = (id: string | null) => id === null ? rootKey : keyFor(state.collectionId, id);
   for (const raw of delta.changes) {
-    if (!isRecord(raw) || typeof raw.entryId !== "string" || (raw.kind !== "added" && raw.kind !== "updated" && raw.kind !== "removed")) return fallback(state);
-    if (raw.kind === "removed") { if (!entries[keyFor(state.collectionId, raw.entryId)]) return fallback(state); delete entries[keyFor(state.collectionId, raw.entryId)]; continue; }
-    if (!isRecord(raw.entry) || typeof raw.entry.id !== "string" || raw.entry.id !== raw.entryId || typeof raw.entry.entryType !== "string" || !["file", "folder-ref", "group"].includes(raw.entry.entryType) || typeof raw.entry.sortOrder !== "number" || raw.entry.sortOrder < 0 || (raw.entry.parentId !== null && typeof raw.entry.parentId !== "string")) return fallback(state);
-    entries[keyFor(state.collectionId, raw.entryId)] = { collectionId: state.collectionId, id: raw.entry.id, parentId: raw.entry.parentId, entryType: raw.entry.entryType as NormalizedEntry["entryType"], name: typeof raw.entry.name === "string" ? raw.entry.name : null, path: typeof raw.entry.path === "string" ? raw.entry.path : null, sortOrder: raw.entry.sortOrder };
+    if (!isRecord(raw) || typeof raw.entryId !== "string" || !raw.entryId || (typeof raw.kind !== "string" || !["added", "updated", "removed"].includes(raw.kind))) return fallback(state);
+    const key = keyFor(state.collectionId, raw.entryId);
+    if (changed.has(key)) return fallback(state);
+    changed.add(key);
+    const previous = state.entries[key];
+    if (raw.kind === "removed") {
+      if (!previous) return fallback(state);
+      structuralParents.add(parentKey(previous.parentId));
+      if (previous.entryType === "group") structuralParents.add(key);
+      delete entries[key];
+      continue;
+    }
+    if ((raw.kind === "added" && previous) || (raw.kind === "updated" && !previous)) return fallback(state);
+    const value = raw.entry;
+    if (!isRecord(value) || value.id !== raw.entryId || (typeof value.entryType !== "string" || !["file", "folder-ref", "group"].includes(value.entryType))
+      || !Number.isInteger(value.sortOrder) || (value.sortOrder as number) < 0
+      || (value.parentId !== null && (typeof value.parentId !== "string" || !value.parentId))
+      || (value.entryType === "group" ? typeof value.name !== "string" : typeof value.path !== "string")) return fallback(state);
+    const next: NormalizedEntry = { collectionId: state.collectionId, id: raw.entryId, parentId: value.parentId as string | null, entryType: value.entryType as NormalizedEntry["entryType"], name: typeof value.name === "string" ? value.name : null, path: typeof value.path === "string" ? value.path : null, sortOrder: value.sortOrder as number };
+    entries[key] = next;
+    if (!previous || previous.parentId !== next.parentId || previous.sortOrder !== next.sortOrder) {
+      if (previous) structuralParents.add(parentKey(previous.parentId));
+      structuralParents.add(parentKey(next.parentId));
+    }
+    if (previous?.entryType === "group" && next.entryType !== "group") structuralParents.add(key);
   }
-  const rebuilt = rebuild(state, entries, delta.revision, state.streamId, state.sequence, state.fallbackCount);
-  return rebuilt ? { state: rebuilt, accepted: true, needsSnapshot: false } : fallback(state);
-}
-
-function rebuild(previous: MetadataCacheState, entries: Record<string, NormalizedEntry>, revision: number, streamId: string, sequence: number, fallbackCount: number): MetadataCacheState | null {
-  const childrenByParent: Record<string, string[]> = { [rootKey]: [] };
-  for (const [key, entry] of Object.entries(entries)) {
-    if (entry.parentId && !entries[keyFor(previous.collectionId, entry.parentId)]) return null;
-    const parentKey = entry.parentId ? keyFor(previous.collectionId, entry.parentId) : rootKey;
-    (childrenByParent[parentKey] ??= []).push(key);
+  const childrenByParent = { ...state.childrenByParent };
+  for (const parent of structuralParents) {
+    const children = (state.childrenByParent[parent] ?? []).filter(key => entries[key] && parentKey(entries[key].parentId) === parent);
+    const existing = new Set(children);
+    for (const key of changed) {
+      if (entries[key] && parentKey(entries[key].parentId) === parent && !existing.has(key)) children.push(key);
+    }
+    if (parent !== rootKey && children.length && entries[parent]?.entryType !== "group") return fallback(state);
+    children.sort((left, right) => entries[left].sortOrder - entries[right].sortOrder || entries[left].id.localeCompare(entries[right].id));
+    if (parent !== rootKey && !entries[parent]) delete childrenByParent[parent];
+    else childrenByParent[parent] = children;
   }
-  for (const children of Object.values(childrenByParent)) children.sort((left, right) => (entries[left].sortOrder - entries[right].sortOrder) || entries[left].id.localeCompare(entries[right].id));
-  for (const entry of Object.values(entries)) {
+  // Only changed ancestry can introduce a dangling parent or cycle.
+  for (const key of changed) {
+    if (!entries[key]) continue;
     const visited = new Set<string>();
-    let current: string | null = entry.id;
-    while (current) {
-      if (visited.has(current)) return null;
+    let current: string | null = key;
+    while (current !== null) {
+      if (visited.has(current)) return fallback(state);
       visited.add(current);
-      current = entries[keyFor(previous.collectionId, current)]?.parentId ?? null;
+      const entry: NormalizedEntry | undefined = entries[current];
+      if (!entry) return fallback(state);
+      if (entry.parentId === null) break;
+      current = keyFor(state.collectionId, entry.parentId);
+      if (entries[current]?.entryType !== "group") return fallback(state);
     }
   }
-  return { ...previous, entries, childrenByParent, activeRevision: revision, streamId, sequence, fallbackCount };
+  // Invalidate the projection keys of affected ancestors, leaving unrelated
+  // normalized entries and their projected subtrees shared with the snapshot.
+  const invalidated = new Set(changed);
+  for (const key of changed) {
+    for (const source of [state.entries, entries]) {
+      let id = source[key]?.parentId ?? null;
+      while (id !== null) {
+        const ancestor = keyFor(state.collectionId, id);
+        if (entries[ancestor] && !invalidated.has(ancestor)) {
+          entries[ancestor] = { ...entries[ancestor] };
+          invalidated.add(ancestor);
+        }
+        id = source[ancestor]?.parentId ?? null;
+      }
+    }
+  }
+  return { state: { ...state, entries, childrenByParent, activeRevision: delta.revision }, accepted: true, needsSnapshot: false };
 }
 
 function fallback(state: MetadataCacheState) { return { state: { ...state, fallbackCount: state.fallbackCount + 1 }, accepted: false, needsSnapshot: true }; }

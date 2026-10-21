@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getCollections: vi.fn(),
+  reconcileCollectionSnapshot: vi.fn(),
   validateEntries: vi.fn(async (): Promise<Array<{ id: string; path: string; reason: string }>> => []),
   detectMovedEntry: vi.fn(async (): Promise<string | null> => null),
   removeEntry: vi.fn(),
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../features/collections", () => ({
   getCollections: mocks.getCollections,
+  reconcileCollectionSnapshot: mocks.reconcileCollectionSnapshot,
   validateEntries: mocks.validateEntries,
   detectMovedEntry: mocks.detectMovedEntry,
   removeEntry: mocks.removeEntry,
@@ -21,7 +23,7 @@ vi.mock("../features/collections", () => ({
   addFileEntries: mocks.addFileEntries,
   initializeIdentityCache: vi.fn(),
   updateCollection: vi.fn(),
-  ...Object.fromEntries(["createCollection", "deleteCollection", "createGroup", "renameGroup", "deleteGroupAndPromote", "moveEntry", "addFolderRef", "applyCollectionMutationV2", "migrationStatus", "migrationRetry", "reconcileCollectionSnapshot"].map((name) => [name, vi.fn()])),
+  ...Object.fromEntries(["createCollection", "deleteCollection", "createGroup", "renameGroup", "deleteGroupAndPromote", "moveEntry", "addFolderRef", "applyCollectionMutationV2", "migrationStatus", "migrationRetry"].map((name) => [name, vi.fn()])),
 }));
 vi.mock("../features/filesystem", () => ({
   syncCollectionWatches: mocks.syncCollectionWatches,
@@ -50,6 +52,7 @@ beforeEach(async () => {
   collectionsStore.clearMovePrompt();
   resetNormalizedCachesForTests();
   mocks.getCollections.mockReset().mockResolvedValue([collection]);
+  mocks.reconcileCollectionSnapshot.mockReset().mockResolvedValue({ collection, revision: 1, cursor: { streamId: "stream", subscriptionEpoch: "epoch", sequence: 0 } });
   mocks.validateEntries.mockReset().mockResolvedValue([]);
   mocks.detectMovedEntry.mockReset().mockResolvedValue(null);
   mocks.removeEntry.mockReset();
