@@ -132,6 +132,8 @@ Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task ch�
 
 ## Commit log
 
+- TASK-112: `13c3716` (2026-10-21), dev startup fix and Windows frontend/browser verification recorded in its archive.
+
 - TASK-110: `47aa9d8` (2026-10-21), Windows gates and native comparison passed.
 
 - TASK-109 paused checkpoint: `dc4e3c3` (2026-10-21); code/frontend/backend/browser gates pass, native acceptance remains incomplete.
@@ -271,7 +273,7 @@ Implement the corresponding approved v1.4 plan task sequentially on Windows, pre
 ### Handoff
 - Branch: `codex/phase-b-08-11`; initial base: `119ce0e`.
 - Uncommitted: watcher.rs, FolderRefNode.tsx, metadataCache.ts/test, folderRefFeed.ts/test, collections.ts/phase3.test, task.md.
-- Next action: finish the two-session native run, record its metrics and focused commit. Browser cold-page load is blocked by the separately reproduced TASK-112 dev startup defect; recheck after its fix.
+- Next action: rebuild the native release with stable FolderRef rows, run two fresh sessions and compare watcher/metadata metrics. TASK-112 browser coverage has passed with the documented isolated reruns.
 - Blockers: none; TASK-112 restored the cold browser load gate. Final native run must include the stable FolderRef row fix.
 
 ### Verification
