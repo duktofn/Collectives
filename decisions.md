@@ -25,6 +25,7 @@
 | DEC-016 | Lifecycle and navigation workflow ownership | Accepted | App wires UI; workflows own startup subscriptions, close barriers and serialized navigation. | 2026-10-21 |
 
 | DEC-017 | Document session owns coordination | Accepted | A session factory owns state/save/recovery; the store injects selection and the view owns CodeMirror only. | 2026-10-21 |
+| DEC-018 | Reuse parser-owned table models | Accepted | Weak state/tree caches reuse verified table source and map nested offsets; mutation drafts own their arrays. | 2026-10-22 |
 
 ## DEC-001 — Reveal active inline Markdown syntax in Write mode
 Date: 2026-10-18 · Status: Accepted · Related: `RenderPlugin`, TASK-001
@@ -279,3 +280,14 @@ Date: 2026-10-21 · Status: Accepted · Related: TASK-109 (plan TASK-009), DEC-0
 **Decision** — createDocumentSession owns the existing reactive state, save queue/barriers, document generations and recovery lifecycle. editorStore instantiates one session with the UI selection port. Editor owns CodeMirror state and uses the session identity to reset history on actual document switches.
 
 **Reason** — This creates an isolated test boundary without changing saved formats, write preconditions, receipt warnings, save ordering or undo behavior.
+
+## DEC-018 — Reuse parser-owned table models
+Date: 2026-10-22 · Status: Accepted · Related: TASK-114 (plan TASK-013)
+
+**Problem** — Profiling the fixed mixed-widget document shows unchanged table cell/inline models being rebuilt on every edit and repeated lookup.
+
+**Options** — Reparse all tables on every request (simple, but repeats dominant allocation); maintain a separate changed-range parser/index (more invalidation machinery); reuse parser subtree models with source verification and weak ownership (keeps the existing parser authoritative).
+
+**Decision** — Use weak EditorState/tree keys, checking the current syntax tree on every lookup and the full table source before subtree reuse. Map all nested UTF-16 offsets when a reused table moves. Structural edit drafts copy alignment arrays. Skip table inline descendants in the fenced-code scan.
+
+**Reason** — This removes measured repeated model work while preserving background parser refresh, source fidelity and parser-defined table boundaries. Weak keys avoid retaining document history in a global cache; no new index, public API or editor mode is introduced.

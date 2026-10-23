@@ -82,6 +82,10 @@ class RenderPlugin {
 
           // Heading HeaderMark (e.g. #, ##)
           if (name === 'HeaderMark' && node.node.parent?.name.startsWith('ATXHeading')) {
+            const heading = node.node.parent;
+            if (editable && view.state.selection.ranges.some(range => range.empty
+              ? range.head >= heading.from && range.head <= heading.to
+              : range.from < heading.to && range.to > heading.from)) return;
             const line = view.state.doc.lineAt(nodeFrom);
             // Hiding an empty heading removes its entire editable DOM range.
             // Native input then lands before the marker instead of after it.

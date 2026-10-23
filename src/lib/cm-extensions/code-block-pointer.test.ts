@@ -37,6 +37,24 @@ describe("source-owned fenced code rendering", () => {
     }
   });
 
+  it("keeps fence decorations mapped after edits before an adjacent table", () => {
+    const doc = "Before\n\n| A | B |\n| --- | --- |\n| **bold** | `pipe|value` |\n\n```text\nbody\n```\n\nAfter";
+    const editor = mount("edit-render", doc);
+    mounted.push(editor);
+    const prefix = "😀 prefix\n\n";
+    editor.view.dispatch({ changes: { from: 0, insert: prefix } });
+    const ranges: { from: number; text: string }[] = [];
+    for (const source of editor.view.state.facet(EditorView.decorations)) {
+      const set = typeof source === "function" ? source(editor.view) : source;
+      set.between(0, editor.view.state.doc.length, (from, _to, value) => {
+        if (value.spec.class === "cm-codeblock-line cm-codeblock-line-first cm-codeblock-line-last")
+          ranges.push({ from, text: editor.view.state.doc.lineAt(from).text });
+      });
+    }
+    expect(ranges).toEqual([{ from: prefix.length + doc.indexOf("body"), text: "body" }]);
+    expect(editor.view.state.doc.toString()).toBe(prefix + doc);
+  });
+
   it("keeps code lines as CodeMirror text and hides only fence lines", () => {
     const mountedView = mount();
     mounted.push(mountedView);

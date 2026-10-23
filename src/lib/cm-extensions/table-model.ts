@@ -1,6 +1,6 @@
 import type { EditorState } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
-import type { SyntaxNode } from "@lezer/common";
+import type { SyntaxNode, Tree } from "@lezer/common";
 
 export type TableAlignment = "left" | "center" | "right";
 
@@ -99,12 +99,44 @@ function parseAlignments(state: EditorState, separator: SyntaxNode, columnCount:
   });
 }
 
+// Weak keys follow parser/state lifetimes; no document snapshots or global LRU.
+const modelsByState = new WeakMap<EditorState, { tree: Tree; tables: TableModel[] }>();
+const modelByTree = new WeakMap<Tree, { source: string; table: TableModel }>();
+
+function shiftTable(table: TableModel, offset: number): TableModel {
+  if (offset === 0) return table;
+  const inline = (node: InlineTableNode): InlineTableNode => ({
+    ...node, from: node.from + offset, to: node.to + offset,
+    ...(node.children ? { children: node.children.map(inline) } : {}),
+  });
+  const cell = (value: TableCellModel): TableCellModel => ({
+    ...value, from: value.from + offset, to: value.to + offset,
+    inline: value.inline.map(inline),
+  });
+  return {
+    ...table, from: table.from + offset, to: table.to + offset,
+    headers: table.headers.map(cell), rows: table.rows.map(row => row.map(cell)),
+  };
+}
+
 export function findTables(state: EditorState): TableModel[] {
+  const tree = syntaxTree(state);
+  const previous = modelsByState.get(state);
+  // Background parsing may replace the tree without replacing EditorState.
+  if (previous?.tree === tree) return previous.tables;
   const tables: TableModel[] = [];
-  syntaxTree(state).iterate({
+  tree.iterate({
     enter(nodeRef) {
       const node = nodeRef.node;
       if (node.name !== "Table") return;
+      const subtree = node.toTree();
+      const source = state.doc.sliceString(node.from, node.to);
+      const cached = modelByTree.get(subtree);
+      // Verify bytes too: a syntax tree describes structure, not source text.
+      if (cached?.source === source) {
+        tables.push(shiftTable(cached.table, node.from - cached.table.from));
+        return false;
+      }
       let header: SyntaxNode | null = null;
       let separator: SyntaxNode | null = null;
       const rows: SyntaxNode[] = [];
@@ -116,17 +148,20 @@ export function findTables(state: EditorState): TableModel[] {
       if (!header || !separator) return false;
       const headers = readCells(state, header);
       if (headers.length === 0) return false;
-      tables.push({
+      const table: TableModel = {
         from: node.from,
         to: node.to,
-        source: state.doc.sliceString(node.from, node.to).replace(/\n$/, ""),
+        source: source.replace(/\n$/, ""),
         headers,
         rows: rows.map((row) => readCells(state, row)),
         alignments: parseAlignments(state, separator, headers.length),
-      });
+      };
+      modelByTree.set(subtree, { source, table });
+      tables.push(table);
       return false;
     },
   });
+  modelsByState.set(state, { tree, tables });
   return tables;
 }
 

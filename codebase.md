@@ -1,5 +1,5 @@
 # Codebase Context
-Last Updated: 2026-10-21
+Last Updated: 2026-10-23
 Last Reviewed Commit: dc4e3c3
 
 The editor and settings sections describe the current code-block and typography-control implementation. Source code takes precedence. Backend descriptions summarize existing boundaries; this session did not audit backend behavior.
@@ -62,6 +62,8 @@ Backend dependency direction:
 
 `code-block-widget.ts` renders code using source-backed line decorations and code-language/fence widgets. `table-model.ts` parses cells; `table-widget.ts` renders tables and manages cell input/history/controls. Widget equality includes read-only state, and mutation handlers recheck it so Write DOM cannot remain editable after switching to Read. Markdown Enter and user document transactions are guarded in Read mode. `chart-widget.ts` renders chart fences and invokes `ChartEditorDialog` for editing chart specs.
 
+`table-model.ts` reuses source-verified parser subtree models through weak tree/state keys, shifts nested offsets when tables move, and refreshes on background syntax-tree changes. Table structural edits copy alignment arrays (DEC-018). The fenced-code scan skips table inline children. Write reveals an active heading's hash markers; all rendered heading levels inherit at least Semi Bold weight.
+
 `CodeLanguageWidget` renders a native copy button styled as the language label. Its click handler resolves the live fenced block through `EditorView.posAtDOM`, copies the body using `navigator.clipboard.writeText`, and provides temporary success/failure feedback plus app announcements. It preserves code whitespace, omits fence lines, and clears feedback timers when its DOM is destroyed. Buttons work in Read and inactive Write blocks without changing document selection.
 
 `editor-layout.ts` observes rendered blocks/fonts for measurement changes and installs `displayedTextPointerSelection` from `pointer-selection.ts`. Pointer selection resolves the displayed glyph before measurements can move the viewport. Wikilink and block-reference extensions resolve/navigation through the links feature and editor store.
@@ -122,4 +124,4 @@ Backend dependency direction:
 
 - TASK-096 reimports the updated 27×27 logo from the same supplied path and regenerates Windows icons with reduced source padding. TASK-022 cleanup remains paused with no implementation retained; TASK-021 only filters owned artifact visibility/events.
 
-- TASK-109 / DEC-017: document-session extraction passed local gates and clean native validation; consult task.md before treating it as accepted. TASK-110/111 are not implemented.
+- TASK-109 / DEC-017, TASK-110 and TASK-111 are accepted on Windows; their archives record document-session, metadata projection and watcher validation.

@@ -33,6 +33,28 @@ function atomicRanges(view: EditorView) {
   return hidden;
 }
 
+it.each([1, 2, 3, 4, 5, 6])('reveals level %i heading markers only while active in Write', (level) => {
+  const heading = '#'.repeat(level) + ' Heading';
+  const doc = heading + '\n\nOutside';
+  const view = mountInline(doc, doc.length);
+  expect(view.dom.querySelector('.cm-heading')?.textContent).toBe('Heading');
+  view.dispatch({ selection: { anchor: 0 } });
+  expect(view.dom.querySelector('.cm-heading')?.textContent).toBe(heading);
+  expect(atomicRanges(view)).toEqual([]);
+  view.dispatch({ selection: { anchor: heading.length } });
+  expect(view.dom.querySelector('.cm-heading')?.textContent).toBe(heading);
+  view.dispatch({ selection: { anchor: doc.length } });
+  expect(view.dom.querySelector('.cm-heading')?.textContent).toBe('Heading');
+  expect(view.state.doc.toString()).toBe(doc);
+  expect(mountInline(doc, level + 2, 'view').dom.querySelector('.cm-heading')?.textContent).toBe('Heading');
+});
+
+it('reveals heading markers for a selection intersecting its text', () => {
+  const view = mountInline('## Heading\n\nOutside', 19);
+  view.dispatch({ selection: EditorSelection.single(4, 15) });
+  expect(view.dom.querySelector('.cm-heading')?.textContent).toBe('## Heading');
+});
+
 it.each([
   ['**bold**', '.cm-strong', 2],
   ['__bold__', '.cm-strong', 2],

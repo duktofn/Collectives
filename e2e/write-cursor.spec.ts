@@ -72,7 +72,8 @@ for (const [phrase, offset, width] of [
       await expect(page.locator('#write-cursor-host .cm-strong').filter({ hasText: phrase }))
         .toHaveText('**bold words**');
     }
-    const caretTarget = phrase === 'bold words' ? await point(page, phrase, offset) : target;
+    const caretTarget = phrase === 'bold words' || phrase === 'rendered heading'
+      ? await point(page, phrase, offset) : target;
     expect(Math.abs(snapshot.caret.x - caretTarget.x)).toBeLessThan(3);
     expect(Math.abs(snapshot.caret.y - caretTarget.y)).toBeLessThan(3);
     await page.keyboard.type('|');
@@ -82,3 +83,32 @@ for (const [phrase, offset, width] of [
     );
   });
 }
+
+test('all heading levels stay semibold and reveal hashes only at the Write cursor', async ({ page }) => {
+  await mount(page);
+  const source = Array.from({ length: 6 }, (_, index) => '#'.repeat(index + 1) + ` Heading ${index + 1}`).join('\n\n') + '\n\nOutside';
+  await page.evaluate(async (source) => {
+    const view = (window as any).__writeCursorView;
+    const { baseEditorExtensions, getExtensionsForMode } = await import('/src/lib/cm-extensions/markdown-mode.ts');
+    view.setState(view.state.constructor.create({ doc: source, selection: { anchor: source.length }, extensions: [...baseEditorExtensions, ...getExtensionsForMode('edit-render')] }));
+  }, source);
+  for (let level = 1; level <= 6; level++) {
+    const heading = page.locator(`#write-cursor-host .cm-heading-${level}`);
+    await expect(heading).toHaveText(`Heading ${level}`);
+    expect(await heading.evaluate(el => Number(getComputedStyle(el).fontWeight))).toBeGreaterThanOrEqual(600);
+    await page.evaluate((level) => {
+      const view = (window as any).__writeCursorView;
+      view.dispatch({ selection: { anchor: view.state.doc.toString().indexOf(`Heading ${level}`) + 2 } });
+      view.focus();
+    }, level);
+    await expect(heading).toHaveText('#'.repeat(level) + ` Heading ${level}`);
+    await page.keyboard.press('x');
+    await page.keyboard.press('Control+z');
+    expect(await page.evaluate(() => (window as any).__writeCursorView.state.doc.toString())).toBe(source);
+    await page.evaluate(() => {
+      const view = (window as any).__writeCursorView;
+      view.dispatch({ selection: { anchor: view.state.doc.length } });
+    });
+    await expect(heading).toHaveText(`Heading ${level}`);
+  }
+});

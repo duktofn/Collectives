@@ -757,6 +757,7 @@
 /* Custom Markdown styling overrides in Render mode */
 .cm-heading {
   font-family: var(--font-body);
+  font-weight: 600;
   padding-top: 1.2em;
   padding-bottom: 0.4em;
   line-height: 1.3;

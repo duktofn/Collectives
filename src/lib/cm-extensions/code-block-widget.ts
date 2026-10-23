@@ -201,6 +201,8 @@ function buildCodeBlockDecorations(
   const active = new Set(positions);
   tree.iterate({
     enter(node) {
+      // Tables only contain inline syntax; walking every cell cannot find fences.
+      if (node.name === 'Table') return false;
       if (node.name !== 'FencedCode' || isChartFencedCode(state, node.from)) return;
 
       const first = state.doc.lineAt(node.from);

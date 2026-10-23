@@ -21,7 +21,7 @@ function sourceData(table: TableModel): TableSource {
   return {
     headers: table.headers.map((cell) => cell.source),
     rows: table.rows.map((row) => Array.from({ length: table.headers.length }, (_, index) => row[index]?.source ?? "")),
-    alignments: table.alignments,
+    alignments: [...table.alignments],
   };
 }
 

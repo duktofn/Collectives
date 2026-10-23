@@ -17,6 +17,43 @@ vi.mock("chart.js", () => {
 });
 
 describe("Markdown table model", () => {
+  it("reuses unchanged table models across tail edits and repeated lookups", () => {
+    const doc = Array.from({ length: 12 }, (_, index) =>
+      `| A ${index} | B |\n| --- | --- |\n| **bold** | a\\|b |\n\n`).join("") + "Tail";
+    const state = EditorState.create({ doc, extensions: baseEditorExtensions });
+    const before = findTables(state);
+    expect(before).toHaveLength(12);
+    expect(findTables(state)).toBe(before);
+    const after = state.update({ changes: { from: doc.length, insert: "!" } }).state;
+    const tables = findTables(after);
+    expect(tables).toEqual(before);
+    expect(tables[0]).toBe(before[0]);
+    expect(tables[10]).toBe(before[10]);
+  });
+
+  it("maps every cell and nested inline offset after an insertion before tables", () => {
+    const doc = "Before\n\n| A | B |\n| --- | --- |\n| **bold _nested_** | `pipe|code` |\n\nTail";
+    const state = EditorState.create({ doc, extensions: baseEditorExtensions });
+    findTables(state);
+    const next = state.update({ changes: { from: 0, insert: "😀 prefix\n\n" } }).state;
+    const fresh = EditorState.create({ doc: next.doc, extensions: baseEditorExtensions });
+    expect(findTables(next)).toEqual(findTables(fresh));
+    const reverted = next.update({ changes: { from: 0, to: "😀 prefix\n\n".length } }).state;
+    expect(findTables(reverted)).toEqual(findTables(state));
+  });
+
+  it("reparses changed same-length cell text and removes tables changed into code", () => {
+    const doc = "| A |\n| --- |\n| **old** |\n\nTail";
+    const state = EditorState.create({ doc, extensions: baseEditorExtensions });
+    const before = findTables(state)[0];
+    const from = doc.indexOf("old");
+    const changed = state.update({ changes: { from, to: from + 3, insert: "new" } }).state;
+    expect(findTables(changed)[0].rows[0][0].source).toBe("**new**");
+    expect(findTables(changed)[0]).not.toBe(before);
+    const fenced = changed.update({ changes: [{ from: 0, insert: "```md\n" }, { from: changed.doc.length, insert: "\n```" }] }).state;
+    expect(findTables(fenced)).toEqual([]);
+  });
+
   it("uses parser tables, preserves inline source, escaped pipes, code pipes, and alignment", () => {
     const doc = [
       "| Name | Snippet | State |",
@@ -62,6 +99,26 @@ describe("Markdown table widget", () => {
       view.destroy();
       parent.remove();
     }
+  });
+
+  it("does not mutate cached alignments when changing the table shape", () => {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    const view = new EditorView({ parent, state: EditorState.create({
+      doc: "| A | B |\n| :--- | ---: |\n| first | second |",
+      extensions: [...baseEditorExtensions, ...getExtensionsForMode("edit-render")],
+    }) });
+    mounted.push({ view, parent });
+    const before = findTables(view.state)[0];
+    const button = Array.from(view.dom.querySelectorAll<HTMLButtonElement>("button"))
+      .find(button => button.getAttribute("aria-label") === "+ Add column right of column 1");
+    expect(button).toBeDefined();
+    button!.click();
+    // jsdom has no scrolling implementation; the deferred focus uses these cells.
+    for (const cell of view.dom.querySelectorAll<HTMLElement>(".cm-table-widget th, .cm-table-widget td"))
+      cell.scrollIntoView = vi.fn();
+    expect(before.alignments).toEqual(["left", "right"]);
+    expect(findTables(view.state)[0].headers).toHaveLength(3);
   });
 
   it("renders a table discovered after switching to a partially parsed document", () => {
