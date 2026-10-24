@@ -128,11 +128,16 @@
 | TASK-112 | Investigate slow dev startup | Done | 2026-10-21 |
 | TASK-113 | [Phase B plan TASK-012: Investigate bounded content-search rescans](tasks/archive/TASK-113.md) | Done | 2026-10-22 |
 | TASK-114 | [Phase B plan TASK-013: Optimize table, code block and Markdown decorations](tasks/archive/TASK-114.md) | Done | 2026-10-23 |
+| TASK-115 | [Phase B plan TASK-014: Resolve duplicate note links across collection entries and FolderRefs](tasks/archive/TASK-115.md) | Done | 2026-10-25 |
+
+## Active
 
 ## Pending review
 Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task chưa bắt đầu) chuyển sang Cancelled theo yêu cầu chuẩn bị refactor lớn. TASK-014, TASK-022 và TASK-086 giữ Paused. Xem [bản review lưu trữ](tasks/plans/collectives-fix-rebuild-review.md).
 
 ## Commit log
+
+- TASK-115: `6f7807a` (2026-10-25), bounded all-candidate WikiLinks and cancellable duplicate picker; Windows gates, native comparison and root audits passed; see its archive.
 
 - TASK-114: `92581cf` (2026-10-23), table model reuse and active headings; Windows/native gates and independent audit passed.
 
