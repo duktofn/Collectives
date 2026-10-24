@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Collection, Entry, FsEntry, BrokenEntry, Settings, ResolveCandidate, ZipConflict, CustomFont, ImportedTheme } from "../../types";
+import { Collection, Entry, FsEntry, BrokenEntry, Settings, NoteLinkCandidate, ResolveCandidate, ZipConflict, CustomFont, ImportedTheme } from "../../types";
 
 export type FileKind = "markdown" | "text-source";
 export type LineEnding = "LF" | "CRLF" | "mixed" | "none";
@@ -76,7 +76,7 @@ export interface CommandMap {
   read_folderref_snapshot: { args: { rootPath: string; childPath: string }; result: FileSnapshot };
   write_file: { args: { path: string; content: string; precondition: WritePrecondition }; result: WriteReceipt };
   create_file: { args: { path: string; content: string }; result: WriteReceipt };
-  resolve_wikilink: { args: { collectionId: string; noteName: string }; result: ResolveCandidate | null };
+  resolve_wikilink: { args: { collectionId: string; noteName: string; sourcePath?: string }; result: NoteLinkCandidate[] };
   search_link_index: { args: { collectionId: string; query: string; limit?: number }; result: ResolveCandidate[] };
   search_note_content: { args: { collectionId: string; query: string; offset?: number; limit?: number }; result: ContentSearchPage };
   import_folder: { args: { path: string; name: string }; result: Collection };

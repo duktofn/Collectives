@@ -6,7 +6,8 @@ use crate::fs_ops::FsEntry;
 use crate::repositories::documents::DocumentSnapshot;
 use crate::repositories::ports::{
     ArchiveRepository as ArchiveRepositoryPort, CollectionRepository as CollectionRepositoryPort,
-    DocumentRepository, FilesystemRepository, LinkRepository, SettingsRepository,
+    DocumentRepository, FilesystemRepository, LinkRepository, NoteLinkFileIdentity,
+    SettingsRepository,
 };
 use crate::safety_error::SafetyError;
 use crate::settings::{CustomFont, Settings};
@@ -207,6 +208,16 @@ impl LinkRepository for SqliteLinkRepository {
     ) -> Result<Option<link_index::IndexEntry>, String> {
         self.resolve(collection_id, note_name)
     }
+    fn resolve_all(
+        &self,
+        collection_id: &str,
+        note_name: &str,
+        limit: usize,
+    ) -> Result<Vec<link_index::IndexEntry>, String> {
+        self.with_connection(|connection| {
+            link_index::resolve_all_by_name(connection, collection_id, note_name, limit)
+        })
+    }
     fn search(
         &self,
         collection_id: &str,
@@ -350,6 +361,32 @@ impl AppFilesystemRepository {
 impl FilesystemRepository for AppFilesystemRepository {
     fn read_children(&self, path: &str) -> Result<Vec<FsEntry>, String> {
         crate::fs_ops::read_children(Path::new(path))
+    }
+    fn note_link_file_identity(
+        &self,
+        path: &str,
+        folder_ref_root: Option<&str>,
+    ) -> Result<Option<NoteLinkFileIdentity>, String> {
+        crate::fs_ops::note_link_file_identity(Path::new(path), folder_ref_root.map(Path::new)).map(
+            |identity| {
+                identity.map(|(canonical_path, size)| NoteLinkFileIdentity {
+                    canonical_path,
+                    size,
+                })
+            },
+        )
+    }
+    fn read_folder_ref_children(
+        &self,
+        root_path: &str,
+        directory_path: &str,
+        limit: usize,
+    ) -> Result<Vec<FsEntry>, String> {
+        crate::fs_ops::read_folder_ref_children_bounded(
+            Path::new(root_path),
+            Path::new(directory_path),
+            limit,
+        )
     }
     fn normalize(&self, path: &str) -> String {
         crate::fs_ops::normalize_path(path)

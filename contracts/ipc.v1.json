@@ -21,7 +21,7 @@
     {"name":"read_file","handler":"ipc::commands::documents::read_file","args":[{"name":"path","type":"string"}],"result":"FileSnapshot"},
     {"name":"write_file","handler":"ipc::commands::documents::write_file","args":[{"name":"path","type":"string"},{"name":"content","type":"string"},{"name":"precondition","type":"WritePrecondition"}],"result":"WriteReceipt"},
     {"name":"create_file","handler":"ipc::commands::documents::create_file","args":[{"name":"path","type":"string"},{"name":"content","type":"string"}],"result":"WriteReceipt"},
-    {"name":"resolve_wikilink","handler":"ipc::commands::links::resolve_wikilink","args":[{"name":"collectionId","type":"string"},{"name":"noteName","type":"string"}],"result":"ResolveCandidate | null"},
+    {"name":"resolve_wikilink","handler":"ipc::commands::links::resolve_wikilink","args":[{"name":"collectionId","type":"string"},{"name":"noteName","type":"string"},{"name":"sourcePath","type":"string | undefined"}],"result":"NoteLinkCandidate[]"},
     {"name":"search_link_index","handler":"ipc::commands::links::search_link_index","args":[{"name":"collectionId","type":"string"},{"name":"query","type":"string"},{"name":"limit","type":"number | undefined"}],"result":"ResolveCandidate[]"},
     {"name":"search_note_content","handler":"ipc::commands::links::search_note_content","args":[{"name":"collectionId","type":"string"},{"name":"query","type":"string"},{"name":"offset","type":"number | undefined"},{"name":"limit","type":"number | undefined"}],"result":"ContentSearchPage"},
     {"name":"import_folder","handler":"ipc::commands::archive::import_folder","args":[{"name":"path","type":"string"},{"name":"name","type":"string"}],"result":"Collection"},

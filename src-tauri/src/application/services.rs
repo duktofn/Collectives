@@ -1,6 +1,6 @@
 pub use crate::application::domain::{
-    BrokenEntry, Collection, CustomFont, Entry, FileSnapshot, FsEntry, ResolveCandidate, Settings,
-    ZipConflict,
+    BrokenEntry, Collection, CustomFont, Entry, FileSnapshot, FsEntry, NoteLinkCandidate,
+    ResolveCandidate, Settings, ZipConflict,
 };
 use crate::metadata::{SqliteMetadataLinkRepository, SqliteMetadataRepository};
 use crate::repositories::adapters::{
@@ -9,10 +9,17 @@ use crate::repositories::adapters::{
 };
 use crate::repositories::ports::{
     ArchiveRepository, CollectionRepository, DocumentRepository, FilesystemRepository,
-    LinkRepository, MetadataRepository, SettingsRepository,
+    LinkRepository, MetadataRepository, NoteLinkFileIdentity, SettingsRepository,
 };
 use crate::safety_error::SafetyError;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+const MAX_NOTE_LINK_FOLDER_DEPTH: usize = 128;
+const MAX_NOTE_LINK_DOCUMENT_BYTES: u64 = 10 * 1024 * 1024;
+const MAX_NOTE_LINK_VALIDATION_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_NOTE_LINK_READ_BYTES: u64 = MAX_NOTE_LINK_DOCUMENT_BYTES + 1;
 
 #[derive(Clone)]
 pub struct AppServices {
@@ -429,16 +436,314 @@ pub fn resolve_wikilink(
     services: &AppServices,
     collection_id: String,
     note_name: String,
-) -> Result<Option<ResolveCandidate>, String> {
-    Ok(services
-        .links
-        .resolve(&collection_id, &note_name)?
-        .map(|entry| ResolveCandidate {
-            display_name: entry.display_name,
-            entry_id: entry.entry_id,
-            path: entry.path,
-            entry_type: entry.entry_type,
-        }))
+    source_path: Option<String>,
+) -> Result<Vec<NoteLinkCandidate>, String> {
+    let indexed = services.links.resolve_all(
+        &collection_id,
+        &note_name,
+        crate::application::domain::NOTE_LINK_CANDIDATE_SCAN_CAP + 1,
+    )?;
+    if indexed.len() > crate::application::domain::NOTE_LINK_CANDIDATE_SCAN_CAP {
+        return Err("note_link_scan_incomplete: indexed candidate limit reached".into());
+    }
+    let mut candidates = Vec::new();
+    let mut seen_paths = HashSet::<PathBuf>::new();
+    let mut validation_bytes = 0u64;
+    for entry in indexed {
+        if entry.entry_type != "file" {
+            continue;
+        }
+        let Some((identity, size)) =
+            direct_file_identity(services.filesystem.as_ref(), &entry.path)?
+        else {
+            continue;
+        };
+        if seen_paths.contains(&identity) {
+            continue;
+        }
+        ensure_validation_budget(validation_bytes, size)?;
+        let (valid, bytes_read) = document_validation(services.documents.read(&entry.path), size)?;
+        charge_validation_bytes(&mut validation_bytes, bytes_read)?;
+        if !valid {
+            seen_paths.insert(identity);
+            continue;
+        }
+        if seen_paths.insert(identity) {
+            candidates.push(NoteLinkCandidate {
+                display_name: entry.display_name,
+                entry_id: entry.entry_id,
+                path: entry.path,
+                entry_type: entry.entry_type,
+                folder_ref_entry_id: None,
+                folder_ref_root_path: None,
+            });
+        }
+    }
+
+    let collection = services.collections.load(&collection_id)?;
+    if collection.id != collection_id {
+        return Err(
+            "note_link_collection_mismatch: loaded collection did not match request".into(),
+        );
+    }
+
+    let mut scan_count = 0;
+    let folder_refs = collect_folder_ref_roots(&collection.entries, &mut scan_count)?;
+    for (entry_id, root_path) in folder_refs {
+        candidates.extend(scan_folder_ref(
+            &entry_id,
+            &root_path,
+            &note_name,
+            FolderRefScanState {
+                scan_count: &mut scan_count,
+                validation_bytes: &mut validation_bytes,
+                seen_paths: &mut seen_paths,
+                scan_cap: crate::application::domain::NOTE_LINK_CANDIDATE_SCAN_CAP,
+            },
+            |root, directory, limit| {
+                services
+                    .filesystem
+                    .read_folder_ref_children(root, directory, limit)
+            },
+            |root, path| {
+                services
+                    .filesystem
+                    .note_link_file_identity(path, Some(root))
+            },
+            |root, path, size| {
+                document_validation(services.documents.read_folderref_snapshot(root, path), size)
+            },
+        )?);
+        if candidates.len() > crate::application::domain::NOTE_LINK_CANDIDATE_SCAN_CAP {
+            return Err("note_link_scan_incomplete: candidate limit reached".into());
+        }
+    }
+
+    sort_note_link_candidates(
+        &mut candidates,
+        source_path.as_deref(),
+        services.filesystem.as_ref(),
+    );
+    Ok(candidates)
+}
+
+fn direct_file_identity(
+    filesystem: &dyn FilesystemRepository,
+    path: &str,
+) -> Result<Option<(PathBuf, u64)>, String> {
+    let Some(identity) = filesystem.note_link_file_identity(path, None)? else {
+        return Ok(None);
+    };
+    if identity.size > MAX_NOTE_LINK_DOCUMENT_BYTES {
+        return Ok(None);
+    }
+    Ok(Some((identity.canonical_path, identity.size)))
+}
+
+fn is_known_unsupported_document(error: &SafetyError) -> bool {
+    if error.code != "unsupported_file" {
+        return false;
+    }
+    matches!(
+        error
+            .details
+            .get("reason")
+            .and_then(serde_json::Value::as_str),
+        Some("extension" | "not_regular_file" | "size" | "nul" | "encoding" | "binary")
+    )
+}
+
+fn document_validation(
+    result: Result<FileSnapshot, SafetyError>,
+    listed_size: u64,
+) -> Result<(bool, u64), String> {
+    match result {
+        Ok(snapshot) => {
+            let content_size = snapshot.content.len() as u64
+                + if snapshot.had_utf8_bom == Some(true) {
+                    3
+                } else {
+                    0
+                };
+            let bytes_read = snapshot
+                .byte_size
+                .unwrap_or_default()
+                .max(listed_size)
+                .max(content_size);
+            Ok((bytes_read <= MAX_NOTE_LINK_DOCUMENT_BYTES, bytes_read))
+        }
+        Err(error) if is_known_unsupported_document(&error) => {
+            Ok((false, MAX_NOTE_LINK_READ_BYTES))
+        }
+        Err(error) => Err(format!(
+            "note_link_scan_incomplete: candidate validation failed: {error}"
+        )),
+    }
+}
+
+fn ensure_validation_budget(validation_bytes: u64, listed_size: u64) -> Result<(), String> {
+    if validation_bytes >= MAX_NOTE_LINK_VALIDATION_BYTES
+        || validation_bytes.saturating_add(listed_size.min(MAX_NOTE_LINK_DOCUMENT_BYTES))
+            > MAX_NOTE_LINK_VALIDATION_BYTES
+    {
+        return Err("note_link_scan_incomplete: candidate validation byte limit reached".into());
+    }
+    Ok(())
+}
+
+fn charge_validation_bytes(validation_bytes: &mut u64, bytes_read: u64) -> Result<(), String> {
+    *validation_bytes = validation_bytes.saturating_add(bytes_read);
+    if *validation_bytes > MAX_NOTE_LINK_VALIDATION_BYTES {
+        return Err("note_link_scan_incomplete: candidate validation byte limit reached".into());
+    }
+    Ok(())
+}
+
+fn collect_folder_ref_roots(
+    entries: &[Entry],
+    scan_count: &mut usize,
+) -> Result<Vec<(String, String)>, String> {
+    fn visit(
+        entries: &[Entry],
+        scan_count: &mut usize,
+        folder_refs: &mut Vec<(String, String)>,
+    ) -> Result<(), String> {
+        for entry in entries {
+            *scan_count += 1;
+            if *scan_count > crate::application::domain::NOTE_LINK_CANDIDATE_SCAN_CAP {
+                return Err("note_link_scan_incomplete: collection traversal limit reached".into());
+            }
+            match entry {
+                Entry::File { .. } => {}
+                Entry::FolderRef { id, path } => folder_refs.push((id.clone(), path.clone())),
+                Entry::Group { children, .. } => visit(children, scan_count, folder_refs)?,
+            }
+        }
+        Ok(())
+    }
+
+    let mut folder_refs = Vec::new();
+    visit(entries, scan_count, &mut folder_refs)?;
+    Ok(folder_refs)
+}
+
+struct FolderRefScanState<'a> {
+    scan_count: &'a mut usize,
+    validation_bytes: &'a mut u64,
+    seen_paths: &'a mut HashSet<PathBuf>,
+    scan_cap: usize,
+}
+
+fn scan_folder_ref(
+    folder_ref_entry_id: &str,
+    root_path: &str,
+    note_name: &str,
+    scan: FolderRefScanState<'_>,
+    mut read_children: impl FnMut(&str, &str, usize) -> Result<Vec<FsEntry>, String>,
+    mut resolve_identity: impl FnMut(&str, &str) -> Result<Option<NoteLinkFileIdentity>, String>,
+    mut read_snapshot: impl FnMut(&str, &str, u64) -> Result<(bool, u64), String>,
+) -> Result<Vec<NoteLinkCandidate>, String> {
+    let mut pending = vec![(root_path.to_string(), 0usize)];
+    let mut candidates = Vec::new();
+    while let Some((directory, depth)) = pending.pop() {
+        if depth > MAX_NOTE_LINK_FOLDER_DEPTH {
+            return Err("note_link_scan_incomplete: FolderRef nesting limit reached".into());
+        }
+        let remaining = scan.scan_cap.saturating_sub(*scan.scan_count);
+        let children = read_children(root_path, &directory, remaining.saturating_add(1))?;
+        if children.len() > remaining {
+            return Err("note_link_scan_incomplete: FolderRef traversal limit reached".into());
+        }
+        *scan.scan_count += children.len();
+        for child in children {
+            if child.is_dir {
+                pending.push((child.path, depth + 1));
+                continue;
+            }
+            if child.is_text == Some(false)
+                || crate::fs_layer::owned_artifacts::is_owned_document_artifact(Path::new(
+                    &child.path,
+                ))
+            {
+                continue;
+            }
+
+            let display_name = Path::new(&child.path)
+                .file_stem()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
+            if !display_name.eq_ignore_ascii_case(note_name) {
+                continue;
+            }
+            if child
+                .size
+                .is_some_and(|size| size > MAX_NOTE_LINK_DOCUMENT_BYTES)
+            {
+                continue;
+            }
+            let identity = resolve_identity(root_path, &child.path)?.ok_or_else(|| {
+                "note_link_scan_incomplete: FolderRef candidate identity is unavailable".to_string()
+            })?;
+            if identity.size > MAX_NOTE_LINK_DOCUMENT_BYTES {
+                continue;
+            }
+            if scan.seen_paths.contains(&identity.canonical_path) {
+                continue;
+            }
+            let size = identity.size;
+            ensure_validation_budget(*scan.validation_bytes, size)?;
+            let (valid, bytes_read) = read_snapshot(root_path, &child.path, size)?;
+            charge_validation_bytes(scan.validation_bytes, bytes_read)?;
+            scan.seen_paths.insert(identity.canonical_path);
+            if !valid {
+                continue;
+            }
+            candidates.push(NoteLinkCandidate {
+                display_name: display_name.to_string(),
+                entry_id: format!("folder-ref:{folder_ref_entry_id}:{}", child.path),
+                path: child.path,
+                entry_type: "file".into(),
+                folder_ref_entry_id: Some(folder_ref_entry_id.to_string()),
+                folder_ref_root_path: Some(root_path.to_string()),
+            });
+        }
+    }
+    Ok(candidates)
+}
+
+fn path_sort_key(path: &str, filesystem: &dyn FilesystemRepository) -> String {
+    let parent = Path::new(path).parent().unwrap_or_else(|| Path::new(""));
+    filesystem
+        .normalize(&parent.to_string_lossy())
+        .to_ascii_lowercase()
+}
+
+fn sort_note_link_candidates(
+    candidates: &mut Vec<NoteLinkCandidate>,
+    source_path: Option<&str>,
+    filesystem: &dyn FilesystemRepository,
+) {
+    let source_directory = source_path.map(|path| path_sort_key(path, filesystem));
+    let mut keyed = candidates
+        .drain(..)
+        .map(|candidate| {
+            let same_directory =
+                source_directory.as_ref() == Some(&path_sort_key(&candidate.path, filesystem));
+            let path_length = candidate.path.encode_utf16().count();
+            let path_ascii_folded = candidate.path.to_ascii_lowercase();
+            (candidate, same_directory, path_length, path_ascii_folded)
+        })
+        .collect::<Vec<_>>();
+    keyed.sort_by(|left, right| {
+        right
+            .1
+            .cmp(&left.1)
+            .then_with(|| left.2.cmp(&right.2))
+            .then_with(|| left.3.cmp(&right.3))
+            .then_with(|| left.0.path.cmp(&right.0.path))
+            .then_with(|| left.0.entry_id.cmp(&right.0.entry_id))
+    });
+    candidates.extend(keyed.into_iter().map(|(candidate, _, _, _)| candidate));
 }
 
 pub fn search_link_index(
@@ -666,3 +971,7 @@ pub fn detect_moved_entry(
         .filesystem
         .detect_moved_entry(cache, &collection_id, &entry_id, &old_path)
 }
+
+#[cfg(test)]
+#[path = "services/note_link_tests.rs"]
+mod tests;

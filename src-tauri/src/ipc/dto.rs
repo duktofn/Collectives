@@ -1,6 +1,6 @@
 use crate::application::domain::{
     Collection, CollectionMetadata, ContentSearchPage, ContentSearchResult, CustomFont, Entry,
-    FileSnapshot, FsEntry, ResolveCandidate, Settings, ZipConflict,
+    FileSnapshot, FsEntry, NoteLinkCandidate, ResolveCandidate, Settings, ZipConflict,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -460,6 +460,31 @@ impl From<ResolveCandidate> for ResolveCandidateDto {
             entry_id: value.entry_id,
             path: value.path,
             entry_type: value.entry_type,
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteLinkCandidateDto {
+    pub display_name: String,
+    pub entry_id: String,
+    pub path: String,
+    pub entry_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub folder_ref_entry_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub folder_ref_root_path: Option<String>,
+}
+impl From<NoteLinkCandidate> for NoteLinkCandidateDto {
+    fn from(value: NoteLinkCandidate) -> Self {
+        Self {
+            display_name: value.display_name,
+            entry_id: value.entry_id,
+            path: value.path,
+            entry_type: value.entry_type,
+            folder_ref_entry_id: value.folder_ref_entry_id,
+            folder_ref_root_path: value.folder_ref_root_path,
         }
     }
 }

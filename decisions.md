@@ -26,6 +26,7 @@
 
 | DEC-017 | Document session owns coordination | Accepted | A session factory owns state/save/recovery; the store injects selection and the view owns CodeMirror only. | 2026-10-21 |
 | DEC-018 | Reuse parser-owned table models | Accepted | Weak state/tree caches reuse verified table source and map nested offsets; mutation drafts own their arrays. | 2026-10-22 |
+| DEC-019 | Resolve ambiguous note links with explicit candidates | Accepted | Return every bounded valid match in stable order; use a cancellable keyboard picker for duplicates and reject partial traversal results. | 2026-10-23 |
 
 ## DEC-001 — Reveal active inline Markdown syntax in Write mode
 Date: 2026-10-18 · Status: Accepted · Related: `RenderPlugin`, TASK-001
@@ -291,3 +292,12 @@ Date: 2026-10-22 · Status: Accepted · Related: TASK-114 (plan TASK-013)
 **Decision** — Use weak EditorState/tree keys, checking the current syntax tree on every lookup and the full table source before subtree reuse. Map all nested UTF-16 offsets when a reused table moves. Structural edit drafts copy alignment arrays. Skip table inline descendants in the fenced-code scan.
 
 **Reason** — This removes measured repeated model work while preserving background parser refresh, source fidelity and parser-defined table boundaries. Weak keys avoid retaining document history in a global cache; no new index, public API or editor mode is introduced.
+
+## DEC-019 — Resolve ambiguous note links with explicit candidates
+Date: 2026-10-23 · Status: Accepted · Related: TASK-115, DEC-CORE-01
+
+**Problem** — A single-row exact-name lookup can choose an arbitrary duplicate and misses Markdown files reachable through FolderRefs when those folders are collapsed or unwatched.
+
+**Decision** — Resolve a note name to the complete bounded candidate set across collection files, nested groups and FolderRef contents. Keep deterministic ranking, open a sole candidate directly, and require an accessible keyboard choice for duplicates. Cancellation is distinct from a missing link, and a traversal that hits its cap fails closed instead of presenting partial results. Inject the note-link collection/navigation/cache context so collection state does not import its CodeMirror extension.
+
+**Reason** — This records the approved DEC-CORE-01 behavior while preserving FolderRef read safety, source Markdown, and explicit user choice.

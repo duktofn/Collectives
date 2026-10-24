@@ -1,6 +1,5 @@
 import { autocompletion, CompletionContext, Completion } from "@codemirror/autocomplete";
-import { collectionsStore } from "../../stores/collections";
-import { searchLinkIndex } from "../../features/links";
+import { noteLinkContextFacet } from "../../features/links/noteLinkContext";
 import { Extension } from "@codemirror/state";
 
 export async function wikilinkCompletionSource(context: CompletionContext) {
@@ -10,12 +9,13 @@ export async function wikilinkCompletionSource(context: CompletionContext) {
 
   // Extract query: everything after "[["
   const query = before.text.slice(2);
-  const collectionId = collectionsStore.state.activeCollectionId;
+  const noteLinkContext = context.state.facet(noteLinkContextFacet);
+  const collectionId = noteLinkContext?.collectionId() ?? null;
 
-  if (!collectionId) return null;
+  if (!collectionId || !noteLinkContext || noteLinkContext.isDisposed()) return null;
 
   try {
-    const candidates = await searchLinkIndex(collectionId, query, 20);
+    const candidates = await noteLinkContext.searchIndex(collectionId, query, 20);
     const options: Completion[] = candidates
       .filter((candidate) => candidate.entryType === "file") // Only link to files (notes)
       .map((candidate) => ({

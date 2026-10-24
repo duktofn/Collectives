@@ -242,17 +242,33 @@ pub fn resolve_by_name(
     collection_id: &str,
     note_name: &str,
 ) -> Result<Option<IndexEntry>, String> {
+    let mut matches = resolve_all_by_name(conn, collection_id, note_name, 2)?;
+    if matches.len() > 1 {
+        return Err(format!(
+            "wikilink_ambiguous: multiple indexed entries match '{note_name}'"
+        ));
+    }
+    Ok(matches.pop())
+}
+
+pub fn resolve_all_by_name(
+    conn: &Connection,
+    collection_id: &str,
+    note_name: &str,
+    limit: usize,
+) -> Result<Vec<IndexEntry>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT display_name, collection_id, entry_id, path, entry_type 
              FROM link_index 
              WHERE collection_id = ?1 AND display_name = ?2 COLLATE NOCASE 
-             LIMIT 1",
+             ORDER BY length(path), path COLLATE NOCASE, path, entry_id
+             LIMIT ?3",
         )
-        .map_err(|e| format!("Failed to prepare resolve statement: {}", e))?;
+        .map_err(|e| format!("Failed to prepare resolve-all statement: {}", e))?;
 
-    let mut rows = stmt
-        .query_map(params![collection_id, note_name], |row| {
+    let rows = stmt
+        .query_map(params![collection_id, note_name, limit], |row| {
             Ok(IndexEntry {
                 display_name: row.get(0)?,
                 collection_id: row.get(1)?,
@@ -261,14 +277,9 @@ pub fn resolve_by_name(
                 entry_type: row.get(4)?,
             })
         })
-        .map_err(|e| format!("Failed to query resolve statement: {}", e))?;
+        .map_err(|e| format!("Failed to query resolve-all statement: {}", e))?;
 
-    if let Some(row) = rows.next() {
-        let entry = row.map_err(|e| e.to_string())?;
-        Ok(Some(entry))
-    } else {
-        Ok(None)
-    }
+    rows.map(|row| row.map_err(|e| e.to_string())).collect()
 }
 
 // Tauri wrappers
@@ -423,5 +434,49 @@ mod tests {
 
         let resolve_res_none = resolve_by_name(&conn, "col-3", "NonExistent").unwrap();
         assert!(resolve_res_none.is_none());
+    }
+
+    #[test]
+    fn resolve_all_is_exact_stable_and_legacy_resolve_rejects_duplicates() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let conn = init_db_at_path(&temp_dir.path().join("link-index.db")).unwrap();
+        for (entry_id, path, display_name) in [
+            ("long", "D:/notes/archive/Note.md", "note"),
+            ("short", "D:/n/Note.md", "Note"),
+        ] {
+            insert_or_replace_entry(
+                &conn,
+                &IndexEntry {
+                    display_name: display_name.into(),
+                    collection_id: "col".into(),
+                    entry_id: entry_id.into(),
+                    path: path.into(),
+                    entry_type: "file".into(),
+                },
+            )
+            .unwrap();
+        }
+
+        let all = resolve_all_by_name(&conn, "col", "NOTE", 10).unwrap();
+        assert_eq!(
+            all.iter()
+                .map(|entry| entry.entry_id.as_str())
+                .collect::<Vec<_>>(),
+            ["short", "long"]
+        );
+        assert_eq!(
+            resolve_all_by_name(&conn, "other", "NOTE", 10)
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(
+            resolve_all_by_name(&conn, "col", "NOTE", 1).unwrap().len(),
+            1
+        );
+        assert!(matches!(
+            resolve_by_name(&conn, "col", "NOTE"),
+            Err(error) if error.contains("wikilink_ambiguous")
+        ));
     }
 }

@@ -6,6 +6,7 @@ pub use crate::settings::{CustomFont, Settings};
 pub use crate::theme_io::ImportedTheme;
 
 pub const CONTENT_SEARCH_MAX_INDEX_ENTRIES: usize = 10_000;
+pub const NOTE_LINK_CANDIDATE_SCAN_CAP: usize = 10_000;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +23,19 @@ pub struct ResolveCandidate {
     pub entry_id: String,
     pub path: String,
     pub entry_type: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteLinkCandidate {
+    pub display_name: String,
+    pub entry_id: String,
+    pub path: String,
+    pub entry_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub folder_ref_entry_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub folder_ref_root_path: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]

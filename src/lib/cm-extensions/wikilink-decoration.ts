@@ -1,10 +1,10 @@
-import { RangeSetBuilder, EditorState, Extension } from '@codemirror/state';
+import { RangeSetBuilder, EditorState, Extension, StateEffect } from '@codemirror/state';
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
 import { parseWikilink } from '../wikilink/parser';
 import { resolveAndNavigate } from '../wikilink/resolver';
-import { collectionsStore } from '../../stores/collections';
-import { editorStore } from '../../stores/editor';
-import { resolveWikilink } from '../../features/links';
+import { noteLinkContextFacet } from '../../features/links/noteLinkContext';
+import { noteLinkStatusCacheKey } from '../../features/links/noteLinkServices';
+import type { NoteLinkContext } from '../../features/links/noteLinkServices';
 import { EmptyWidget } from './empty-widget';
 import { clearWikilinkPreviewCache, wikilinkPreviewHandlers } from './wikilink-preview';
 
@@ -14,39 +14,62 @@ interface DecSpec {
   value: Decoration;
 }
 
-export const wikilinkCache = new Map<string, boolean>();
-const MAX_CACHE_SIZE = 1000;
+const refreshWikilinkDecorations = StateEffect.define<null>();
 
-function setCacheValue(key: string, value: boolean) {
-  if (wikilinkCache.size >= MAX_CACHE_SIZE && !wikilinkCache.has(key)) {
-    const oldestKey = wikilinkCache.keys().next().value;
-    if (oldestKey !== undefined) {
-      wikilinkCache.delete(oldestKey);
-    }
-  }
-  wikilinkCache.set(key, value);
-}
-
-export function clearWikilinkCache() {
-  wikilinkCache.clear();
-  clearWikilinkPreviewCache();
+function contextIsCurrent(
+  context: NoteLinkContext,
+  collectionId: string,
+  sourcePath: string | null,
+  sessionKey: string,
+  cacheEpoch: number,
+): boolean {
+  return !context.isDisposed()
+    && context.collectionId() === collectionId
+    && context.sourcePath() === sourcePath
+    && context.sessionKey() === sessionKey
+    && context.cache.epoch() === cacheEpoch;
 }
 
 class WikilinkDecorationPlugin {
   decorations: DecorationSet;
   atomic: DecorationSet;
+  private navigationGeneration = 0;
+  private disposed = false;
+  private unsubscribeCache: () => void;
 
   constructor(view: EditorView) {
+    const context = view.state.facet(noteLinkContextFacet);
+    this.unsubscribeCache = context?.cache.subscribeInvalidation(() => {
+      if (!this.disposed && view.dom.isConnected) {
+        clearWikilinkPreviewCache();
+        view.dispatch({ effects: refreshWikilinkDecorations.of(null) });
+      }
+    }) ?? (() => {});
     const { decorations, atomic } = this.buildDecorations(view);
     this.decorations = decorations;
     this.atomic = atomic;
+  }
+
+  beginNavigation(): number {
+    return ++this.navigationGeneration;
+  }
+
+  isCurrentNavigation(generation: number): boolean {
+    return !this.disposed && generation === this.navigationGeneration;
+  }
+
+  destroy(): void {
+    this.disposed = true;
+    this.navigationGeneration += 1;
+    this.unsubscribeCache();
   }
 
   update(update: ViewUpdate) {
     if (
       update.docChanged ||
       update.viewportChanged ||
-      update.transactions.some((tr) => tr.reconfigured)
+      update.transactions.some((tr) => tr.reconfigured
+        || tr.effects.some(effect => effect.is(refreshWikilinkDecorations)))
     ) {
       const { decorations, atomic } = this.buildDecorations(update.view);
       this.decorations = decorations;
@@ -58,7 +81,8 @@ class WikilinkDecorationPlugin {
     const decs: DecSpec[] = [];
     const atomicDecs: DecSpec[] = [];
     const doc = view.state.doc;
-    const collectionId = collectionsStore.state.activeCollectionId;
+    const context = view.state.facet(noteLinkContextFacet);
+    const collectionId = context?.collectionId() ?? null;
 
     if (!collectionId) {
       return { decorations: Decoration.none, atomic: Decoration.none };
@@ -78,28 +102,27 @@ class WikilinkDecorationPlugin {
         const parsed = parseWikilink(rawText);
         if (!parsed) continue;
 
-        const cacheKey = `${collectionId}:${parsed.noteName}`;
-        if (!wikilinkCache.has(cacheKey)) {
-          setCacheValue(cacheKey, true);
-          resolveWikilink(collectionId, parsed.noteName)
-            .then((candidate) => {
-              const exists = candidate !== null;
-              if (wikilinkCache.get(cacheKey) !== exists) {
-                setCacheValue(cacheKey, exists);
-                if (view.dom.isConnected) {
-                  view.dispatch({});
-                }
-              }
+        const cacheKey = noteLinkStatusCacheKey(collectionId, parsed.noteName);
+        const cached = context?.cache.get(cacheKey);
+        if (cached === undefined && context && !context.isDisposed()) {
+          context.cache.set(cacheKey, true);
+          const sourcePath = context.sourcePath();
+          const sessionKey = context.sessionKey();
+          const cacheEpoch = context.cache.epoch();
+          context.resolveCandidates(collectionId, parsed.noteName, sourcePath ?? undefined)
+            .then((candidates) => {
+              if (!view.dom.isConnected || !contextIsCurrent(context, collectionId, sourcePath, sessionKey, cacheEpoch)) return;
+              context.cache.set(cacheKey, candidates.length > 0);
+              view.dispatch({ effects: refreshWikilinkDecorations.of(null) });
             })
             .catch(() => {
-              setCacheValue(cacheKey, false);
-              if (view.dom.isConnected) {
-                view.dispatch({});
-              }
+              if (!view.dom.isConnected || !contextIsCurrent(context, collectionId, sourcePath, sessionKey, cacheEpoch)) return;
+              context.cache.set(cacheKey, false);
+              view.dispatch({ effects: refreshWikilinkDecorations.of(null) });
             });
         }
 
-        const isValid = wikilinkCache.get(cacheKey) ?? true;
+        const isValid = context?.cache.get(cacheKey) ?? true;
         const linkClass = isValid ? 'cm-wikilink' : 'cm-wikilink cm-wikilink-broken';
 
         const hashIndex = rawText.indexOf('#');
@@ -258,18 +281,40 @@ const wikilinkClickEffect = EditorView.domEventHandlers({
     if (startPos !== -1 && endPos !== -1) {
       const raw = view.state.doc.sliceString(startPos, endPos);
       const parsed = parseWikilink(raw);
-      const collectionId = collectionsStore.state.activeCollectionId;
+      const context = view.state.facet(noteLinkContextFacet);
+      const collectionId = context?.collectionId() ?? null;
 
-      if (parsed && collectionId) {
-        resolveAndNavigate(parsed, collectionId, {
-          onMatch: async (candidate, fragment) => {
-            if (editorStore.state.openFilePath !== candidate.path) {
-              await editorStore.openFile(candidate.path);
-            }
-            if (fragment) {
-              editorStore.navigateTo(fragment);
-            }
-          },
+      if (parsed && collectionId && context && !context.isDisposed()) {
+        const plugin = view.plugin(wikilinkDecPlugin);
+        const requestId = plugin?.beginNavigation() ?? 0;
+        const sourcePath = context.sourcePath();
+        const sourceEntryId = context.selectedEntryId();
+        const sessionKey = context.sessionKey();
+        const cacheEpoch = context.cache.epoch();
+        const isCurrent = () => Boolean(plugin?.isCurrentNavigation(requestId))
+          && view.dom.isConnected
+          && context.selectedEntryId() === sourceEntryId
+          && contextIsCurrent(context, collectionId, sourcePath, sessionKey, cacheEpoch);
+        context.navigationStarted(requestId);
+        void resolveAndNavigate(parsed, {
+          collectionId,
+          sourcePath,
+          isCurrent,
+          resolveCandidates: context.resolveCandidates,
+        }, {
+          onCandidates: (candidates, fragment) => context.requestNavigation({
+            contextId: context.contextId,
+            requestId,
+            collectionId,
+            sourcePath,
+            sourceEntryId,
+            sessionKey,
+            noteName: parsed.noteName,
+            candidates,
+            fragment,
+            isCurrent,
+            restoreFocus: context.restoreFocus,
+          }),
           onNoMatch: async (token) => {
             window.dispatchEvent(
               new CustomEvent('collectives:wikilink-missing', {

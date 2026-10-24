@@ -7,7 +7,13 @@ use crate::metadata::{MigrationStatus, MutationRequest, MutationResult};
 use crate::repositories::documents::{DocumentSnapshot, DocumentWriteReceipt};
 use crate::safety_error::SafetyError;
 use crate::settings::{CustomFont, Settings};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteLinkFileIdentity {
+    pub canonical_path: PathBuf,
+    pub size: u64,
+}
 
 pub trait LinkRepository: Send + Sync {
     fn update_collection(&self, collection: &Collection) -> Result<(), String>;
@@ -17,6 +23,12 @@ pub trait LinkRepository: Send + Sync {
         collection_id: &str,
         note_name: &str,
     ) -> Result<Option<crate::link_index::IndexEntry>, String>;
+    fn resolve_all(
+        &self,
+        collection_id: &str,
+        note_name: &str,
+        limit: usize,
+    ) -> Result<Vec<crate::link_index::IndexEntry>, String>;
     fn search(
         &self,
         collection_id: &str,
@@ -125,6 +137,17 @@ pub trait SettingsRepository: Send + Sync {
 
 pub trait FilesystemRepository: Send + Sync {
     fn read_children(&self, path: &str) -> Result<Vec<FsEntry>, String>;
+    fn note_link_file_identity(
+        &self,
+        path: &str,
+        folder_ref_root: Option<&str>,
+    ) -> Result<Option<NoteLinkFileIdentity>, String>;
+    fn read_folder_ref_children(
+        &self,
+        root_path: &str,
+        directory_path: &str,
+        limit: usize,
+    ) -> Result<Vec<FsEntry>, String>;
     fn normalize(&self, path: &str) -> String;
     fn exists(&self, path: &str) -> bool;
     fn watch_entry(&self, state: &WatchState, path: &str, entry_id: &str) -> Result<(), String>;

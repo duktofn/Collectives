@@ -7,7 +7,7 @@ import * as filesystemApi from "../features/filesystem";
 import { listenEvent } from "../shared/ipc/events";
 import { editorStore } from "./editor";
 import { uiStore } from "./ui";
-import { clearWikilinkCache } from "../lib/cm-extensions/wikilink-decoration";
+import { invalidateNoteLinkCache } from "../features/links/noteLinkServices";
 import { applyCollectionDelta, applyFilesystemFeed, deriveMetadataDeltas, installMetadataSnapshot, materializeCollection, replaceMetadataSnapshot, type MetadataCacheState } from "../features/collections/metadataCache";
 
 let pendingWatch: { id: string; specs: Array<{ path: string; entryId: string; recursive: boolean }>; signature: string } | null = null;
@@ -80,7 +80,7 @@ async function reconcileCollectionSnapshot(collectionId: string): Promise<void> 
     const installed = installMetadataSnapshot(snapshot.collection, snapshot.revision, snapshot.cursor, previous?.fallbackCount ?? 0);
     normalizedCaches.set(collectionId, installed);
     setState("collections", (items) => items.map((item) => item.id === collectionId ? snapshot.collection : item));
-    clearWikilinkCache();
+    invalidateNoteLinkCache();
     if (previous) await editorStore.applyMetadataContinuity(deriveMetadataDeltas(previous, installed));
   })().finally(() => { reconciliationInFlight.delete(collectionId); });
   reconciliationInFlight.set(collectionId, promise);
@@ -101,7 +101,7 @@ export async function handleCollectionDeltaV2(payload: { collectionId: string; r
   }
   const projected = materializeCollection(applied.state, collection);
   setState("collections", (items) => items.map((item) => item.id === projected.id ? projected : item));
-  clearWikilinkCache();
+  invalidateNoteLinkCache();
   await editorStore.applyMetadataContinuity(Array.isArray(payload.changes) ? payload.changes : []);
   if (state.activeCollectionId === payload.collectionId) await collectionsStore.watchActiveCollection();
   return { accepted: true, needsSnapshot: false };
@@ -122,7 +122,7 @@ export async function handleFilesystemChangesV2(payload: { collectionId: string;
       && editorStore.state.openFilePath === path && !editorStore.state.isDirty) await editorStore.openFile(path, editorStore.state.isReadOnly);
     return { accepted: false, needsSnapshot: true };
   }
-  if (payload.changes.length > 0) clearWikilinkCache();
+  if (payload.changes.length > 0) invalidateNoteLinkCache();
   const paths = new Map<string, boolean>();
   for (const change of payload.changes) {
     if (!change || typeof change !== "object") continue;
@@ -226,7 +226,7 @@ export const collectionsStore = {
     }
     setState("activeCollectionId", id);
     localStorage.setItem("lastActiveCollectionId", id);
-    clearWikilinkCache();
+    invalidateNoteLinkCache();
     await editorStore.selectEntry(null);
     uiStore.reset();
     try {
@@ -541,7 +541,7 @@ export const collectionsStore = {
       const cols = await collectionsApi.getCollections();
       setState("collections", cols);
       for (const collection of cols) normalizedCaches.set(collection.id, replaceMetadataSnapshot(collection, collection.id === collectionId && revision !== undefined ? revision : normalizedCaches.get(collection.id)?.activeRevision ?? 0));
-      clearWikilinkCache();
+      invalidateNoteLinkCache();
     } catch (err) {
       console.error("Failed to reload collection snapshot", err);
     }

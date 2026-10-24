@@ -281,9 +281,13 @@ export const IPC_COMMANDS = [
       {
         "name": "noteName",
         "type": "string"
+      },
+      {
+        "name": "sourcePath",
+        "type": "string | undefined"
       }
     ],
-    "result": "ResolveCandidate | null"
+    "result": "NoteLinkCandidate[]"
   },
   {
     "name": "search_link_index",

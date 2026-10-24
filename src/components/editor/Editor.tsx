@@ -14,6 +14,7 @@ import { uiStore } from "../../stores/ui";
 import { searchNoteContent } from "../../features/links";
 import { syntaxTree } from "@codemirror/language";
 import type { ContentSearchResult } from "../../features/links";
+import { resolveWikilink, searchLinkIndex } from "../../features/links";
 import { insertMarkdownTemplate, registerMarkdownTemplateInsert } from "../../lib/editorCommands";
 import type { MarkdownTemplate } from "../../lib/editorCommands";
 import { registerDocumentFormat } from '../../lib/editorCommands';
@@ -22,6 +23,15 @@ import { isolateHistory } from '@codemirror/commands';
 import "./Editor.css";
 import { createPanelPresence } from '../../lib/panelPresence';
 import { EditorSurface } from './EditorSurface';
+import {
+  NOTE_LINK_CONTEXT_DISPOSED_EVENT,
+  NOTE_LINK_NAVIGATION_STARTED_EVENT,
+  cancelNoteLinkContext,
+  requestNoteLinkNavigation,
+} from '../../features/links/noteLinkServices';
+import { noteLinkContextFacet } from '../../features/links/noteLinkContext';
+import { noteLinkCache } from '../../features/links/noteLinkServices';
+import type { NoteLinkContext } from '../../features/links/noteLinkServices';
 
 interface ComparedDiskVersion {
   content: string;
@@ -42,6 +52,33 @@ export function Editor() {
   let editorRef: HTMLDivElement | undefined;
   let view: EditorView | undefined;
   const [activeView, setActiveView] = createSignal<EditorView>();
+  const noteLinkContextId = `note-link-context-${createUniqueId()}`;
+  let noteLinkContextDisposed = false;
+  const noteLinkContext: NoteLinkContext = {
+    contextId: noteLinkContextId,
+    collectionId: () => collectionsApi.collectionsStore.state.activeCollectionId,
+    sourcePath: () => editorStore.state.openFilePath,
+    selectedEntryId: () => uiStore.state.selectedEntryId,
+    sessionKey: () => editorStore.sessionKey,
+    isDisposed: () => noteLinkContextDisposed,
+    restoreFocus: () => activeView()?.focus(),
+    resolveCandidates: resolveWikilink,
+    searchIndex: searchLinkIndex,
+    readCandidateContent: async (candidate) => {
+      const raw = candidate.folderRefRootPath
+        ? await editorApi.readFolderRefSnapshot(candidate.folderRefRootPath, candidate.path)
+        : await editorApi.readFile(candidate.path);
+      return typeof raw === 'string' ? raw : raw.content;
+    },
+    cache: noteLinkCache,
+    navigationStarted: (requestId) => {
+      cancelNoteLinkContext(noteLinkContextId, 'stale');
+      window.dispatchEvent(new CustomEvent(NOTE_LINK_NAVIGATION_STARTED_EVENT, {
+        detail: { contextId: noteLinkContextId, requestId },
+      }));
+    },
+    requestNavigation: requestNoteLinkNavigation,
+  };
   let autoSaveTimeout: ReturnType<typeof setTimeout> | null = null;
   let forceSaveTimeout: ReturnType<typeof setTimeout> | null = null;
   let unregisterMeasure: (() => void) | undefined;
@@ -260,6 +297,7 @@ export function Editor() {
     doc,
     extensions: [
       baseCompartment.of(getBaseExtensionsForFile(editorStore.state.fileKind, editorStore.state.openFilePath ?? '')),
+      noteLinkContextFacet.of(noteLinkContext),
       contentAttributesCompartment.of(contentAttributes()),
       modeCompartment.of(getExtensionsForMode(editorStore.state.mode, editorStore.state.fileKind)),
       EditorView.updateListener.of((update) => {
@@ -322,6 +360,11 @@ export function Editor() {
   });
 
   onCleanup(() => {
+    noteLinkContextDisposed = true;
+    cancelNoteLinkContext(noteLinkContextId, 'stale');
+    window.dispatchEvent(new CustomEvent(NOTE_LINK_CONTEXT_DISPOSED_EVENT, {
+      detail: { contextId: noteLinkContextId },
+    }));
     setActiveView(undefined);
     unregisterMeasure?.();
     unregisterContentReader?.();

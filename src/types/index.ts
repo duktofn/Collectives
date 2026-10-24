@@ -140,6 +140,11 @@ export interface ResolveCandidate {
   entryType: string;  // "file" | "folder-ref"
 }
 
+export interface NoteLinkCandidate extends ResolveCandidate {
+  folderRefEntryId?: string;
+  folderRefRootPath?: string;
+}
+
 export interface ZipConflict {
   conflictId: string;
   entryId: string;

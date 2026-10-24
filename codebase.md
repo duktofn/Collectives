@@ -1,5 +1,5 @@
 # Codebase Context
-Last Updated: 2026-10-23
+Last Updated: 2026-10-25
 Last Reviewed Commit: 92581cf
 
 The editor and settings sections describe the current code-block and typography-control implementation. Source code takes precedence. Backend descriptions summarize existing boundaries; this session did not audit backend behavior.
@@ -68,6 +68,8 @@ Backend dependency direction:
 
 `editor-layout.ts` observes rendered blocks/fonts for measurement changes and installs `displayedTextPointerSelection` from `pointer-selection.ts`. Pointer selection resolves the displayed glyph before measurements can move the viewport. Wikilink and block-reference extensions resolve/navigation through the links feature and editor store.
 
+`NoteLinkContext` is created for the EditorView and supplies current collection, source selection/session identity, link-index search, multi-candidate resolution, preview reads, cache access and navigation requests. `WikilinkDecorationPlugin`, autocomplete and preview use that context rather than collection/editor stores directly. `NoteLinkCandidates` in the App layer handles duplicate-name choices; unique targets pass through the existing navigation and FolderRef readiness flows, while missing and incomplete scans retain their separate outcomes. Candidate resolution checks all exact indexed files and bounded metadata-only FolderRef traversal before validating matching text snapshots (DEC-019).
+
 ## Settings UI
 `components/theme/ThemePanel.tsx` owns a local settings draft, validation, Apply/reset, and pending-operation locks. Its top-level categories are Appearance and Behavior; Appearance contains Theme and Typography sections. `SettingsSelect` supplies the shared dropdown behavior. `SettingsNumberInput` wraps native number inputs for Line height and Font scale with themed minus/plus buttons, positive minimum bounds, and decimal increments; it reports changes to ThemePanel's draft and inherits the form fieldset's disabled state.
 
@@ -105,6 +107,7 @@ Backend dependency direction:
 5. Inline editing: selection transaction → RenderPlugin rebuild → active marker text exposed / atomic ranges removed → ordinary keyboard or native input updates document; exiting span restores rendered delimiters.
 6. Metadata/watch events: typed IPC listeners → revision/cursor validation → cache/store continuity update, or snapshot reconciliation on gaps/malformed data.
 7. Close: AppLifecycleWorkflow close handler → wait for operation leases → flush/close editor → destroy after successful save; failures retain the draft. Lifecycle cleanup is registered synchronously and releases subscriptions that resolve after disposal.
+8. WikiLink navigation: visible Markdown tokens use the per-view note-link context → typed multi-candidate IPC → exact indexed entries plus bounded, root-checked FolderRef traversal. The App navigates to a sole result or presents the keyboard picker for duplicates; FolderRef targets wait for the existing safe snapshot readiness before fragments are applied.
 
 # Notes
 - `npm run test -- --run src/lib/cm-extensions` runs editor unit regressions. `npx playwright test e2e/editor-inline-formatting.spec.ts` exercises actual typing, arrow navigation, list continuation, and pointer insertion.

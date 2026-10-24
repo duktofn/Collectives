@@ -37,6 +37,7 @@ type PendingTimer = { timer: ReturnType<typeof setTimeout>; resolve: () => void 
 const pendingTimers = new Map<string, Set<PendingTimer>>();
 let invalidation = 0;
 let intentRequest = 0;
+let pendingIntentRequest: { request: number; intent: Omit<FolderRefIntent, "generation"> } | null = null;
 
 export const folderRefReadiness = { state };
 
@@ -98,10 +99,19 @@ function isRetryableStaleRead(error: unknown): boolean {
   return (safety.details as Record<string, unknown>).classification === "retryable";
 }
 
-export async function requestFolderRefChild(intentInput: Omit<FolderRefIntent, "generation">): Promise<boolean> {
+export async function requestFolderRefChild(
+  intentInput: Omit<FolderRefIntent, "generation">,
+  isRequestCurrent: () => boolean = () => true,
+): Promise<boolean> {
   const request = ++intentRequest;
-  const flushed = await editorStore.flushPendingSave();
-  if (!flushed || request !== intentRequest) return false;
+  pendingIntentRequest = { request, intent: intentInput };
+  let flushed = false;
+  try {
+    flushed = await editorStore.flushPendingSave();
+  } finally {
+    if (pendingIntentRequest?.request === request) pendingIntentRequest = null;
+  }
+  if (!flushed || request !== intentRequest || !isRequestCurrent()) return false;
   cancelTimers();
   const generation = editorStore.beginFolderRefSnapshot();
   const intent: FolderRefIntent = { ...intentInput, generation };
@@ -114,18 +124,30 @@ export async function requestFolderRefChild(intentInput: Omit<FolderRefIntent, "
   return true;
 }
 
-export function cancelFolderRefReadiness(folderRefEntryId?: string): void {
-  intentRequest += 1;
-  invalidation += 1;
-  cancelTimers();
-  const records = { ...state.records };
-  for (const [key, record] of Object.entries(state.records)) {
-    if (!folderRefEntryId || record.intent.folderRefEntryId === folderRefEntryId) {
-      delete records[key];
-    }
+export function cancelFolderRefReadiness(
+  folderRefEntryId?: string,
+  collectionId?: string,
+  childPath?: string,
+): void {
+  const matchesIntent = (intent: Pick<FolderRefIntent, "folderRefEntryId" | "collectionId" | "childPath">) => (!folderRefEntryId || intent.folderRefEntryId === folderRefEntryId)
+    && (!collectionId || intent.collectionId === collectionId)
+    && (!childPath || normalizeFolderRefPath(intent.childPath) === normalizeFolderRefPath(childPath));
+  const pendingMatches = pendingIntentRequest !== null && matchesIntent(pendingIntentRequest.intent);
+  const activeMatches = state.activeIntent !== null && matchesIntent(state.activeIntent);
+  const matchingRecords = Object.entries(state.records).filter(([, record]) => matchesIntent(record.intent));
+  if (!pendingMatches && !activeMatches && matchingRecords.length === 0) return;
+  if (pendingMatches) {
+    intentRequest += 1;
+    pendingIntentRequest = null;
   }
+  if (activeMatches || matchingRecords.length > 0) {
+    invalidation += 1;
+    cancelTimers();
+  }
+  const records = { ...state.records };
+  for (const [key] of matchingRecords) delete records[key];
   setState("records", records);
-  if (!folderRefEntryId || state.activeIntent?.folderRefEntryId === folderRefEntryId) setState("activeIntent", null);
+  if (activeMatches) setState("activeIntent", null);
 }
 
 export function retryFolderRefChild(record: FolderRefReadinessRecord): void {
@@ -193,6 +215,7 @@ export async function resolveFolderRefIntent(intent: FolderRefIntent): Promise<v
 
 export function clearFolderRefReadinessForTests(): void {
   intentRequest += 1;
+  pendingIntentRequest = null;
   invalidation += 1;
   cancelTimers();
   inFlight.clear();

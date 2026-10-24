@@ -86,6 +86,27 @@ describe("FolderRef stale-read readiness", () => {
     expect(editorApi.readFolderRefSnapshot).not.toHaveBeenCalled();
   });
 
+  it("does not publish a FolderRef intent after its navigation becomes stale during the save flush", async () => {
+    let finishFlush!: (saved: boolean) => void;
+    const flush = vi.spyOn(editorStore, "flushPendingSave").mockReturnValueOnce(
+      new Promise<boolean>((resolve) => { finishFlush = resolve; }),
+    );
+    let current = true;
+    const request = requestFolderRefChild(baseIntent, () => current);
+    expect(flush).toHaveBeenCalledOnce();
+    current = false;
+    finishFlush(true);
+
+    try {
+      expect(await request).toBe(false);
+      expect(folderRefReadiness.state.activeIntent).toBeNull();
+      expect(uiStore.state.selectedEntryId).toBeNull();
+      expect(editorApi.readFolderRefSnapshot).not.toHaveBeenCalled();
+    } finally {
+      flush.mockRestore();
+    }
+  });
+
   it("requires the active stream and epoch before an event can retry a broken child", async () => {
     vi.mocked(editorApi.readFolderRefSnapshot).mockResolvedValue(snapshot);
     const intent = { ...baseIntent, generation: 1 };

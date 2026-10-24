@@ -62,7 +62,24 @@ impl LinkRepository for SqliteMetadataLinkRepository {
     ) -> Result<Option<crate::link_index::IndexEntry>, String> {
         let connection = Connection::open(&self.db_path).map_err(|error| error.to_string())?;
         connection_evidence(&connection).map_err(|error| error.to_string())?;
-        connection.query_row("SELECT display_name,collection_id,entry_id,path,entry_type FROM link_index WHERE collection_id=?1 AND display_name=?2 COLLATE NOCASE LIMIT 1", params![collection_id,note_name], |row| Ok(crate::link_index::IndexEntry { display_name: row.get(0)?, collection_id: row.get(1)?, entry_id: row.get(2)?, path: row.get(3)?, entry_type: row.get(4)? })).optional().map_err(|error| error.to_string())
+        let mut matches =
+            crate::link_index::resolve_all_by_name(&connection, collection_id, note_name, 2)?;
+        if matches.len() > 1 {
+            return Err(format!(
+                "wikilink_ambiguous: multiple indexed entries match '{note_name}'"
+            ));
+        }
+        Ok(matches.pop())
+    }
+    fn resolve_all(
+        &self,
+        collection_id: &str,
+        note_name: &str,
+        limit: usize,
+    ) -> Result<Vec<crate::link_index::IndexEntry>, String> {
+        let connection = Connection::open(&self.db_path).map_err(|error| error.to_string())?;
+        connection_evidence(&connection).map_err(|error| error.to_string())?;
+        crate::link_index::resolve_all_by_name(&connection, collection_id, note_name, limit)
     }
     fn search(
         &self,

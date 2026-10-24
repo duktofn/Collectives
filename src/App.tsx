@@ -1,11 +1,11 @@
 import { createAppLifecycleWorkflow } from "./workflows/AppLifecycleWorkflow";
 import { createNavigationWorkflow } from "./workflows/NavigationWorkflow";
-import { createSignal, Show, For, createEffect, onMount, onCleanup, lazy } from "solid-js";
+import { createSignal, Show, For, createEffect, onMount, onCleanup, on, lazy } from "solid-js";
 import { collectionsStore } from "./stores/collections";
 import { uiStore } from "./stores/ui";
 import { Dialog } from "./components/common/Dialog";
 import { Icon } from "./components/common/Icon";
-import { Entry, ZipConflict, Settings, ResolveCandidate } from "./types";
+import { Entry, ZipConflict, Settings, ResolveCandidate, NoteLinkCandidate } from "./types";
 import { editorStore } from "./stores/editor";
 import { EditorToolbar } from "./components/editor/EditorToolbar";
 import { AppShell } from "./components/shell/AppShell";
@@ -19,7 +19,7 @@ import * as editorApi from "./features/editor";
 import { pickDirectory, pickZipFile } from "./platform";
 import { FolderRefReadinessNotice } from "./components/common/FolderRefReadinessNotice";
 import { applyThemeSettings } from "./lib/themeEngine";
-import { cancelFolderRefReadiness, getFolderRefReadiness, resolveFolderRefIntent, retryFolderRefChild, folderRefReadiness } from "./features/filesystem/folderRefReadiness";
+import { cancelFolderRefReadiness, getFolderRefReadiness, resolveFolderRefIntent, retryFolderRefChild, folderRefReadiness, requestFolderRefChild } from "./features/filesystem/folderRefReadiness";
 import { formatIpcError } from "./shared/ipc/errors";
 import { createOperationLeaseRegistry } from "./workflows/operationLease";
 import { ArchiveWorkflow, runArchiveOperation } from "./workflows/ArchiveWorkflow";
@@ -28,7 +28,14 @@ import { SettingsRecoveryDialog } from "./components/theme/ThemePanel";
 import { TreeWorkspace } from "./workflows/TreeWorkspace";
 import { CollectionWorkspace } from "./workflows/CollectionWorkspace";
 import { DocumentWorkspace } from "./workflows/DocumentWorkspace";
-import { requestFolderRefChild } from "./features/filesystem/folderRefReadiness";
+import { NoteLinkCandidates } from "./components/editor/NoteLinkCandidates";
+import {
+  NOTE_LINK_CONTEXT_DISPOSED_EVENT,
+  NOTE_LINK_NAVIGATION_REQUEST_EVENT,
+  NOTE_LINK_NAVIGATION_STARTED_EVENT,
+  cancelNoteLinkNavigations,
+} from "./features/links/noteLinkServices";
+import type { NoteLinkNavigationRequest, NoteLinkNavigationStarted } from "./features/links/noteLinkServices";
 import { announcementKey, announcer } from "./a11y/announcer";
 import { listRecoveryDrafts, removeRecoveryDraft, type RecoveryDraft } from "./features/editor/recovery";
 import { canNavigateBack, canNavigateForward, recordNavigation } from "./features/editor/navigationHistory";
@@ -47,6 +54,8 @@ interface WikiLinkPreviewState {
   path?: string;
   preview?: string;
   missing?: boolean;
+  ambiguous?: boolean;
+  candidates?: Array<{ displayName: string; path: string }>;
   error?: string;
   x: number;
   y: number;
@@ -88,6 +97,12 @@ export default function App() {
   const [isRecoveryReviewOpen, setIsRecoveryReviewOpen] = createSignal(false);
   const [isRecoveryRestorePending, setIsRecoveryRestorePending] = createSignal(false);
   const [wikiLinkPreview, setWikiLinkPreview] = createSignal<WikiLinkPreviewState | null>(null);
+  const [noteLinkNavigation, setNoteLinkNavigation] = createSignal<NoteLinkNavigationRequest | null>(null);
+  const [noteLinkNavigationPending, setNoteLinkNavigationPending] = createSignal(false);
+  let acceptedNoteLinkNavigation: NoteLinkNavigationRequest | null = null;
+  let acceptedNoteLinkCandidate: NoteLinkCandidate | null = null;
+  let acceptedNoteLinkOriginSelectionId: string | null = null;
+  let noteLinkNavigationSequence = 0;
   const [appNotice, setAppNotice] = createSignal<{ title: string; message: string } | null>(null);
   const [isMovePromptPending, setIsMovePromptPending] = createSignal(false);
 
@@ -260,6 +275,216 @@ export default function App() {
   };
 
   const { queueSelectionTransition, restoreDisplayedSelection, openQuickCandidate, openContentResult, navigateHistory } = createNavigationWorkflow(showAppNotice);
+
+  const finishNoteLinkNavigation = (
+    request: NoteLinkNavigationRequest,
+    outcome: "opened" | "cancelled" | "stale" | "failed" | "unavailable",
+  ) => {
+    const isAccepted = acceptedNoteLinkNavigation === request;
+    const acceptedCandidate = isAccepted ? acceptedNoteLinkCandidate : null;
+    const originSelectionId = isAccepted ? acceptedNoteLinkOriginSelectionId : null;
+    if (isAccepted && outcome !== "opened") {
+      noteLinkNavigationSequence += 1;
+      if (acceptedCandidate?.folderRefEntryId) {
+        cancelFolderRefReadiness(acceptedCandidate.folderRefEntryId, request.collectionId, acceptedCandidate.path);
+      }
+      if (outcome === "cancelled" && originSelectionId !== null) {
+        if (acceptedCandidate?.folderRefEntryId) uiStore.selectEntry(originSelectionId);
+        else void editorStore.selectEntry(originSelectionId);
+      }
+    }
+    if (noteLinkNavigation() === request) setNoteLinkNavigation(null);
+    if (acceptedNoteLinkNavigation === request) {
+      acceptedNoteLinkNavigation = null;
+      acceptedNoteLinkCandidate = null;
+      acceptedNoteLinkOriginSelectionId = null;
+    }
+    setNoteLinkNavigationPending(false);
+    request.settle(outcome);
+    queueMicrotask(request.restoreFocus);
+  };
+
+  const isNoteLinkNavigationCurrent = (request: NoteLinkNavigationRequest) =>
+    request.isCurrent()
+    && collectionsStore.state.activeCollectionId === request.collectionId
+    && editorStore.sessionKey === request.sessionKey
+    && editorStore.state.openFilePath === request.sourcePath
+    && uiStore.state.selectedEntryId === request.sourceEntryId;
+
+  const folderRefEntryForCandidate = (candidate: NoteLinkCandidate): Entry | null => {
+    const collection = collectionsStore.activeCollection();
+    if (!collection) return null;
+    const find = (entries: Entry[]): Entry | null => {
+      for (const entry of entries) {
+        if (entry.type === "folder-ref" && entry.id === candidate.folderRefEntryId) return entry;
+        if (entry.type === "group") {
+          const nested = find(entry.children);
+          if (nested) return nested;
+        }
+      }
+      return null;
+    };
+    const entry = find(collection.entries);
+    return entry?.type === "folder-ref" && entry.path === candidate.folderRefRootPath ? entry : null;
+  };
+
+  const navigateToNoteLinkCandidate = async (
+    request: NoteLinkNavigationRequest,
+    candidate: NoteLinkCandidate,
+  ): Promise<"opened" | "stale" | "failed"> => {
+    const sequence = noteLinkNavigationSequence;
+    const originSelectionId = acceptedNoteLinkOriginSelectionId;
+    const sequenceIsCurrent = () => acceptedNoteLinkNavigation === request
+      && sequence === noteLinkNavigationSequence
+      && collectionsStore.state.activeCollectionId === request.collectionId;
+    const originIsCurrent = () => sequenceIsCurrent()
+      && isNoteLinkNavigationCurrent(request)
+      && uiStore.state.selectedEntryId === originSelectionId
+      && editorStore.state.pendingSelection === null;
+    try {
+      let opened = false;
+      if (candidate.folderRefEntryId && candidate.folderRefRootPath) {
+        if (!originIsCurrent()) return "stale";
+        if (!folderRefEntryForCandidate(candidate)) throw new Error("The FolderRef candidate no longer belongs to the active collection.");
+        let cursor = collectionsStore.getFolderRefWatchCursor(request.collectionId);
+        if (!cursor) {
+          await collectionsStore.watchActiveCollection();
+          if (!originIsCurrent()) return "stale";
+          cursor = collectionsStore.getFolderRefWatchCursor(request.collectionId);
+        }
+        if (!cursor) throw new Error("The collection file-readiness cursor is unavailable. Refresh the collection and try again.");
+        const started = await requestFolderRefChild({
+          collectionId: request.collectionId,
+          folderRefEntryId: candidate.folderRefEntryId,
+          rootPath: candidate.folderRefRootPath,
+          childPath: candidate.path,
+          streamId: cursor.streamId,
+          subscriptionEpoch: cursor.subscriptionEpoch,
+        }, originIsCurrent);
+        if (!started) return originIsCurrent() ? "failed" : "stale";
+        const intent = folderRefReadiness.state.activeIntent;
+        if (!intent || intent.collectionId !== request.collectionId || intent.folderRefEntryId !== candidate.folderRefEntryId || intent.childPath !== candidate.path) return "stale";
+        await resolveFolderRefIntent(intent);
+        const activeIntent = folderRefReadiness.state.activeIntent;
+        if (!sequenceIsCurrent()
+          || uiStore.state.selectedEntryId !== candidate.path
+          || activeIntent?.generation !== intent.generation) return "stale";
+        const readiness = getFolderRefReadiness(request.collectionId, candidate.folderRefEntryId, candidate.path);
+        opened = readiness?.status === "ready" && editorStore.state.openFilePath === candidate.path;
+        if (!opened && readiness?.error) throw new Error(readiness.error.message);
+      } else {
+        if (!originIsCurrent()) return "stale";
+        opened = await openQuickCandidate(candidate);
+        if (!sequenceIsCurrent()) return "stale";
+        if (opened && (editorStore.state.openFilePath !== candidate.path || uiStore.state.selectedEntryId !== candidate.entryId)) return "stale";
+      }
+      if (!sequenceIsCurrent()) return "stale";
+      if (!opened) return "failed";
+      if (request.fragment) editorStore.navigateTo(request.fragment);
+      return "opened";
+    } catch (error) {
+      if (!sequenceIsCurrent()) return "stale";
+      showAppNotice("WikiLink target could not be opened", error);
+      return "failed";
+    }
+  };
+
+  const acceptNoteLinkCandidate = (request: NoteLinkNavigationRequest, candidate: NoteLinkCandidate) => {
+    if (!isNoteLinkNavigationCurrent(request) || !request.accept()) {
+      finishNoteLinkNavigation(request, "stale");
+      return;
+    }
+    acceptedNoteLinkNavigation = request;
+    acceptedNoteLinkCandidate = candidate;
+    acceptedNoteLinkOriginSelectionId = uiStore.state.selectedEntryId;
+    setNoteLinkNavigationPending(true);
+    void navigateToNoteLinkCandidate(request, candidate).then((opened) => {
+      if (acceptedNoteLinkNavigation !== request) return;
+      finishNoteLinkNavigation(request, opened);
+    });
+  };
+
+  const handleNoteLinkNavigationRequest = (event: Event) => {
+    const request = (event as CustomEvent<NoteLinkNavigationRequest>).detail;
+    if (!request || !Array.isArray(request.candidates)) return;
+    if (!isNoteLinkNavigationCurrent(request)) {
+      request.settle("stale");
+      return;
+    }
+    if (!request.claim()) return;
+    if (request.candidates.length === 1) {
+      acceptNoteLinkCandidate(request, request.candidates[0]);
+    } else if (request.candidates.length > 1) {
+      setNoteLinkNavigation(request);
+      setNoteLinkNavigationPending(false);
+    } else {
+      request.settle("unavailable");
+    }
+  };
+
+  onMount(() => {
+    const handleNavigationStarted = (event: Event) => {
+      const started = (event as CustomEvent<NoteLinkNavigationStarted>).detail;
+      noteLinkNavigationSequence += 1;
+      const active = noteLinkNavigation() ?? acceptedNoteLinkNavigation;
+      if (active && (active.contextId !== started?.contextId || active.requestId !== started?.requestId)) {
+        finishNoteLinkNavigation(active, "stale");
+      }
+    };
+    const handleContextDisposed = (event: Event) => {
+      const contextId = (event as CustomEvent<{ contextId?: string }>).detail?.contextId;
+      const active = noteLinkNavigation() ?? acceptedNoteLinkNavigation;
+      if (active && active.contextId === contextId) finishNoteLinkNavigation(active, "stale");
+    };
+    window.addEventListener(NOTE_LINK_NAVIGATION_REQUEST_EVENT, handleNoteLinkNavigationRequest);
+    window.addEventListener(NOTE_LINK_NAVIGATION_STARTED_EVENT, handleNavigationStarted);
+    window.addEventListener(NOTE_LINK_CONTEXT_DISPOSED_EVENT, handleContextDisposed);
+    onCleanup(() => {
+      window.removeEventListener(NOTE_LINK_NAVIGATION_REQUEST_EVENT, handleNoteLinkNavigationRequest);
+      window.removeEventListener(NOTE_LINK_NAVIGATION_STARTED_EVENT, handleNavigationStarted);
+      window.removeEventListener(NOTE_LINK_CONTEXT_DISPOSED_EVENT, handleContextDisposed);
+      cancelNoteLinkNavigations("stale", true);
+    });
+  });
+
+  createEffect(on(
+    () => [collectionsStore.state.activeCollectionId, editorStore.sessionKey, editorStore.state.openFilePath, editorStore.state.pendingSelection, uiStore.state.selectedEntryId] as const,
+    ([collectionId, sessionKey, openFilePath, pendingSelection, selectedEntryId]) => {
+      cancelNoteLinkNavigations("stale", false);
+      const active = noteLinkNavigation() ?? acceptedNoteLinkNavigation;
+      if (!active) return;
+      if (collectionId !== active.collectionId) {
+        finishNoteLinkNavigation(active, "stale");
+        return;
+      }
+      if (acceptedNoteLinkNavigation !== active) {
+        if (sessionKey !== active.sessionKey || openFilePath !== active.sourcePath
+          || pendingSelection !== null || selectedEntryId !== active.sourceEntryId) {
+          finishNoteLinkNavigation(active, "stale");
+        }
+        return;
+      }
+      const candidate = acceptedNoteLinkCandidate;
+      const originSelectionId = acceptedNoteLinkOriginSelectionId;
+      if (!candidate) {
+        finishNoteLinkNavigation(active, "stale");
+        return;
+      }
+      const expectedSelectionId = candidate.folderRefEntryId ? candidate.path : candidate.entryId;
+      const originSelectionStillShown = selectedEntryId === originSelectionId
+        && (pendingSelection === null || pendingSelection === candidate.entryId);
+      const targetSelectionShown = selectedEntryId === expectedSelectionId;
+      const pendingSelectionIsTarget = pendingSelection === candidate.entryId || pendingSelection === candidate.path;
+      const sourceOrTargetOpen = openFilePath === active.sourcePath || openFilePath === candidate.path;
+      const sourceOrTargetSession = sessionKey === active.sessionKey || openFilePath === candidate.path;
+      if ((!originSelectionStillShown && !targetSelectionShown && !pendingSelectionIsTarget)
+        || !sourceOrTargetOpen || !sourceOrTargetSession
+        || (pendingSelection !== null && !pendingSelectionIsTarget)) {
+        finishNoteLinkNavigation(active, "stale");
+      }
+    },
+    { defer: true },
+  ));
 
   // Synchronize selection store with editor store
   let lastFolderRefAnnouncement = "";
@@ -910,6 +1135,16 @@ export default function App() {
           onRestore={handleRestoreRecoveryDraft}
           onDiscard={handleDiscardRecoveryDraft}
         />
+      </Show>
+      <Show when={noteLinkNavigation()}>
+        {(request) => (
+          <NoteLinkCandidates
+            request={request()}
+            pending={noteLinkNavigationPending()}
+            onSelect={(candidate) => acceptNoteLinkCandidate(request(), candidate)}
+            onCancel={() => finishNoteLinkNavigation(request(), "cancelled")}
+          />
+        )}
       </Show>
     </WindowFrame>
   );

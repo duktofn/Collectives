@@ -1,26 +1,39 @@
 import { EditorView } from "@codemirror/view";
-import { WikilinkToken, WikilinkFragment, ResolveCandidate } from "../../types";
-import { resolveWikilink } from "../../features/links";
+import { WikilinkFragment, WikilinkToken, NoteLinkCandidate } from "../../types";
+import type { NoteLinkNavigationOutcome } from "../../features/links/noteLinkServices";
+
+export interface WikilinkResolutionContext {
+  collectionId: string;
+  sourcePath: string | null;
+  isCurrent: () => boolean;
+  resolveCandidates: (collectionId: string, noteName: string, sourcePath?: string) => Promise<NoteLinkCandidate[]>;
+}
 
 export async function resolveAndNavigate(
   token: WikilinkToken,
-  collectionId: string,
+  context: WikilinkResolutionContext,
   callbacks: {
-    onMatch: (candidate: ResolveCandidate, fragment: WikilinkFragment | null) => void | Promise<void>;
+    onCandidates: (
+      candidates: NoteLinkCandidate[],
+      fragment: WikilinkFragment | null,
+    ) => Promise<NoteLinkNavigationOutcome>;
     onNoMatch: (token: WikilinkToken) => void;
     onError?: (token: WikilinkToken, error: unknown) => void;
-  }
-): Promise<void> {
+  },
+): Promise<NoteLinkNavigationOutcome | "missing"> {
   try {
-    const candidate = await resolveWikilink(collectionId, token.noteName);
-    if (candidate) {
-      await callbacks.onMatch(candidate, token.fragment);
-    } else {
+    const candidates = await context.resolveCandidates(context.collectionId, token.noteName, context.sourcePath ?? undefined);
+    if (!context.isCurrent()) return "stale";
+    if (candidates.length === 0) {
       callbacks.onNoMatch(token);
+      return "missing";
     }
+    return await callbacks.onCandidates(candidates, token.fragment);
   } catch (error) {
+    if (!context.isCurrent()) return "stale";
     console.error("Failed to resolve wikilink:", error);
     callbacks.onError?.(token, error);
+    return "failed";
   }
 }
 

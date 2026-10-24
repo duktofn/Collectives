@@ -1,28 +1,16 @@
 import { syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
 import { EditorView } from "@codemirror/view";
-import { resolveWikilink } from "../../features/links";
-import * as editorApi from "../../features/editor";
-import { collectionsStore } from "../../stores/collections";
+import { noteLinkContextFacet } from "../../features/links/noteLinkContext";
 import type { WikilinkToken } from "../../types";
 import { parseWikilink } from "../wikilink/parser";
+import type { NoteLinkPreviewCacheItem } from "../../features/links/noteLinkServices";
 
-interface PreviewCacheItem {
-  displayName: string;
-  path: string;
-  preview: string;
-  cachedAt: number;
-}
-
-const previewCache = new Map<string, PreviewCacheItem>();
 let previewRequest = 0;
 let previewTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function clearWikilinkPreviewCache(): void {
-  previewCache.clear();
-  previewRequest += 1;
-  if (previewTimer) clearTimeout(previewTimer);
-  previewTimer = undefined;
+  hidePreview();
 }
 
 function tokenAtPosition(view: EditorView, position: number): { token: WikilinkToken; from: number } | null {
@@ -57,38 +45,56 @@ function hidePreview(): void {
   window.dispatchEvent(new CustomEvent("collectives:wikilink-preview-hide"));
 }
 
-async function showPreview(token: WikilinkToken, position: { x: number; y: number }): Promise<void> {
-  const collectionId = collectionsStore.state.activeCollectionId;
-  if (!collectionId) return;
-  const request = ++previewRequest;
+async function showPreview(
+  token: WikilinkToken,
+  position: { x: number; y: number },
+  view: EditorView,
+  request: number,
+): Promise<void> {
+  const context = view.state.facet(noteLinkContextFacet);
+  const collectionId = context?.collectionId() ?? null;
+  if (!collectionId || !context || context.isDisposed()) return;
+  const sourcePath = context.sourcePath();
+  const sessionKey = context.sessionKey();
+  const cacheEpoch = context.cache.epoch();
+  const isCurrent = () => request === previewRequest
+    && view.dom.isConnected
+    && !context.isDisposed()
+    && context.collectionId() === collectionId
+    && context.sourcePath() === sourcePath
+    && context.sessionKey() === sessionKey
+    && context.cache.epoch() === cacheEpoch;
   try {
-    const candidate = await resolveWikilink(collectionId, token.noteName);
-    if (request !== previewRequest) return;
-    if (!candidate) {
+    const candidates = await context.resolveCandidates(collectionId, token.noteName, sourcePath ?? undefined);
+    if (!isCurrent()) return;
+    if (candidates.length === 0) {
       emitPreview({ noteName: token.noteName, missing: true, ...position });
       return;
     }
-    const cacheKey = `${collectionId}:${candidate.path.toLowerCase()}`;
-    const cached = previewCache.get(cacheKey);
-    if (cached && Date.now() - cached.cachedAt < 30_000) {
+    if (candidates.length > 1) {
+      emitPreview({
+        noteName: token.noteName,
+        ambiguous: true,
+        candidates: candidates.map(candidate => ({ displayName: candidate.displayName, path: candidate.path })),
+        ...position,
+      });
+      return;
+    }
+    const candidate = candidates[0];
+    const cacheKey = JSON.stringify([collectionId, candidate.folderRefRootPath ?? null, candidate.path]);
+    const cached = context.cache.getPreview(cacheKey);
+    if (cached) {
       emitPreview({ ...cached, noteName: token.noteName, missing: false, ...position });
       return;
     }
-    const raw = await editorApi.readFile(candidate.path);
-    if (request !== previewRequest) return;
-    const content = typeof raw === "string" ? raw : raw.content;
+    const content = await context.readCandidateContent(candidate);
+    if (!isCurrent()) return;
     const preview = content.split(/\r?\n/).slice(0, 8).join("\n").slice(0, 700);
-    const item = { displayName: candidate.displayName, path: candidate.path, preview, cachedAt: Date.now() };
-    previewCache.delete(cacheKey);
-    previewCache.set(cacheKey, item);
-    while (previewCache.size > 100) {
-      const oldest = previewCache.keys().next().value;
-      if (oldest === undefined) break;
-      previewCache.delete(oldest);
-    }
+    const item: NoteLinkPreviewCacheItem = { displayName: candidate.displayName, path: candidate.path, preview, cachedAt: Date.now() };
+    context.cache.setPreview(cacheKey, item);
     emitPreview({ ...item, noteName: token.noteName, missing: false, ...position });
   } catch (error) {
-    if (request !== previewRequest) return;
+    if (!isCurrent()) return;
     emitPreview({ noteName: token.noteName, error: String(error), missing: false, ...position });
   }
 }
@@ -102,8 +108,9 @@ export const wikilinkPreviewHandlers = EditorView.domEventHandlers({
     if (!result) return false;
     hidePreview();
     const rect = target.getBoundingClientRect();
+    const request = previewRequest;
     previewTimer = setTimeout(() => {
-      void showPreview(result.token, { x: rect.left, y: rect.bottom + 6 });
+      void showPreview(result.token, { x: rect.left, y: rect.bottom + 6 }, view, request);
     }, 260);
     return false;
   },
@@ -124,7 +131,8 @@ export const wikilinkPreviewHandlers = EditorView.domEventHandlers({
     if (!result) return false;
     event.preventDefault();
     const coords = view.coordsAtPos(result.from);
-    void showPreview(result.token, { x: coords?.left ?? 12, y: coords?.bottom ?? 44 });
+    const request = ++previewRequest;
+    void showPreview(result.token, { x: coords?.left ?? 12, y: coords?.bottom ?? 44 }, view, request);
     return true;
   },
 });
