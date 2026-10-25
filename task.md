@@ -130,48 +130,16 @@
 | TASK-114 | [Phase B plan TASK-013: Optimize table, code block and Markdown decorations](tasks/archive/TASK-114.md) | Done | 2026-10-23 |
 | TASK-115 | [Phase B plan TASK-014: Resolve duplicate note links across collection entries and FolderRefs](tasks/archive/TASK-115.md) | Done | 2026-10-25 |
 | TASK-116 | [Phase B plan TASK-015: Use static trusted editor contributions](tasks/archive/TASK-116.md) | Done | 2026-10-25 |
-| TASK-117 | [Run duplicate WikiLink browser regressions in default Playwright CI](#active) | On-Going | 2026-10-25 |
+| TASK-117 | [Run duplicate WikiLink browser regressions in default Playwright CI](tasks/archive/TASK-117.md) | Done | 2026-10-25 |
 
 ## Active
-
-## TASK-117 — Run duplicate WikiLink browser regressions in default Playwright CI
-
-**State:** On-Going
-**Source ID:** Follow-up to Phase B v1.4 TASK-015 / completed TASK-116.
-**Current Step:** Step 3 — Root audit, focused TASK-117 commit, then archive and closure commit.
-
-### Description
-Ensure `e2e/note-wikilink-duplicates.spec.ts` is discovered by the repository's default Playwright configuration so CI runs its five regression tests.
-
-### Scope
-- `playwright.config.ts`
-- `task.md`, `tasks/archive/TASK-117.md`
-
-### Acceptance
-- [x] Default `npx playwright test --list` discovers the five duplicate WikiLink tests.
-- [x] The five tests pass using the default Playwright configuration.
-- [x] No unrelated test selectors or browser settings change; Windows-only validation.
-- [ ] Focused TASK-117 commit and archive record the verified result.
-
-### Handoff
-- Branch: `codex/phase-b-08-11`; base: `89b72b1`.
-- Next action: finish the scoped diff audit, commit the test matcher, then archive TASK-117 with its source hash.
-- Blockers: none.
-
-### Verification
-- `npx playwright test --list` using the default config: 132 tests in 25 files, including all 5 duplicate WikiLink tests.
-- `npx playwright test e2e/note-wikilink-duplicates.spec.ts --list` using the same config: 5 tests discovered.
-- `npx playwright test e2e/note-wikilink-duplicates.spec.ts` using the default configuration: 5/5 passed.
-- Windows-only scope; no Rust, unit, or native performance gates were needed for this selector correction.
-
-### Log
-- 2026-10-25 — Created after audit found the duplicate WikiLink browser spec was absent from the default Playwright `testMatch`.
-- 2026-10-25 — Added the exact spec filename to the default matcher; discovery and all five browser tests passed with the default configuration.
 
 ## Pending review
 Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task chưa bắt đầu) chuyển sang Cancelled theo yêu cầu chuẩn bị refactor lớn. TASK-014, TASK-022 và TASK-086 giữ Paused. Xem [bản review lưu trữ](tasks/plans/collectives-fix-rebuild-review.md).
 
 ## Commit log
+
+- TASK-117: `3e7ae5f` (2026-10-25), duplicate WikiLink regressions now run under default Playwright discovery; see its archive.
 
 - TASK-116: `94d6219` (2026-10-25), static trusted EditorView contributions with session-safe chart actions; Windows gates passed; see its archive.
 
