@@ -27,6 +27,7 @@
 | DEC-017 | Document session owns coordination | Accepted | A session factory owns state/save/recovery; the store injects selection and the view owns CodeMirror only. | 2026-10-21 |
 | DEC-018 | Reuse parser-owned table models | Accepted | Weak state/tree caches reuse verified table source and map nested offsets; mutation drafts own their arrays. | 2026-10-22 |
 | DEC-019 | Resolve ambiguous note links with explicit candidates | Accepted | Return every bounded valid match in stable order; use a cancellable keyboard picker for duplicates and reject partial traversal results. | 2026-10-23 |
+| DEC-020 | Install trusted editor contributions statically | Accepted | Assemble built-in extensions and view actions from an internal static registry with an explicit per-view cleanup boundary. | 2026-10-25 |
 
 ## DEC-001 — Reveal active inline Markdown syntax in Write mode
 Date: 2026-10-18 · Status: Accepted · Related: `RenderPlugin`, TASK-001
@@ -301,3 +302,19 @@ Date: 2026-10-23 · Status: Accepted · Related: TASK-115, DEC-CORE-01
 **Decision** — Resolve a note name to the complete bounded candidate set across collection files, nested groups and FolderRef contents. Keep deterministic ranking, open a sole candidate directly, and require an accessible keyboard choice for duplicates. Cancellation is distinct from a missing link, and a traversal that hits its cap fails closed instead of presenting partial results. Inject the note-link collection/navigation/cache context so collection state does not import its CodeMirror extension.
 
 **Reason** — This records the approved DEC-CORE-01 behavior while preserving FolderRef read safety, source Markdown, and explicit user choice.
+
+## DEC-020 — Install trusted editor contributions statically
+Date: 2026-10-25 · Status: Accepted · Related: TASK-116, DEC-017, DEC-019
+
+**Problem** — Editor extensions, chart behavior, fixed template actions, and note-link services are assembled through separate imports and singleton handler registrations. Each new built-in action must otherwise create another registration, cleanup path, and view-state guard.
+
+**Options**
+- A — Keep the scattered imports and singleton registration functions. This minimizes refactoring, but lifecycle ownership and stale-view checks remain distributed across call sites.
+- B — Define trusted built-in contributions in one static registry and install them with an explicit per-EditorView context that returns cleanup functions. This centralizes lifecycle and guards while keeping every provider in reviewed application source.
+- C — Add a runtime plugin manifest and registration system. This permits dynamic providers but adds loading, trust, compatibility, and disposal behavior outside the current requirement.
+
+**Decision** — Use B. The editor contribution list remains static and internal. Each installation receives the current view/session services, and its disposer is called with that view's lifecycle. Contributions that mutate a document must check that the view is current and writable before dispatching.
+
+**Reason** — The requested additions are trusted application features. A static registry provides one lifecycle boundary without creating runtime extension or provider APIs, while retaining the document-session and injected note-link boundaries from DEC-017 and DEC-019.
+
+**Consequences** — `Editor` owns the registry installation for each view. Mode reconfiguration may select extensions but does not register duplicate global handlers. Chart.js remains lazily imported, and existing chart, template, formatting, and note-link contracts remain covered by focused tests.

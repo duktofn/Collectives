@@ -1,5 +1,4 @@
 import { Compartment, Extension, EditorState, Transaction } from "@codemirror/state";
-import { autocompletion } from "@codemirror/autocomplete";
 import { markdown } from "@codemirror/lang-markdown";
 import { Strikethrough } from "@lezer/markdown";
 import { tableMarkdownExtension } from "./table-markdown-extension";
@@ -11,25 +10,22 @@ import { renderDecorationsExtension } from "./render-decorations";
 import { inlineFormattingExitExtension } from './inline-formatting';
 import { codeBlockWidgetExtension } from "./code-block-widget";
 import { tableWidgetExtension } from "./table-widget";
-import { chartWidgetExtension } from "./chart-widget";
 import { annotationExtension } from "./annotation";
-import { wikilinkDecorationExtension } from "./wikilink-decoration";
-import { wikilinkCompletionSource } from "./wikilink-autocomplete";
-import { blockRefExtension, blockRefDecorationExtension } from "./block-ref";
 import { editorModeFacet } from "./facet";
 import { delimiterPairExtension } from "./delimiter-pairs";
 import { formattingKeymapExtension } from "./formatting-keymap";
-import { slashTemplateCompletionSource } from "./slash-template-autocomplete";
 import type { FileKind } from "../../shared/fileCapabilities.generated";
 import { editorLayoutExtension } from './editor-layout';
 import { codeSyntaxHighlighting, sourceCodeExtensions } from './code-presentation';
 import { wordOccurrenceHighlighting } from './word-occurrences';
 import { searchKeymap } from '@codemirror/search';
+import {
+  getBuiltinEditorCompletionExtension,
+  getBuiltinEditorContributionExtensions,
+} from "../../features/builtin/editorContributions";
 
-// Slash/WikiLink completion is explicitly requested by typing its marker.
-// Accept Enter as soon as its result is visible, including fast command input.
-const sourceMarkdownAutocomplete = autocompletion({ override: [slashTemplateCompletionSource], activateOnTyping: true, interactionDelay: 0 });
-const renderMarkdownAutocomplete = autocompletion({ override: [wikilinkCompletionSource, slashTemplateCompletionSource], activateOnTyping: true, interactionDelay: 0 });
+const sourceMarkdownAutocomplete = getBuiltinEditorCompletionExtension("edit-source");
+const renderMarkdownAutocomplete = getBuiltinEditorCompletionExtension("edit-render");
 
 export const baseEditorExtensions: Extension[] = [
   EditorState.transactionFilter.of((transaction) =>
@@ -75,7 +71,7 @@ export function getExtensionsForMode(mode: "view" | "edit-source" | "edit-render
         editorModeFacet.of(mode),
         EditorView.editable.of(true),
         EditorState.readOnly.of(false),
-        sourceMarkdownAutocomplete,
+        ...(sourceMarkdownAutocomplete ? [sourceMarkdownAutocomplete] : []),
       ];
     case "edit-render":
       return [
@@ -87,11 +83,11 @@ export function getExtensionsForMode(mode: "view" | "edit-source" | "edit-render
         inlineFormattingExitExtension,
         codeBlockWidgetExtension,
         tableWidgetExtension,
-        chartWidgetExtension,
+        ...getBuiltinEditorContributionExtensions("chart", mode),
         annotationExtension,
-        wikilinkDecorationExtension,
-        renderMarkdownAutocomplete,
-        blockRefExtension,
+        ...getBuiltinEditorContributionExtensions("note-links", mode),
+        ...(renderMarkdownAutocomplete ? [renderMarkdownAutocomplete] : []),
+        ...getBuiltinEditorContributionExtensions("block-references", mode),
       ];
     case "view":
       return [
@@ -102,10 +98,10 @@ export function getExtensionsForMode(mode: "view" | "edit-source" | "edit-render
         renderDecorationsExtension,
         codeBlockWidgetExtension,
         tableWidgetExtension,
-        chartWidgetExtension,
+        ...getBuiltinEditorContributionExtensions("chart", mode),
         annotationExtension,
-        wikilinkDecorationExtension,
-        blockRefDecorationExtension,
+        ...getBuiltinEditorContributionExtensions("note-links", mode),
+        ...getBuiltinEditorContributionExtensions("block-references", mode),
       ];
   }
 }

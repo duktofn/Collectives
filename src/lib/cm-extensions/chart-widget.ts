@@ -7,6 +7,7 @@ import type { Chart as ChartInstance } from 'chart.js';
 import { mountChartActions } from '../../components/editor/ChartActions';
 import { parseChartConfiguration } from '../charts/chartModel';
 import { chartPresentation } from '../charts/chartPresentation';
+import { editorSessionKeyFacet, isEditorSessionCurrent } from './editor-session';
 
 class ChartWidget extends WidgetType {
   private chartInstance: ChartInstance | null = null;
@@ -22,7 +23,8 @@ class ChartWidget extends WidgetType {
     public specYaml: string,
     public from: number,
     public to: number,
-    public readOnly: boolean
+    public readOnly: boolean,
+    public sessionKey: string
   ) {
     super();
     try {
@@ -34,7 +36,9 @@ class ChartWidget extends WidgetType {
   }
 
   eq(other: ChartWidget) {
-    return this.specYaml === other.specYaml && this.readOnly === other.readOnly;
+    return this.specYaml === other.specYaml
+      && this.readOnly === other.readOnly
+      && this.sessionKey === other.sessionKey;
   }
 
   // Accurate height estimation based on actual CSS measurements:
@@ -158,7 +162,11 @@ class ChartWidget extends WidgetType {
   }
 
   private currentRange(view: EditorView) {
-    if (!this.container?.isConnected || view.state.facet(EditorState.readOnly)) return false;
+    if (!this.container?.isConnected
+      || !view.dom.isConnected
+      || view.state.facet(EditorState.readOnly)
+      || !view.state.facet(EditorView.editable)
+      || !isEditorSessionCurrent(view, this.sessionKey)) return false;
     try {
       const position = view.posAtDOM(this.container);
       const cursor = view.state.field(chartWidgetField, false)?.decorations.iter(position);
@@ -262,7 +270,8 @@ function buildChartDecorations(state: EditorState): DecorationSet {
             specYaml,
             opening.from,
             closing.to,
-            state.facet(EditorState.readOnly)
+            state.facet(EditorState.readOnly),
+            state.facet(editorSessionKeyFacet)
           ),
           block: true,
         })

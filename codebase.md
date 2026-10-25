@@ -52,7 +52,9 @@ Backend dependency direction:
 ## Editor
 `components/editor/Editor.tsx` owns one EditorView, mode compartments, store synchronization, selection/navigation, measurement requests, and idle/force autosave. CSS presentation lives in `components/editor/Editor.css` and shared styles.
 
-`lib/cm-extensions/markdown-mode.ts` composes base Markdown support and Read / Write / Source extensions. Markdown parsing adds the local table extension and Lezer Strikethrough. Text-source files use separate source-language extensions and a read-only variant for Read mode.
+`features/builtin/editorContributions.ts` is the internal static registry for trusted chart, note-link, block-reference, fixed-template, and editor-command contributions. It selects extensions and completion sources by mode; `markdown-mode.ts` composes these with the base Markdown support. `Editor.tsx` installs per-view command handlers and disposes them with that view. `editor-session.ts` contributes the current session key to EditorState; chart widgets capture and verify it before edit/delete actions. Template and format commands verify the live view, session, and writable state before applying edits.
+
+Markdown parsing adds the local table extension and Lezer Strikethrough. Text-source files use separate source-language extensions and a read-only variant for Read mode.
 
 `RenderPlugin` in `render-decorations.ts` owns inline/heading/blockquote/rule decorations and hidden atomic marker ranges. It refreshes on document, selection, viewport, syntax-tree, and configuration changes. In Write mode, bold, italic, strikethrough, and inline code retain their styles and expose parser delimiter nodes for intersecting selections. The closing boundary stays exposed until the caret leaves, giving native input a DOM position after the marker. Active empty star/underscore formatting pairs are shown instead of a horizontal rule. In Read mode and inactive spans, delimiters are replaced and atomic.
 

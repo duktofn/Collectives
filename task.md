@@ -129,8 +129,64 @@
 | TASK-113 | [Phase B plan TASK-012: Investigate bounded content-search rescans](tasks/archive/TASK-113.md) | Done | 2026-10-22 |
 | TASK-114 | [Phase B plan TASK-013: Optimize table, code block and Markdown decorations](tasks/archive/TASK-114.md) | Done | 2026-10-23 |
 | TASK-115 | [Phase B plan TASK-014: Resolve duplicate note links across collection entries and FolderRefs](tasks/archive/TASK-115.md) | Done | 2026-10-25 |
+| TASK-116 | [Phase B plan TASK-015: Use static trusted editor contributions](#active) | On-Going | 2026-10-25 |
 
 ## Active
+
+## TASK-116 — Use static trusted editor contributions
+
+**State:** On-Going
+**Source ID:** Phase B v1.4 TASK-015; follows completed TASK-115 (plan TASK-014).
+**Related:** DEC-017 (document session ownership), DEC-019 (note-link context), DEC-020 (static built-in contributions).
+**Current Step:** Step 3 — Root audit, focused source commit, then archive and closure commit.
+
+### Description
+Replace scattered extension imports and singleton handler registrations with an internal static registry of trusted editor contributions. Preserve the existing chart, note-link, formatting, and fixed-template behavior while establishing one clear install/dispose boundary for future built-in contributions.
+
+### Scope
+- `src/lib/cm-extensions/markdown-mode.ts`
+- `src/lib/cm-extensions/chart-widget.ts`
+- `src/lib/editorCommands.ts`
+- `src/components/editor/Editor.tsx`
+- `src/lib/editorCommands.test.ts`
+- `src/lib/charts/chartModel.test.ts`
+- New `src/lib/cm-extensions/editor-session.ts` for EditorState session identity, covered in the registry lifecycle test.
+- New `src/features/builtin/editorContributions.ts` and `src/features/builtin/editorContributions.test.ts`
+- `task.md`, `decisions.md`, `codebase.md`; update `CHANGELOG.md` only if user-visible behavior changes; ignored validation artifacts as needed.
+
+### Requirements
+- [x] Add an internal static trusted contribution registry with a clear install/dispose boundary; do not add plugin manifests, runtime plugin installation, third-party provider APIs, dependencies, or editor modes.
+- [x] Preserve the lazy `chart.js/auto` import, chart serialization/YAML configuration, and chart render/edit/delete/error behavior.
+- [x] Preserve the TASK-115 duplicate note-link route, injected context/cache behavior, cancellation, stale-result checks, and FolderRef readiness.
+- [x] Preserve fixed template insertion, heading changes, formatting, and existing editor command behavior.
+- [x] Dispose contribution handlers/listeners with their EditorView and avoid duplicate extensions or handlers across mode changes, mounts, replacement, and unmount.
+- [x] Every contribution action that edits a view rechecks the live view/session and current read-only state before changing the document. Chart actions carry the EditorState session key and reject stale sessions.
+- [x] Tests cover chart render/edit/delete/errors, templates and heading behavior, mode changes, read-only guards, view lifecycle replacement/unmount, undo, and the committed note-link route.
+- [x] Windows typecheck, lint, full Vitest (`--maxWorkers=2`), contracts, production build, and affected browser regressions pass without weakened assertions or timeouts; no Rust gates were run.
+- [x] Performance scope is documented: no cache or editor hot-path behavior changed, so no performance claim or native benchmark is needed.
+- [x] Root independently audited the diff and evidence; no remote writes.
+
+### Steps
+- [x] Step 1 — Implement the static contribution registry and lifecycle wiring → verify: registry tests, unchanged lazy chart import, and no runtime installation or duplicate registration.
+- [x] Step 2 — Run focused behavior tests and Windows gates → verify: chart/template/note-link/read-only/lifecycle cases and the full required Windows checks pass.
+- [ ] Step 3 — Root audit and focused commit → verify: exact allowlist and evidence accepted; commit hash recorded before archive.
+
+### Handoff
+- Branch: `codex/phase-b-08-11`; base: `80b7f89`; working tree clean at task start.
+- Next action: complete the final allowlist/diff review, create the focused TASK-116 source commit, then record its hash and archive the task in a closure commit. TASK-016 / Phase C must not start in this task.
+- Uncommitted files: TASK-116 source, registry tests, architecture/decision updates, and task ledger/verification records.
+- Blockers: none.
+
+### Verification
+- Windows: `npm run typecheck`, `npm run lint`, `npm run check:contracts`, `npm run build`, and `npm run test -- --run --maxWorkers=2` passed; Vitest reported 57 files / 349 tests.
+- Focused editor suite: 3 files / 13 tests passed (`editorContributions`, `editorCommands`, `chartModel`).
+- Browser regressions: 26 chart/editor-template cases passed; 5 duplicate WikiLink route cases passed using a temporary external Playwright config that was removed afterward.
+- Build succeeded with Vite's large-chunk advisory; `chart.js/auto` remains a separate lazy chunk.
+- No Rust gates were run. No cache or editor hot-path behavior changed, so no native performance benchmark was run.
+
+### Log
+- 2026-10-25 — Created for the explicit request to finish Phase B TASK-015 after audited TASK-115; implementation is limited to the allowlisted editor contribution seams and tests.
+- 2026-10-25 — Added the static trusted registry and per-EditorView command cleanup. Root audit added a session-key guard for chart edits/deletes; all required Windows frontend, contract, build, Vitest, and browser checks passed.
 
 ## Pending review
 Bản kế hoạch rebuild cũ đã được đóng: TASK-023–083 (61 task chưa bắt đầu) chuyển sang Cancelled theo yêu cầu chuẩn bị refactor lớn. TASK-014, TASK-022 và TASK-086 giữ Paused. Xem [bản review lưu trữ](tasks/plans/collectives-fix-rebuild-review.md).

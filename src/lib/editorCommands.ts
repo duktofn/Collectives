@@ -7,9 +7,14 @@ export type MarkdownTemplate =
   | BaseMarkdownTemplate
   | `chart-${import('./charts/chartModel').ChartKind}`;
 
-let templateInsertHandler: ((template: MarkdownTemplate) => boolean) | null = null;
-let documentFormatHandler: (() => Promise<boolean>) | null = null;
 let noteSearchHandler: ((query: string) => void) | null = null;
+
+export interface EditorCommandHandlers {
+  insertMarkdownTemplate: (template: MarkdownTemplate) => boolean;
+  formatDocument: () => Promise<boolean>;
+}
+
+const editorCommandInstallations: Array<{ handlers: EditorCommandHandlers }> = [];
 
 export function registerNoteContentSearch(handler: (query: string) => void): () => void {
   noteSearchHandler = handler;
@@ -22,28 +27,23 @@ export function requestNoteContentSearch(query = ''): void {
   noteSearchHandler?.(query);
 }
 
-export function registerDocumentFormat(handler: () => Promise<boolean>): () => void {
-  documentFormatHandler = handler;
+export function installEditorCommandHandlers(handlers: EditorCommandHandlers): () => void {
+  const installation = { handlers };
+  editorCommandInstallations.push(installation);
   return () => {
-    if (documentFormatHandler === handler) documentFormatHandler = null;
+    const index = editorCommandInstallations.indexOf(installation);
+    if (index >= 0) editorCommandInstallations.splice(index, 1);
   };
 }
 
 export function requestDocumentFormat(): Promise<boolean> {
-  return documentFormatHandler?.() ?? Promise.resolve(false);
-}
-
-export function registerMarkdownTemplateInsert(
-  handler: (template: MarkdownTemplate) => boolean
-): () => void {
-  templateInsertHandler = handler;
-  return () => {
-    if (templateInsertHandler === handler) templateInsertHandler = null;
-  };
+  return editorCommandInstallations[editorCommandInstallations.length - 1]?.handlers.formatDocument()
+    ?? Promise.resolve(false);
 }
 
 export function requestMarkdownTemplateInsert(template: MarkdownTemplate): boolean {
-  return templateInsertHandler?.(template) ?? false;
+  return editorCommandInstallations[editorCommandInstallations.length - 1]?.handlers.insertMarkdownTemplate(template)
+    ?? false;
 }
 
 export function buildMarkdownTemplateTransaction(

@@ -3,6 +3,7 @@ import { EditorView } from "@codemirror/view";
 import { Annotation, Compartment, EditorState, Transaction } from "@codemirror/state";
 import { editorStore } from "../../stores/editor";
 import { modeCompartment, getExtensionsForMode, getBaseExtensionsForFile } from "../../lib/cm-extensions/markdown-mode";
+import { editorSessionKeyFacet } from "../../lib/cm-extensions/editor-session";
 import { navigateToFragment } from "../../lib/wikilink/resolver";
 import { registerEditorMeasureRequest } from "../../lib/editorMeasure";
 import { ModalLayer } from "../common/ModalLayer";
@@ -15,14 +16,15 @@ import { searchNoteContent } from "../../features/links";
 import { syntaxTree } from "@codemirror/language";
 import type { ContentSearchResult } from "../../features/links";
 import { resolveWikilink, searchLinkIndex } from "../../features/links";
-import { insertMarkdownTemplate, registerMarkdownTemplateInsert } from "../../lib/editorCommands";
+import { insertMarkdownTemplate } from "../../lib/editorCommands";
 import type { MarkdownTemplate } from "../../lib/editorCommands";
-import { registerDocumentFormat } from '../../lib/editorCommands';
 import { canFormatDocument, formatDocumentSource } from '../../lib/documentFormatting';
 import { isolateHistory } from '@codemirror/commands';
 import "./Editor.css";
 import { createPanelPresence } from '../../lib/panelPresence';
 import { EditorSurface } from './EditorSurface';
+import { installBuiltinEditorContributions } from '../../features/builtin/editorContributions';
+import type { BuiltinEditorContributionContext } from '../../features/builtin/editorContributions';
 import {
   NOTE_LINK_CONTEXT_DISPOSED_EVENT,
   NOTE_LINK_NAVIGATION_STARTED_EVENT,
@@ -83,8 +85,7 @@ export function Editor() {
   let forceSaveTimeout: ReturnType<typeof setTimeout> | null = null;
   let unregisterMeasure: (() => void) | undefined;
   let unregisterContentReader: (() => void) | undefined;
-  let unregisterTemplateInsert: (() => void) | undefined;
-  let unregisterDocumentFormat: (() => void) | undefined;
+  let unregisterEditorContributions: (() => void) | undefined;
   let resizeObserver: ResizeObserver | undefined;
   let documentSessionKey: string | undefined;
   let documentViewStateKey: string | null = null;
@@ -297,6 +298,7 @@ export function Editor() {
     doc,
     extensions: [
       baseCompartment.of(getBaseExtensionsForFile(editorStore.state.fileKind, editorStore.state.openFilePath ?? '')),
+      editorSessionKeyFacet.of(editorStore.sessionKey),
       noteLinkContextFacet.of(noteLinkContext),
       contentAttributesCompartment.of(contentAttributes()),
       modeCompartment.of(getExtensionsForMode(editorStore.state.mode, editorStore.state.fileKind)),
@@ -318,6 +320,53 @@ export function Editor() {
     ],
   });
 
+  const isContributionViewCurrent = (candidate: EditorView, sessionKey: string) =>
+    view === candidate
+    && candidate.dom.isConnected
+    && editorStore.sessionKey === sessionKey;
+
+  const isContributionViewWritable = (candidate: EditorView, sessionKey: string) =>
+    isContributionViewCurrent(candidate, sessionKey)
+    && !candidate.state.readOnly
+    && candidate.state.facet(EditorView.editable)
+    && !editorStore.state.isReadOnly;
+
+  const insertTemplateForView = (
+    candidate: EditorView,
+    sessionKey: string,
+    template: MarkdownTemplate,
+  ) => isContributionViewWritable(candidate, sessionKey)
+    && insertMarkdownTemplate(candidate, template);
+
+  const formatViewDocument = async (candidate: EditorView, sessionKey: string): Promise<boolean> => {
+    const path = editorStore.state.openFilePath;
+    if (!isContributionViewWritable(candidate, sessionKey) || !path || !canFormatDocument(path)) return false;
+    const document = candidate.state.doc;
+    const generation = editorStore.state.generation;
+    const formatted = await formatDocumentSource(document.toString(), path);
+    if (!isContributionViewWritable(candidate, sessionKey)
+      || generation !== editorStore.state.generation
+      || candidate.state.doc !== document) {
+      throw new Error('The document changed while formatting. Try again.');
+    }
+    if (formatted !== document.toString()) candidate.dispatch({
+      changes: { from: 0, to: document.length, insert: formatted },
+      selection: { anchor: Math.min(candidate.state.selection.main.head, formatted.length) },
+      userEvent: 'input.format', annotations: isolateHistory.of('full'),
+    });
+    candidate.focus();
+    return true;
+  };
+
+  const createBuiltinContributionContext = (): BuiltinEditorContributionContext => ({
+    currentView: () => view ?? null,
+    currentSessionKey: () => editorStore.sessionKey,
+    isCurrent: isContributionViewCurrent,
+    isWritable: isContributionViewWritable,
+    insertMarkdownTemplate: insertTemplateForView,
+    formatDocument: formatViewDocument,
+  });
+
   onMount(() => {
     if (!editorRef) return;
 
@@ -327,23 +376,7 @@ export function Editor() {
     });
     setActiveView(view);
     unregisterContentReader = editorStore.registerCurrentContentReader(() => view?.state.doc.toString() ?? "");
-    unregisterTemplateInsert = registerMarkdownTemplateInsert((template: MarkdownTemplate) => view ? insertMarkdownTemplate(view, template) : false);
-    unregisterDocumentFormat = registerDocumentFormat(async () => {
-      const path = editorStore.state.openFilePath;
-      if (!view || !path || editorStore.state.isReadOnly || !canFormatDocument(path)) return false;
-      const document = view.state.doc;
-      const generation = editorStore.state.generation;
-      const formatted = await formatDocumentSource(document.toString(), path);
-      if (!view || generation !== editorStore.state.generation || view.state.doc !== document || view.state.readOnly)
-        throw new Error('The document changed while formatting. Try again.');
-      if (formatted !== document.toString()) view.dispatch({
-        changes: { from: 0, to: document.length, insert: formatted },
-        selection: { anchor: Math.min(view.state.selection.main.head, formatted.length) },
-        userEvent: 'input.format', annotations: isolateHistory.of('full'),
-      });
-      view.focus();
-      return true;
-    });
+    unregisterEditorContributions = installBuiltinEditorContributions(createBuiltinContributionContext());
     documentSessionKey = editorStore.sessionKey;
     documentViewStateKey = editorStore.state.openFilePath;
 
@@ -368,8 +401,7 @@ export function Editor() {
     setActiveView(undefined);
     unregisterMeasure?.();
     unregisterContentReader?.();
-    unregisterTemplateInsert?.();
-    unregisterDocumentFormat?.();
+    unregisterEditorContributions?.();
     resizeObserver?.disconnect();
     if (view) {
       saveDocumentViewState(documentViewStateKey);
