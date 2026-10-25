@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: ["editor-*.spec.ts", "render-selection-history-table-fix.spec.ts", "write-cursor.spec.ts", "code-click-drift.spec.ts", "workspace-ux.spec.ts"],
+  testMatch: ["editor-*.spec.ts", "note-wikilink-duplicates.spec.ts", "render-selection-history-table-fix.spec.ts", "write-cursor.spec.ts", "code-click-drift.spec.ts", "workspace-ux.spec.ts"],
   globalSetup: "./e2e/global-setup.ts",
   timeout: 30_000,
   fullyParallel: false,
